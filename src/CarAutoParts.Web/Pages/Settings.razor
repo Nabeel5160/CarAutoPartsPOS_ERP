@@ -28,6 +28,17 @@
             <div class="col-md-4"><label class="form-label">POS Id</label><input class="form-control" @bind="_settings.PosId" /></div>
             <div class="col-md-3"><label class="form-label">Default tax %</label><input type="number" class="form-control" @bind="_settings.DefaultTaxRate" /></div>
             <div class="col-md-3"><label class="form-label">API Theme field</label><input class="form-control" @bind="_settings.Theme" /></div>
+            <div class="col-md-3"><label class="form-label">GRN over-receive %</label><input type="number" class="form-control" @bind="_settings.GrnOverReceivePercent" /></div>
+            <div class="col-md-3"><label class="form-label">3-way qty tol %</label><input type="number" class="form-control" @bind="_settings.ThreeWayQtyTolerancePercent" /></div>
+            <div class="col-md-3"><label class="form-label">3-way price tol %</label><input type="number" class="form-control" @bind="_settings.ThreeWayPriceTolerancePercent" /></div>
+            <div class="col-md-3 form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="grnUnder" @bind="_settings.GrnUnderReceiveAllowed" />
+                <label class="form-check-label" for="grnUnder">Allow GRN under-receive</label>
+            </div>
+            <div class="col-md-3 form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="negStock" @bind="_settings.AllowNegativeStock" />
+                <label class="form-check-label" for="negStock">Allow negative stock</label>
+            </div>
             <div class="col-12"><label class="form-label">Address</label><textarea class="form-control" @bind="_settings.Address"></textarea></div>
         </div>
         <button class="btn btn-cap mt-3" @onclick="SaveAsync">Save settings</button>

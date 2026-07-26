@@ -199,6 +199,7 @@ public class DocumentPostingIntegrationTests
             new Repository<ProductKit>(db),
             new Repository<CashierShift>(db),
             new Repository<HeldSale>(db),
+            new Repository<ProductSupersession>(db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(db),
@@ -207,7 +208,8 @@ public class DocumentPostingIntegrationTests
             fbrOutbox.Object,
             companyCtx,
             new CurrentUserService(),
-            salesEnt.Object);
+            salesEnt.Object,
+            new AtpService(enterprise));
 
         return new TestHarness
         {
@@ -341,6 +343,7 @@ public class DocumentPostingIntegrationTests
             new Repository<ProductKit>(h.Db),
             new Repository<CashierShift>(h.Db),
             new Repository<HeldSale>(h.Db),
+            new Repository<ProductSupersession>(h.Db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(h.Db),
@@ -349,7 +352,8 @@ public class DocumentPostingIntegrationTests
             fbrOutbox.Object,
             h.Company,
             new CurrentUserService(),
-            salesEnt.Object);
+            salesEnt.Object,
+            new AtpService(new EnterpriseDbAdapter(h.Db)));
 
         await pos.CheckoutAsync(CashCheckout(), CancellationToken.None);
         fbrOutbox.Verify(o => o.EnqueueFbrRetry(It.IsAny<int>(), It.IsAny<string?>()), Times.Once);

@@ -1,5 +1,26 @@
 # Enterprise Mid-Market Hardening — Changelog
 
+## 2026-07-27 — Phase 3 inventory discipline
+
+### ATP
+- `IAtpService`: available = on-hand − reserved; `GET /api/inventory/atp`
+- POS checkout stock gate uses ATP (skipped when `AllowNegativeStock`)
+
+### Negative stock policy
+- Company setting `AllowNegativeStock` (default false); `DeductStockAsync` respects it
+
+### Transfers
+- Explicit **Ship** (Approved → InTransit, deduct source) then **Receive/Complete** (InTransit → Completed, receive dest)
+- Completing an Approved transfer still ships then receives for compatibility
+- Web Transfers: Approve / Ship / Receive actions
+
+### POS fitment / cross-ref
+- Search includes vehicle year range on fitment
+- Supersession: searching an old SKU/OEM also returns the replacement product
+
+### Migration
+- `20260727030000_Phase3Inventory`
+
 ## 2026-07-27 — Phase 2 procurement depth
 
 ### Purchase requisitions

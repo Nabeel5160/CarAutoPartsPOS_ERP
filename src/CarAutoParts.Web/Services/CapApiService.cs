@@ -245,6 +245,9 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> ApproveTransferAsync(int id) =>
         _api.PostAsync($"/api/transfers/{id}/approve", new { });
 
+    public Task<(bool Ok, string? Error, int Status)> ShipTransferAsync(int id) =>
+        _api.PostAsync($"/api/transfers/{id}/ship", new { });
+
     public Task<(bool Ok, string? Error, int Status)> CompleteTransferAsync(int id) =>
         _api.PostAsync($"/api/transfers/{id}/complete", new { });
 

@@ -23,6 +23,7 @@ public class PosCheckoutService : IPosCheckoutService
     private readonly IRepository<ProductKit> _kits;
     private readonly IRepository<CashierShift> _shifts;
     private readonly IRepository<HeldSale> _held;
+    private readonly IRepository<ProductSupersession> _supersessions;
     private readonly IInventoryService _inventory;
     private readonly IFbrService _fbrService;
     private readonly IUnitOfWork _unitOfWork;
@@ -32,6 +33,7 @@ public class PosCheckoutService : IPosCheckoutService
     private readonly ICurrentCompanyContext _company;
     private readonly ICurrentUserService _currentUser;
     private readonly IEnterpriseSalesService _salesEnterprise;
+    private readonly IAtpService _atp;
 
     public PosCheckoutService(
         IRepository<Product> products,
@@ -43,6 +45,7 @@ public class PosCheckoutService : IPosCheckoutService
         IRepository<ProductKit> kits,
         IRepository<CashierShift> shifts,
         IRepository<HeldSale> held,
+        IRepository<ProductSupersession> supersessions,
         IInventoryService inventory,
         IFbrService fbrService,
         IUnitOfWork unitOfWork,
@@ -51,7 +54,8 @@ public class PosCheckoutService : IPosCheckoutService
         IFbrOutboxService fbrOutbox,
         ICurrentCompanyContext company,
         ICurrentUserService currentUser,
-        IEnterpriseSalesService salesEnterprise)
+        IEnterpriseSalesService salesEnterprise,
+        IAtpService atp)
     {
         _products = products;
         _invoices = invoices;
@@ -62,6 +66,7 @@ public class PosCheckoutService : IPosCheckoutService
         _kits = kits;
         _shifts = shifts;
         _held = held;
+        _supersessions = supersessions;
         _inventory = inventory;
         _fbrService = fbrService;
         _unitOfWork = unitOfWork;
@@ -71,6 +76,7 @@ public class PosCheckoutService : IPosCheckoutService
         _company = company;
         _currentUser = currentUser;
         _salesEnterprise = salesEnterprise;
+        _atp = atp;
     }
 
     public async Task<IReadOnlyList<PosProductDto>> GetPosProductsAsync(string? search, CancellationToken ct = default)
@@ -80,16 +86,38 @@ public class PosCheckoutService : IPosCheckoutService
             .Include(p => p.VehicleCompatibilities)
             .Where(p => !p.IsDeleted && p.IsActive);
 
+        HashSet<int>? crossRefIds = null;
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
+            int? year = int.TryParse(s, out var y) && y is >= 1980 and <= 2100 ? y : null;
+
+            // Cross-ref: if search matches an old superseded product SKU/OEM, include the replacement
+            var oldMatches = await _products.Query()
+                .Where(p => !p.IsDeleted && (p.Sku == s || (p.OemNumber != null && p.OemNumber == s) || (p.PartNumber != null && p.PartNumber == s)))
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+            if (oldMatches.Count > 0)
+            {
+                var newIds = await _supersessions.Query()
+                    .Where(x => !x.IsDeleted && oldMatches.Contains(x.OldProductId))
+                    .Select(x => x.NewProductId)
+                    .ToListAsync(ct);
+                if (newIds.Count > 0)
+                    crossRefIds = newIds.ToHashSet();
+            }
+
             q = q.Where(p =>
+                (crossRefIds != null && crossRefIds.Contains(p.Id)) ||
                 p.Name.Contains(s) ||
                 p.Sku.Contains(s) ||
                 (p.Barcode != null && p.Barcode.Contains(s)) ||
                 (p.OemNumber != null && p.OemNumber.Contains(s)) ||
                 (p.PartNumber != null && p.PartNumber.Contains(s)) ||
-                p.VehicleCompatibilities.Any(v => v.Make.Contains(s) || v.Model.Contains(s)));
+                p.VehicleCompatibilities.Any(v =>
+                    v.Make.Contains(s) ||
+                    v.Model.Contains(s) ||
+                    (year != null && (v.YearFrom == null || v.YearFrom <= year) && (v.YearTo == null || v.YearTo >= year))));
         }
 
         var items = await q.OrderBy(p => p.Name).Take(100).ToListAsync(ct);
@@ -423,6 +451,10 @@ public class PosCheckoutService : IPosCheckoutService
 
     private async Task EnsureStockForSaleAsync(Product product, int warehouseId, decimal qty, CancellationToken ct)
     {
+        var settings = await _settings.Query().AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        if (settings?.AllowNegativeStock == true)
+            return;
+
         var kit = await _kits.Query().Include(k => k.Components)
             .FirstOrDefaultAsync(k => k.ParentProductId == product.Id && !k.IsDeleted, ct);
         if (kit is { Components.Count: > 0 })
@@ -430,19 +462,15 @@ public class PosCheckoutService : IPosCheckoutService
             foreach (var c in kit.Components.Where(x => !x.IsDeleted))
             {
                 var need = c.Quantity * qty;
-                var available = await _products.Query().Where(p => p.Id == c.ComponentProductId)
-                    .SelectMany(p => p.InventoryItems)
-                    .Where(i => !i.IsDeleted && i.WarehouseId == warehouseId)
-                    .SumAsync(i => i.QuantityOnHand - i.ReservedQuantity, ct);
-                if (available < need)
+                var ensure = await _atp.EnsureAvailableAsync(c.ComponentProductId, warehouseId, need, ct);
+                if (!ensure.Succeeded)
                     throw new InvalidOperationException($"Insufficient kit component stock (product {c.ComponentProductId}).");
             }
             return;
         }
 
-        var onHand = product.InventoryItems.Where(i => !i.IsDeleted && i.WarehouseId == warehouseId)
-            .Sum(i => i.QuantityOnHand - i.ReservedQuantity);
-        if (onHand < qty)
+        var ok = await _atp.EnsureAvailableAsync(product.Id, warehouseId, qty, ct);
+        if (!ok.Succeeded)
             throw new InvalidOperationException($"Insufficient stock for {product.Name}.");
     }
 

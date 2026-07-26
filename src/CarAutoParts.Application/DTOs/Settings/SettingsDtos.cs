@@ -24,7 +24,8 @@ public record CompanySettingsDto(
     decimal GrnOverReceivePercent = 0,
     bool GrnUnderReceiveAllowed = true,
     decimal ThreeWayQtyTolerancePercent = 0,
-    decimal ThreeWayPriceTolerancePercent = 0);
+    decimal ThreeWayPriceTolerancePercent = 0,
+    bool AllowNegativeStock = false);
 
 /// <summary>Database backup history entry.</summary>
 public record BackupHistoryDto(

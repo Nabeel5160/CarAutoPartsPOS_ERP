@@ -147,7 +147,7 @@ public class TransferService : ITransferService
     }
 
     /// <inheritdoc />
-    public async Task<Result> CompleteAsync(int id, CancellationToken ct = default)
+    public async Task<Result> ShipAsync(int id, CancellationToken ct = default)
     {
         var transfer = await _transfers.Query()
             .Include(t => t.Lines)
@@ -156,8 +156,8 @@ public class TransferService : ITransferService
         if (transfer is null)
             return Result.Failure("Transfer not found.");
 
-        if (transfer.Status != TransferStatus.Approved && transfer.Status != TransferStatus.InTransit)
-            return Result.Failure("Transfer must be approved before completion.");
+        if (transfer.Status != TransferStatus.Approved)
+            return Result.Failure("Only approved transfers can be shipped.");
 
         foreach (var line in transfer.Lines)
         {
@@ -168,10 +168,41 @@ public class TransferService : ITransferService
                 nameof(InventoryTransfer),
                 transfer.Id,
                 ct);
-
             if (!deduct.Succeeded)
                 return deduct;
+        }
 
+        transfer.Status = TransferStatus.InTransit;
+        transfer.UpdatedAt = DateTime.UtcNow;
+        _transfers.Update(transfer);
+        await _unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> CompleteAsync(int id, CancellationToken ct = default)
+    {
+        var transfer = await _transfers.Query()
+            .Include(t => t.Lines)
+            .FirstOrDefaultAsync(t => t.Id == id && !t.IsDeleted, ct);
+
+        if (transfer is null)
+            return Result.Failure("Transfer not found.");
+
+        if (transfer.Status == TransferStatus.Approved)
+        {
+            var ship = await ShipAsync(id, ct);
+            if (!ship.Succeeded) return ship;
+            transfer = await _transfers.Query()
+                .Include(t => t.Lines)
+                .FirstAsync(t => t.Id == id, ct);
+        }
+
+        if (transfer.Status != TransferStatus.InTransit)
+            return Result.Failure("Transfer must be in transit (shipped) before receive/complete.");
+
+        foreach (var line in transfer.Lines)
+        {
             await _inventory.ReceiveStockAsync(
                 line.ProductId,
                 transfer.ToWarehouseId,

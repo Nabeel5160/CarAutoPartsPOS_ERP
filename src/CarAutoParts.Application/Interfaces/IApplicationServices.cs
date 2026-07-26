@@ -140,6 +140,9 @@ public interface ITransferService
     Task<TransferDetailDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<Result<TransferDetailDto>> CreateAsync(TransferCreateDto dto, CancellationToken ct = default);
     Task<Result> ApproveAsync(int id, CancellationToken ct = default);
+    /// <summary>Approved → InTransit: deduct stock from source warehouse only.</summary>
+    Task<Result> ShipAsync(int id, CancellationToken ct = default);
+    /// <summary>InTransit → Completed: receive at destination. From Approved: ships then receives.</summary>
     Task<Result> CompleteAsync(int id, CancellationToken ct = default);
 }
 

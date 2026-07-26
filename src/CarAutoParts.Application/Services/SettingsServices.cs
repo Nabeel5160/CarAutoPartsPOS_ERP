@@ -57,6 +57,7 @@ public class SettingsService : ISettingsService
         entity.GrnUnderReceiveAllowed = dto.GrnUnderReceiveAllowed;
         entity.ThreeWayQtyTolerancePercent = dto.ThreeWayQtyTolerancePercent;
         entity.ThreeWayPriceTolerancePercent = dto.ThreeWayPriceTolerancePercent;
+        entity.AllowNegativeStock = dto.AllowNegativeStock;
         entity.UpdatedAt = DateTime.UtcNow;
 
         _settings.Update(entity);

@@ -21,7 +21,8 @@
                         <div class="cap-actions">
                             <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => OpenAsync(t.Id)">Open</button>
                             <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ApproveAsync(t.Id)">Approve</button>
-                            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CompleteAsync(t.Id)">Complete</button>
+                            <button type="button" class="btn btn-sm btn-outline-info" @onclick="() => ShipAsync(t.Id)">Ship</button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CompleteAsync(t.Id)">Receive</button>
                         </div>
                     </td>
                 </tr>
@@ -87,9 +88,15 @@
         if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
     }
 
+    private async Task ShipAsync(int id)
+    {
+        var (ok, error, _) = await Api.ShipTransferAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Shipped (in transit)"); await LoadAsync(); }
+    }
+
     private async Task CompleteAsync(int id)
     {
         var (ok, error, _) = await Api.CompleteTransferAsync(id);
-        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Received / completed"); await LoadAsync(); }
     }
 }

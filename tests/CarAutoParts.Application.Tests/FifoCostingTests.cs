@@ -52,6 +52,7 @@ public class FifoCostingTests
             new Repository<StockBatch>(db),
             new Repository<Product>(db),
             new Repository<Warehouse>(db),
+            new Repository<CompanySettings>(db),
             new UnitOfWork(db),
             mapper,
             new StockAdjustmentValidator());

@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<IWarehouseService, WarehouseService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IAtpService, AtpService>();
 
         services.AddScoped<ISupplierService, SupplierService>();
         services.AddScoped<ICustomerService, CustomerService>();

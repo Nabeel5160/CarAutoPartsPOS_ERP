@@ -17,6 +17,7 @@ public class InventoryService : IInventoryService
     private readonly IRepository<StockBatch> _batches;
     private readonly IRepository<Product> _products;
     private readonly IRepository<Warehouse> _warehouses;
+    private readonly IRepository<CompanySettings> _settings;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly IValidator<StockAdjustmentDto> _adjustmentValidator;
@@ -27,6 +28,7 @@ public class InventoryService : IInventoryService
         IRepository<StockBatch> batches,
         IRepository<Product> products,
         IRepository<Warehouse> warehouses,
+        IRepository<CompanySettings> settings,
         IUnitOfWork unitOfWork,
         IMapper mapper,
         IValidator<StockAdjustmentDto> adjustmentValidator)
@@ -36,6 +38,7 @@ public class InventoryService : IInventoryService
         _batches = batches;
         _products = products;
         _warehouses = warehouses;
+        _settings = settings;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _adjustmentValidator = adjustmentValidator;
@@ -236,17 +239,28 @@ public class InventoryService : IInventoryService
         if (quantity <= 0)
             return Result.Failure("Quantity must be positive.");
 
+        var settings = await _settings.Query().AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        var allowNegative = settings?.AllowNegativeStock == true;
+
         var item = await _inventory.Query()
             .Include(i => i.Batches)
             .FirstOrDefaultAsync(i => i.ProductId == productId && i.WarehouseId == warehouseId && !i.IsDeleted, ct);
 
-        if (item is null || item.QuantityOnHand < quantity)
+        if (item is null)
+        {
+            if (!allowNegative)
+                return Result.Failure("Insufficient stock.");
+            item = await GetOrCreateInventoryItemAsync(productId, warehouseId, ct);
+        }
+
+        var available = item.QuantityOnHand - item.ReservedQuantity;
+        if (!allowNegative && available < quantity)
             return Result.Failure("Insufficient stock.");
 
         var remaining = quantity;
         decimal totalCost = 0;
 
-        if (item.ValuationMethod == ValuationMethod.Fifo)
+        if (item.ValuationMethod == ValuationMethod.Fifo && !allowNegative)
         {
             var batches = item.Batches
                 .Where(b => !b.IsDeleted && b.QuantityRemaining > 0)

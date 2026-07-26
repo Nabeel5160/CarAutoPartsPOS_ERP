@@ -123,6 +123,8 @@ public class CompanySettings : BaseEntity
     public bool GrnUnderReceiveAllowed { get; set; } = true;
     public decimal ThreeWayQtyTolerancePercent { get; set; }
     public decimal ThreeWayPriceTolerancePercent { get; set; }
+    /// <summary>When false (default), stock deductions fail if quantity would go below zero.</summary>
+    public bool AllowNegativeStock { get; set; }
 }
 
 public class BackupHistory : BaseEntity

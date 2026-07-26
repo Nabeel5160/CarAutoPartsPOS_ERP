@@ -4,6 +4,7 @@ using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Application.Services;
 using CarAutoParts.Application.Validators;
 using CarAutoParts.Domain.Entities;
+using CarAutoParts.Infrastructure.Data;
 using CarAutoParts.Infrastructure.Repositories;
 using FluentAssertions;
 using Moq;
@@ -65,6 +66,7 @@ public class PosCheckoutServiceTests
             new Repository<ProductKit>(db),
             new Repository<CashierShift>(db),
             new Repository<HeldSale>(db),
+            new Repository<ProductSupersession>(db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(db),
@@ -73,7 +75,8 @@ public class PosCheckoutServiceTests
             fbrOutbox.Object,
             company,
             new CurrentUserService(),
-            salesEnt.Object);
+            salesEnt.Object,
+            new AtpService(new EnterpriseDbAdapter(db)));
 
         var products = await service.GetPosProductsAsync(null);
 

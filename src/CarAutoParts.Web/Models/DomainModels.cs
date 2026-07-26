@@ -672,6 +672,11 @@ public sealed class CompanySettingsDto
     public int AutoBackupIntervalHours { get; set; }
     public bool FbrUseSandbox { get; set; }
     public int FbrTimeoutSeconds { get; set; }
+    public decimal GrnOverReceivePercent { get; set; }
+    public bool GrnUnderReceiveAllowed { get; set; } = true;
+    public decimal ThreeWayQtyTolerancePercent { get; set; }
+    public decimal ThreeWayPriceTolerancePercent { get; set; }
+    public bool AllowNegativeStock { get; set; }
 }
 
 public sealed class BackupHistoryDto

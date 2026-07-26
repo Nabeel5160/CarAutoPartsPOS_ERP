@@ -38,6 +38,7 @@
 - **Cashiers must open a shift** before POS checkout (Settings/roles need `pos.shift`).
 - Sales returns require a **reason code** and post GL via `SalesReturn` account mappings.
 - **Phase 2:** Purchase requisitions → PO; GRN over-receive / QC hold / serials; 3-way match tolerances; supplier returns with stock+GL; reorder suggestions. Migration `Phase2Procurement` applies on API start.
+- **Phase 3:** ATP (`/api/inventory/atp`), `AllowNegativeStock`, transfer Ship→InTransit→Receive, POS fitment year + supersession cross-ref. Migration `Phase3Inventory`.
 
 ### Degraded mode
 

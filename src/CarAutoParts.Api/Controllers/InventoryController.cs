@@ -2,6 +2,7 @@ using CarAutoParts.Api.Contracts;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Inventory;
 using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,8 +13,13 @@ namespace CarAutoParts.Api.Controllers;
 public class InventoryController : ApiControllerBase
 {
     private readonly IInventoryService _inventory;
+    private readonly IAtpService _atp;
 
-    public InventoryController(IInventoryService inventory) => _inventory = inventory;
+    public InventoryController(IInventoryService inventory, IAtpService atp)
+    {
+        _inventory = inventory;
+        _atp = atp;
+    }
 
     [HttpGet]
     [Authorize(Policy = Permissions.InventoryView)]
@@ -62,4 +68,9 @@ public class InventoryController : ApiControllerBase
     [Authorize(Policy = Permissions.InventoryView)]
     public async Task<IActionResult> Value(CancellationToken ct)
         => Ok(new { value = await _inventory.GetInventoryValueAsync(ct) });
+
+    [HttpGet("atp")]
+    [Authorize(Policy = Permissions.InventoryView)]
+    public async Task<IActionResult> Atp([FromQuery] int? productId, [FromQuery] int? warehouseId, CancellationToken ct)
+        => Ok(await _atp.GetAsync(productId, warehouseId, ct));
 }

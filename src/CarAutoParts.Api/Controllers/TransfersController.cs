@@ -35,6 +35,11 @@ public class TransfersController : ApiControllerBase
     public async Task<IActionResult> Approve(int id, CancellationToken ct)
         => FromResult(await _transfers.ApproveAsync(id, ct));
 
+    [HttpPost("{id:int}/ship")]
+    [Authorize(Policy = Permissions.TransfersApprove)]
+    public async Task<IActionResult> Ship(int id, CancellationToken ct)
+        => FromResult(await _transfers.ShipAsync(id, ct));
+
     [HttpPost("{id:int}/complete")]
     [Authorize(Policy = Permissions.TransfersApprove)]
     public async Task<IActionResult> Complete(int id, CancellationToken ct)
