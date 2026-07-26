@@ -1,0 +1,111 @@
+@page "/grn"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Goods Receipt Notes" Subtitle="Over/under policy, QC hold, serials, landed cost lines" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>Warehouse</th><th>Status</th><th>Landed</th><th>Date</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var g in _items)
+            {
+                <tr>
+                    <td class="mono">@g.GrnNumber</td>
+                    <td>@g.WarehouseId</td>
+                    <td>@StatusName(g.Status)</td>
+                    <td>@g.LandedCostAmount.ToString("N2")</td>
+                    <td>@g.ReceiptDate.ToLocalTime().ToString("d")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            @if (g.Status == 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => PostAsync(g.Id)">Post</button>
+                            }
+                            @if (g.Status == 3)
+                            {
+                                <button type="button" class="btn btn-sm btn-cap" @onclick="() => ReleaseQcAsync(g.Id)">Release QC</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New GRN</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="PO Id (opt)" @bind="_poId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="PO Line Id" @bind="_line.PurchaseOrderLineId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-1"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit cost" @bind="_line.UnitCost" /></div>
+        <div class="col-md-3"><input class="form-control" placeholder="Serials (comma-sep)" @bind="_serials" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Freight" @bind="_freight" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Duty" @bind="_duty" /></div>
+        <div class="col-md-2 form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="qc" @bind="_create.HoldForQc" />
+            <label class="form-check-label" for="qc">Hold for QC</label>
+        </div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@code {
+    private List<GoodsReceiptNoteDto>? _items;
+    private CreateGrnRequest _create = new() { ReceiptDate = DateTime.UtcNow };
+    private CreateGrnLineRequest _line = new() { Quantity = 1 };
+    private int? _poId;
+    private string? _serials;
+    private decimal _freight;
+    private decimal _duty;
+    private bool _busy = true;
+    private string? _error;
+
+    private static string StatusName(int s) => s switch { 0 => "Draft", 1 => "Posted", 2 => "Cancelled", 3 => "QcHold", _ => s.ToString() };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetGrnsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.PurchaseOrderId = _poId;
+        if (!string.IsNullOrWhiteSpace(_serials))
+            _line.SerialNumbers = _serials.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        _create.Lines = [_line];
+        _create.LandedCostLines = [];
+        if (_freight > 0) _create.LandedCostLines.Add(new CreateGrnLandedCostLineRequest { CostType = "Freight", Amount = _freight });
+        if (_duty > 0) _create.LandedCostLines.Add(new CreateGrnLandedCostLineRequest { CostType = "Duty", Amount = _duty });
+        var (_, error, _) = await Api.CreateGrnAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("GRN created"); await LoadAsync(); }
+    }
+
+    private async Task PostAsync(int id)
+    {
+        var (_, error, _) = await Api.PostGrnAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("GRN posted"); await LoadAsync(); }
+    }
+
+    private async Task ReleaseQcAsync(int id)
+    {
+        var (_, error, _) = await Api.ReleaseQcAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("QC released"); await LoadAsync(); }
+    }
+}

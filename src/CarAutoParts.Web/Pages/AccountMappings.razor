@@ -1,0 +1,109 @@
+@page "/account-mappings"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Account Mappings" Subtitle="GL document type → account keys" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Document</th><th>Key</th><th>Account</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var m in _items)
+            {
+                <tr>
+                    <td>@m.DocumentType</td>
+                    <td class="mono">@m.MappingKey</td>
+                    <td>@(m.AccountCode ?? m.AccountId.ToString()) — @(m.AccountName ?? "")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => Edit(m)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(m.Id)">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>@(_editId is null ? "New mapping" : $"Edit mapping #{_editId}")</h5>
+    <div class="row g-2">
+        <div class="col-md-3"><input class="form-control" placeholder="DocumentType" @bind="_form.DocumentType" /></div>
+        <div class="col-md-3"><input class="form-control" placeholder="MappingKey" @bind="_form.MappingKey" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="AccountId" @bind="_form.AccountId" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="SaveAsync">@(_editId is null ? "Create" : "Update")</button></div>
+        @if (_editId is not null)
+        {
+            <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="CancelEdit">Cancel</button></div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<AccountMappingDto>? _items;
+    private CreateAccountMappingRequest _form = new();
+    private int? _editId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetAccountMappingsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private void Edit(AccountMappingDto m)
+    {
+        _editId = m.Id;
+        _form = new CreateAccountMappingRequest
+        {
+            DocumentType = m.DocumentType,
+            MappingKey = m.MappingKey,
+            AccountId = m.AccountId
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editId = null;
+        _form = new CreateAccountMappingRequest();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editId is int id)
+        {
+            var update = new UpdateAccountMappingRequest
+            {
+                DocumentType = _form.DocumentType,
+                MappingKey = _form.MappingKey,
+                AccountId = _form.AccountId
+            };
+            var (_, error, _) = await Api.UpdateAccountMappingAsync(id, update);
+            if (error is not null) Toast.ShowError(error);
+            else { Toast.ShowSuccess("Updated"); CancelEdit(); await LoadAsync(); }
+        }
+        else
+        {
+            var (_, error, _) = await Api.CreateAccountMappingAsync(_form);
+            if (error is not null) Toast.ShowError(error);
+            else { Toast.ShowSuccess("Created"); _form = new(); await LoadAsync(); }
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteAccountMappingAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Delete failed");
+        else { Toast.ShowSuccess("Deleted"); await LoadAsync(); }
+    }
+}

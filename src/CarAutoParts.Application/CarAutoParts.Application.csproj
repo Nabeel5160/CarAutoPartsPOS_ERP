@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>CarAutoParts.Application</RootNamespace>
+    <AssemblyName>CarAutoParts.Application</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" />
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" />
+    <PackageReference Include="BCrypt.Net-Next" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="MediatR" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CarAutoParts.Domain\CarAutoParts.Domain.csproj" />
+  </ItemGroup>
+</Project>

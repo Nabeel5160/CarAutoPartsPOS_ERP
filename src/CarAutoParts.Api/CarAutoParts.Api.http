@@ -1,0 +1,14 @@
+@CarAutoParts.Api_HostAddress = http://localhost:5280
+
+### Login (default seed: admin / admin123)
+POST {{CarAutoParts.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### Me
+GET {{CarAutoParts.Api_HostAddress}}/api/auth/me
+Authorization: Bearer {{token}}

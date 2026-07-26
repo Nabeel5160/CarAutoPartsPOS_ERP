@@ -1,0 +1,105 @@
+@page "/customers"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Customers" Subtitle="Customer master & ledger">
+    <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add</button>
+</PageHeader>
+<div class="cap-card mb-3"><input class="form-control" placeholder="Search" @bind="_search" /></div>
+<button class="btn btn-outline-light btn-sm mb-3" @onclick="LoadAsync">Search</button>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Name</th><th>Phone</th><th>Balance</th><th>Credit</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var c in _items.Items)
+            {
+                <tr>
+                    <td>@c.Name</td><td>@c.Phone</td><td>@c.Balance.ToString("N2")</td><td>@c.CreditLimit.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => LedgerAsync(c.Id)">Ledger</button>
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginEdit(c)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c.Id)">Del</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_ledger is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>Ledger</h5>
+        <ul>@foreach (var l in _ledger) { <li>@l.Date.ToLocalTime().ToString("d") — @l.Description (@l.Debit / @l.Credit)</li> }</ul>
+    </div>
+}
+
+@if (_editing)
+{
+    <div class="cap-card mt-3">
+        <div class="row g-2">
+            <div class="col-md-4"><input class="form-control" placeholder="Name" @bind="_form.Name" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Phone" @bind="_form.Phone" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Email" @bind="_form.Email" /></div>
+            <div class="col-md-4"><input type="number" class="form-control" placeholder="Credit limit" @bind="_form.CreditLimit" /></div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private PagedResult<CustomerDto>? _items;
+    private List<LedgerEntryDto>? _ledger;
+    private bool _busy = true, _editing;
+    private string? _error, _search;
+    private int? _editId;
+    private CustomerDto _form = new() { IsActive = true };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetCustomersAsync(new QuerySpec { Search = _search });
+        _items = data; _error = error; _busy = false;
+    }
+
+    private void BeginEdit(CustomerDto? c)
+    {
+        _editing = true;
+        if (c is null) { _editId = null; _form = new() { IsActive = true }; return; }
+        _editId = c.Id;
+        _form = new CustomerDto { Id = c.Id, Name = c.Name, Phone = c.Phone, Email = c.Email, CreditLimit = c.CreditLimit, CustomerType = c.CustomerType, IsActive = c.IsActive, Balance = c.Balance };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editId is null) { var (_, error, _) = await Api.CreateCustomerAsync(_form); if (error is not null) { Toast.ShowError(error); return; } }
+        else { var (_, error, _) = await Api.UpdateCustomerAsync(_editId.Value, _form); if (error is not null) { Toast.ShowError(error); return; } }
+        _editing = false; await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteCustomerAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+
+    private async Task LedgerAsync(int id)
+    {
+        var (data, error, _) = await Api.GetCustomerLedgerAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _ledger = data;
+    }
+}

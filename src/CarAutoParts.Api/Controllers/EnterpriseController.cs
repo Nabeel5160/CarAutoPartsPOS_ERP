@@ -1,0 +1,252 @@
+using CarAutoParts.Application.Constants;
+using CarAutoParts.Application.Enterprise;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CarAutoParts.Api.Controllers;
+
+[Authorize]
+[Route("api/enterprise")]
+[Route("api/v1/enterprise")]
+public class EnterpriseController : ApiControllerBase
+{
+    private readonly IEnterpriseInventoryService _inventory;
+    private readonly IEnterprisePurchaseService _purchase;
+    private readonly IEnterpriseSalesService _sales;
+    private readonly IMasterDataService _master;
+    private readonly IFinancialReportService _reports;
+    private readonly IFbrOutboxService _fbrOutbox;
+    private readonly IAccountMappingService _accountMappings;
+    private readonly IPaymentPostingService _payments;
+
+    public EnterpriseController(
+        IEnterpriseInventoryService inventory,
+        IEnterprisePurchaseService purchase,
+        IEnterpriseSalesService sales,
+        IMasterDataService master,
+        IFinancialReportService reports,
+        IFbrOutboxService fbrOutbox,
+        IAccountMappingService accountMappings,
+        IPaymentPostingService payments)
+    {
+        _inventory = inventory;
+        _purchase = purchase;
+        _sales = sales;
+        _master = master;
+        _reports = reports;
+        _fbrOutbox = fbrOutbox;
+        _accountMappings = accountMappings;
+        _payments = payments;
+    }
+
+    [HttpGet("grn")]
+    [Authorize(Policy = Permissions.GrnManage)]
+    public async Task<IActionResult> GetGrns(CancellationToken ct) =>
+        Ok(await _inventory.GetGrnsAsync(ct));
+
+    [HttpPost("reservations")]
+    [Authorize(Policy = Permissions.InventoryAdjust)]
+    public async Task<IActionResult> Reserve([FromBody] ReserveStockRequest request, CancellationToken ct) =>
+        FromResult(await _inventory.ReserveStockAsync(request, ct));
+
+    [HttpPost("reservations/{id:int}/release")]
+    [Authorize(Policy = Permissions.InventoryAdjust)]
+    public async Task<IActionResult> Release(int id, CancellationToken ct) =>
+        FromResult(await _inventory.ReleaseReservationAsync(id, ct));
+
+    [HttpGet("reservations")]
+    [Authorize(Policy = Permissions.InventoryAdjust)]
+    public async Task<IActionResult> GetReservations(CancellationToken ct) =>
+        Ok(await _inventory.GetReservationsAsync(ct));
+
+    [HttpPost("grn")]
+    [Authorize(Policy = Permissions.GrnManage)]
+    public async Task<IActionResult> CreateGrn([FromBody] CreateGrnRequest request, CancellationToken ct) =>
+        FromResult(await _inventory.CreateGrnAsync(request, ct));
+
+    [HttpPost("grn/{id:int}/post")]
+    [Authorize(Policy = Permissions.GrnManage)]
+    public async Task<IActionResult> PostGrn(int id, CancellationToken ct) =>
+        FromResult(await _inventory.PostGrnAsync(id, ct));
+
+    [HttpPost("grn/{id:int}/release-qc")]
+    [Authorize(Policy = Permissions.GrnManage)]
+    public async Task<IActionResult> ReleaseQc(int id, CancellationToken ct) =>
+        FromResult(await _inventory.ReleaseQcAsync(id, ct));
+
+    [HttpPost("cycle-counts")]
+    [Authorize(Policy = Permissions.CycleCountManage)]
+    public async Task<IActionResult> CreateCycleCount([FromBody] CreateCycleCountRequest request, CancellationToken ct) =>
+        FromResult(await _inventory.CreateCycleCountAsync(request, ct));
+
+    [HttpPost("cycle-counts/{id:int}/complete")]
+    [Authorize(Policy = Permissions.CycleCountManage)]
+    public async Task<IActionResult> CompleteCycleCount(int id, CancellationToken ct) =>
+        FromResult(await _inventory.CompleteCycleCountAsync(id, ct));
+
+    [HttpGet("cycle-counts")]
+    [Authorize(Policy = Permissions.CycleCountManage)]
+    public async Task<IActionResult> GetCycleCounts(CancellationToken ct) =>
+        Ok(await _inventory.GetCycleCountsAsync(ct));
+
+    [HttpGet("ap-invoices")]
+    [Authorize(Policy = Permissions.ApInvoiceManage)]
+    public async Task<IActionResult> GetApInvoices(CancellationToken ct) =>
+        Ok(await _purchase.GetPurchaseInvoicesAsync(ct));
+
+    [HttpPost("ap-invoices")]
+    [Authorize(Policy = Permissions.ApInvoiceManage)]
+    public async Task<IActionResult> CreateApInvoice([FromBody] CreatePurchaseInvoiceRequest request, CancellationToken ct) =>
+        FromResult(await _purchase.CreatePurchaseInvoiceAsync(request, ct));
+
+    [HttpPost("ap-invoices/{id:int}/match")]
+    [Authorize(Policy = Permissions.ApInvoiceManage)]
+    public async Task<IActionResult> MatchAp(int id, CancellationToken ct) =>
+        FromResult(await _purchase.MatchThreeWayAsync(id, ct));
+
+    [HttpPost("ap-invoices/{id:int}/post")]
+    [Authorize(Policy = Permissions.ApInvoiceManage)]
+    public async Task<IActionResult> PostAp(int id, CancellationToken ct) =>
+        FromResult(await _purchase.PostPurchaseInvoiceAsync(id, ct));
+
+    [HttpGet("quotations")]
+    [Authorize(Policy = Permissions.QuotationsManage)]
+    public async Task<IActionResult> GetQuotations(CancellationToken ct) =>
+        Ok(await _sales.GetQuotationsAsync(ct));
+
+    [HttpPost("quotations")]
+    [Authorize(Policy = Permissions.QuotationsManage)]
+    public async Task<IActionResult> CreateQuote([FromBody] CreateQuotationRequest request, CancellationToken ct) =>
+        FromResult(await _sales.CreateQuotationAsync(request, ct));
+
+    [HttpPost("quotations/{id:int}/convert")]
+    [Authorize(Policy = Permissions.QuotationsManage)]
+    public async Task<IActionResult> ConvertQuote(int id, CancellationToken ct) =>
+        FromResult(await _sales.ConvertQuotationToSalesOrderAsync(id, ct));
+
+    [HttpGet("deliveries")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    public async Task<IActionResult> GetDeliveries(CancellationToken ct) =>
+        Ok(await _sales.GetDeliveriesAsync(ct));
+
+    [HttpPost("deliveries")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    public async Task<IActionResult> CreateDelivery([FromBody] CreateDeliveryNoteRequest request, CancellationToken ct) =>
+        FromResult(await _sales.CreateDeliveryNoteAsync(request, ct));
+
+    [HttpPost("deliveries/{id:int}/ship")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    public async Task<IActionResult> ShipDelivery(int id, CancellationToken ct) =>
+        FromResult(await _sales.ShipDeliveryAsync(id, ct));
+
+    [HttpGet("price")]
+    [Authorize(Policy = Permissions.SalesView)]
+    public async Task<IActionResult> GetPrice([FromQuery] int productId, [FromQuery] decimal quantity = 1, [FromQuery] int? customerId = null, CancellationToken ct = default) =>
+        FromResult(await _sales.GetPriceForProductAsync(productId, customerId, quantity, ct));
+
+    [HttpGet("credit-check/{customerId:int}")]
+    [Authorize(Policy = Permissions.CustomersView)]
+    public async Task<IActionResult> CreditCheck(int customerId, [FromQuery] decimal additionalAmount = 0, CancellationToken ct = default) =>
+        FromResult(await _sales.CheckCreditLimitAsync(customerId, additionalAmount, ct));
+
+    [HttpGet("account-mappings")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> GetAccountMappings(CancellationToken ct) =>
+        Ok(await _accountMappings.GetAccountMappingsAsync(ct));
+
+    [HttpPost("account-mappings")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> CreateAccountMapping([FromBody] CreateAccountMappingRequest request, CancellationToken ct) =>
+        FromResult(await _accountMappings.CreateAccountMappingAsync(request, ct));
+
+    [HttpPut("account-mappings/{id:int}")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> UpdateAccountMapping(int id, [FromBody] UpdateAccountMappingRequest request, CancellationToken ct) =>
+        FromResult(await _accountMappings.UpdateAccountMappingAsync(id, request, ct));
+
+    [HttpDelete("account-mappings/{id:int}")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> DeleteAccountMapping(int id, CancellationToken ct) =>
+        FromResult(await _accountMappings.DeleteAccountMappingAsync(id, ct));
+
+    [HttpGet("price-lists")]
+    [Authorize(Policy = Permissions.PriceListsManage)]
+    public async Task<IActionResult> GetPriceLists(CancellationToken ct) =>
+        Ok(await _sales.GetPriceListsAsync(ct));
+
+    [HttpPost("price-lists")]
+    [Authorize(Policy = Permissions.PriceListsManage)]
+    public async Task<IActionResult> CreatePriceList([FromBody] CreatePriceListRequest request, CancellationToken ct) =>
+        FromResult(await _sales.CreatePriceListAsync(request, ct));
+
+    [HttpPut("price-lists/{id:int}/items")]
+    [Authorize(Policy = Permissions.PriceListsManage)]
+    public async Task<IActionResult> UpdatePriceListItems(int id, [FromBody] UpdatePriceListItemsRequest request, CancellationToken ct) =>
+        FromResult(await _sales.UpdatePriceListItemsAsync(id, request, ct));
+
+    [HttpGet("fbr/submissions")]
+    [Authorize(Policy = Permissions.PosCheckout)]
+    public async Task<IActionResult> GetFbrSubmissions(CancellationToken ct) =>
+        Ok(await _sales.GetFbrSubmissionsAsync(ct));
+
+    [HttpGet("aging/customers")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> CustomerAging([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
+        FromResult(await _reports.CustomerAgingAsync(asOf, ct));
+
+    [HttpGet("aging/suppliers")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> SupplierAging([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
+        FromResult(await _reports.SupplierAgingAsync(asOf, ct));
+
+    [HttpPost("payments/customer-receipt")]
+    [Authorize(Policy = Permissions.FinancePost)]
+    public async Task<IActionResult> PostCustomerReceipt([FromBody] PostCustomerReceiptRequest request, CancellationToken ct) =>
+        FromResult(await _payments.PostCustomerReceiptAsync(request, ct));
+
+    [HttpPost("payments/supplier-payment")]
+    [Authorize(Policy = Permissions.FinancePost)]
+    public async Task<IActionResult> PostSupplierPayment([FromBody] PostSupplierPaymentRequest request, CancellationToken ct) =>
+        FromResult(await _payments.PostSupplierPaymentAsync(request, ct));
+
+    [HttpGet("kits")]
+    [Authorize(Policy = Permissions.KitsManage)]
+    public async Task<IActionResult> Kits(CancellationToken ct) => Ok(await _master.GetKitsAsync(ct: ct));
+
+    [HttpPost("kits")]
+    [Authorize(Policy = Permissions.KitsManage)]
+    public async Task<IActionResult> UpsertKit([FromBody] UpsertKitRequest request, CancellationToken ct) =>
+        FromResult(await _master.UpsertKitAsync(request, ct));
+
+    [HttpGet("supersessions")]
+    [Authorize(Policy = Permissions.KitsManage)]
+    public async Task<IActionResult> Supersessions(CancellationToken ct) => Ok(await _master.GetSupersessionsAsync(ct: ct));
+
+    [HttpPost("supersessions")]
+    [Authorize(Policy = Permissions.KitsManage)]
+    public async Task<IActionResult> UpsertSupersession([FromBody] UpsertSupersessionRequest request, CancellationToken ct) =>
+        FromResult(await _master.UpsertSupersessionAsync(request, ct));
+
+    [HttpGet("reports/trial-balance")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> TrialBalance([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
+        FromResult(await _reports.TrialBalanceAsync(asOf ?? DateTime.UtcNow.Date, ct));
+
+    [HttpGet("reports/profit-loss")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> ProfitLoss([FromQuery] DateTime from, [FromQuery] DateTime to, CancellationToken ct = default) =>
+        FromResult(await _reports.ProfitAndLossAsync(from, to, ct));
+
+    [HttpGet("reports/balance-sheet")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> BalanceSheet([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
+        FromResult(await _reports.BalanceSheetAsync(asOf ?? DateTime.UtcNow.Date, ct));
+
+    [HttpPost("fbr/retry/{invoiceId:int}")]
+    [Authorize(Policy = Permissions.PosCheckout)]
+    public IActionResult RetryFbr(int invoiceId)
+    {
+        _fbrOutbox.EnqueueFbrRetry(invoiceId);
+        return Accepted(new { message = "FBR retry enqueued.", invoiceId });
+    }
+}

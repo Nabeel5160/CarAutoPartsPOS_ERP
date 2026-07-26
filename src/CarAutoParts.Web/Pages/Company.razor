@@ -1,0 +1,74 @@
+@page "/company"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Company setup" Subtitle="Multi-company platform — active company and branches" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_companies is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Companies</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>NTN</th><th>Currency</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var c in _companies)
+            {
+                <tr>
+                    <td>@c.Code</td>
+                    <td>@c.Name</td>
+                    <td>@c.Ntn</td>
+                    <td>@c.CurrencyCode</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => LoadBranchesAsync(c.Id)">Branches</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_branches is not null)
+{
+    <div class="cap-card">
+        <h5>Branches</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>Default</th><th>Active</th></tr></thead>
+            <tbody>
+            @foreach (var b in _branches)
+            {
+                <tr>
+                    <td>@b.Code</td>
+                    <td>@b.Name</td>
+                    <td>@(b.IsDefault ? "Yes" : "")</td>
+                    <td>@(b.IsActive ? "Yes" : "No")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<CompanyDto>? _companies;
+    private List<BranchDto>? _branches;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetCompaniesAsync();
+        _companies = data; _error = error; _busy = false;
+    }
+
+    private async Task LoadBranchesAsync(int companyId)
+    {
+        var (data, error, _) = await Api.GetBranchesAsync(companyId);
+        if (error is not null) Toast.ShowError(error);
+        _branches = data;
+    }
+}

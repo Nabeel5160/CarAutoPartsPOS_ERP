@@ -1,0 +1,95 @@
+@page "/journals"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Journal entries" Subtitle="Manual double-entry journals" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2">
+        <div class="col-md-3"><label class="form-label">Date</label><input type="date" class="form-control" @bind="_date" /></div>
+        <div class="col-md-3"><label class="form-label">Reference</label><input class="form-control" @bind="_reference" /></div>
+        <div class="col-md-6"><label class="form-label">Description</label><input class="form-control" @bind="_description" /></div>
+        <div class="col-md-2"><label class="form-label">Debit acct Id</label><input type="number" class="form-control" @bind="_debitAccountId" /></div>
+        <div class="col-md-2"><label class="form-label">Credit acct Id</label><input type="number" class="form-control" @bind="_creditAccountId" /></div>
+        <div class="col-md-2"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_amount" /></div>
+        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create draft</button></div>
+    </div>
+</div>
+
+@if (_journals?.Items is not null)
+{
+    <div class="cap-card">
+        <table class="table table-sm table-dark table-hover">
+            <thead><tr><th>Number</th><th>Date</th><th>Status</th><th>Debit</th><th>Credit</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var j in _journals.Items)
+            {
+                <tr>
+                    <td>@j.JournalNumber</td>
+                    <td>@j.JournalDate.ToString("yyyy-MM-dd")</td>
+                    <td>@j.Status</td>
+                    <td>@j.TotalDebit.ToString("N2")</td>
+                    <td>@j.TotalCredit.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            @if (j.Status == 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => PostAsync(j.Id)">Post</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PagedResult<JournalDto>? _journals;
+    private bool _busy = true;
+    private string? _error;
+    private DateTime _date = DateTime.Today;
+    private string? _reference;
+    private string? _description;
+    private int _debitAccountId;
+    private int _creditAccountId;
+    private decimal _amount;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetJournalsAsync();
+        _journals = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        var body = new
+        {
+            JournalDate = _date,
+            Reference = _reference,
+            Description = _description,
+            Lines = new[]
+            {
+                new { AccountId = _debitAccountId, Description = "Debit", Debit = _amount, Credit = 0m, CostCenterId = (int?)null },
+                new { AccountId = _creditAccountId, Description = "Credit", Debit = 0m, Credit = _amount, CostCenterId = (int?)null }
+            }
+        };
+        var (_, error, _) = await Api.CreateJournalAsync(body);
+        if (error is not null) { Toast.ShowError(error); return; }
+        Toast.ShowSuccess("Journal created");
+        await ReloadAsync();
+    }
+
+    private async Task PostAsync(int id)
+    {
+        var (ok, error, _) = await Api.PostJournalAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Post failed");
+        else { Toast.ShowSuccess("Posted"); await ReloadAsync(); }
+    }
+}

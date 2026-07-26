@@ -1,0 +1,108 @@
+@page "/suppliers"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Suppliers" Subtitle="Partners & ledger">
+    <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add</button>
+</PageHeader>
+<div class="cap-card mb-3"><input class="form-control" placeholder="Search" @bind="_search" @bind:event="oninput" @onkeyup="OnSearch" /></div>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Name</th><th>City</th><th>Phone</th><th>Balance</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var s in _items.Items)
+            {
+                <tr>
+                    <td>@s.Name</td><td>@s.City</td><td>@s.Phone</td><td>@s.Balance.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => LedgerAsync(s.Id)">Ledger</button>
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginEdit(s)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(s.Id)">Del</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_ledger is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>Ledger</h5>
+        <table class="table table-cap table-sm"><thead><tr><th>Date</th><th>Desc</th><th>Debit</th><th>Credit</th><th>Bal</th></tr></thead>
+        <tbody>@foreach (var l in _ledger) { <tr><td>@l.Date.ToLocalTime().ToString("d")</td><td>@l.Description</td><td>@l.Debit</td><td>@l.Credit</td><td>@l.Balance</td></tr> }</tbody></table>
+    </div>
+}
+
+@if (_editing)
+{
+    <div class="cap-card mt-3">
+        <div class="row g-2">
+            <div class="col-md-4"><input class="form-control" placeholder="Name" @bind="_form.Name" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Company" @bind="_form.Company" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="City" @bind="_form.City" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Phone" @bind="_form.Phone" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Email" @bind="_form.Email" /></div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private PagedResult<SupplierDto>? _items;
+    private List<LedgerEntryDto>? _ledger;
+    private bool _busy = true, _editing;
+    private string? _error, _search;
+    private int? _editId;
+    private SupplierDto _form = new() { IsActive = true };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetSuppliersAsync(new QuerySpec { Search = _search });
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task OnSearch(KeyboardEventArgs e) { if (e.Key == "Enter") await LoadAsync(); }
+
+    private void BeginEdit(SupplierDto? s)
+    {
+        _editing = true;
+        if (s is null) { _editId = null; _form = new() { IsActive = true }; return; }
+        _editId = s.Id;
+        _form = new SupplierDto { Id = s.Id, Name = s.Name, Company = s.Company, City = s.City, Phone = s.Phone, Email = s.Email, IsActive = s.IsActive, Balance = s.Balance };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editId is null) { var (_, error, _) = await Api.CreateSupplierAsync(_form); if (error is not null) { Toast.ShowError(error); return; } }
+        else { var (_, error, _) = await Api.UpdateSupplierAsync(_editId.Value, _form); if (error is not null) { Toast.ShowError(error); return; } }
+        _editing = false; await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteSupplierAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+
+    private async Task LedgerAsync(int id)
+    {
+        var (data, error, _) = await Api.GetSupplierLedgerAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _ledger = data;
+    }
+}

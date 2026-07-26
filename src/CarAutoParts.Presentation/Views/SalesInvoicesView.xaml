@@ -1,0 +1,122 @@
+<UserControl x:Class="CarAutoParts.Presentation.Views.SalesInvoicesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:CarAutoParts.Presentation.Views"
+             xmlns:behaviors="clr-namespace:CarAutoParts.Presentation.Behaviors"
+             xmlns:enums="clr-namespace:CarAutoParts.Domain.Enums;assembly=CarAutoParts.Domain">
+    <views:EntityModuleView>
+        <views:EntityModuleView.MainContent>
+            <DataGrid ItemsSource="{Binding Items}"
+                      Style="{StaticResource PremiumDataGrid}"
+                      behaviors:DataGridRowFadeIn.IsEnabled="True"
+                      SelectedItem="{Binding SelectedItem}"
+                      MinHeight="280"
+                      Visibility="{Binding PlaceholderMessage, Converter={StaticResource NullToVis}, ConverterParameter=invert}">
+                <DataGrid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick"
+                                  Command="{Binding OpenCommand}"
+                                  CommandParameter="{Binding SelectedItem}" />
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="140" />
+                    <DataGridTextColumn Header="Customer" Binding="{Binding CustomerName}" Width="*" />
+                    <DataGridTextColumn Header="Date" Binding="{Binding InvoiceDate, StringFormat=yyyy-MM-dd}" Width="110" />
+                    <DataGridTextColumn Header="Total" Binding="{Binding GrandTotal, StringFormat=N2}" Width="100" />
+                    <DataGridTemplateColumn Header="Payment" Width="100">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Padding="8,4" CornerRadius="6" HorizontalAlignment="Left" Background="#E8F5E9">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#E8F5E9" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PaymentStatus}" Value="{x:Static enums:PaymentStatus.Pending}">
+                                                    <Setter Property="Background" Value="#FFF3E0" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding PaymentStatus}" Value="{x:Static enums:PaymentStatus.Partial}">
+                                                    <Setter Property="Background" Value="#E3F2FD" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding PaymentStatus}" Value="{x:Static enums:PaymentStatus.Overdue}">
+                                                    <Setter Property="Background" Value="#FFEBEE" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding PaymentStatus}" Style="{StaticResource StatusBadgeTextStyle}" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="FBR #" Binding="{Binding FbrInvoiceNumber}" Width="140" />
+                    <DataGridTemplateColumn Header="Actions" Width="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="View" Style="{StaticResource GhostActionButton}"
+                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </views:EntityModuleView.MainContent>
+
+        <views:EntityModuleView.EditorContent>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="640" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="{Binding EditorTitle}" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding DetailInvoiceDate, StringFormat=Date: {0:yyyy-MM-dd}}"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,12" />
+
+                    <TextBlock Text="{Binding DetailCustomerName, StringFormat=Customer: {0}}" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding DetailPaymentStatus, StringFormat=Payment: {0}}" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding DetailPosReference, StringFormat=POS ref: {0}}"
+                               Visibility="{Binding DetailPosReference, Converter={StaticResource NullToVis}}" Margin="0,0,0,8" />
+
+                    <TextBlock Text="Buyer (FBR)" Style="{StaticResource SectionTitleStyle}" Margin="0,8,0,4" />
+                    <TextBlock Text="{Binding DetailBuyerName}" />
+                    <TextBlock Text="{Binding DetailBuyerNtn, StringFormat=NTN/CNIC: {0}}"
+                               Visibility="{Binding DetailBuyerNtn, Converter={StaticResource NullToVis}}" />
+                    <TextBlock Text="{Binding DetailBuyerProvince, StringFormat=Province: {0}}"
+                               Visibility="{Binding DetailBuyerProvince, Converter={StaticResource NullToVis}}" Margin="0,0,0,8" />
+
+                    <TextBlock Text="FBR" Style="{StaticResource SectionTitleStyle}" Margin="0,8,0,4" />
+                    <TextBlock Text="{Binding DetailFbrInvoiceNumber, StringFormat=IRN: {0}}"
+                               FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="{Binding DetailFbrStatus, StringFormat=Status: {0}}" Margin="0,0,0,8" />
+
+                    <TextBlock Text="Line items" Style="{StaticResource SectionTitleStyle}" Margin="0,8,0,8" />
+                    <DataGrid ItemsSource="{Binding DetailLines}"
+                              Style="{StaticResource PremiumDataGrid}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              MinHeight="100"
+                              MaxHeight="180"
+                              Margin="0,0,0,8">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="*" />
+                            <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="80" />
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat=N0}" Width="50" />
+                            <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice, StringFormat=N2}" Width="70" />
+                            <DataGridTextColumn Header="Total" Binding="{Binding LineTotal, StringFormat=N2}" Width="80" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Text="{Binding DetailSubTotal, StringFormat=Subtotal: {0:N2}}" />
+                    <TextBlock Text="{Binding DetailTaxAmount, StringFormat=Tax: {0:N2}}" />
+                    <TextBlock Text="{Binding DetailDiscountAmount, StringFormat=Discount: {0:N2}}" />
+                    <TextBlock Text="{Binding DetailGrandTotal, StringFormat=Grand total: {0:N2}}" FontWeight="Bold" Margin="0,4,0,12" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Close" Style="{StaticResource GhostActionButton}" Margin="0,0,8,0"
+                                Command="{Binding CloseDetailCommand}" />
+                        <Button Content="Print PDF" Style="{StaticResource PrimaryActionButton}"
+                                Command="{Binding PrintCommand}"
+                                IsEnabled="{Binding CanPrint}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </views:EntityModuleView.EditorContent>
+    </views:EntityModuleView>
+</UserControl>

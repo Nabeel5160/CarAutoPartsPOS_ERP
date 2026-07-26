@@ -1,0 +1,95 @@
+@* CapApiService already exposes GetTransfersAsync, CreateTransferAsync, ApproveTransferAsync, CompleteTransferAsync. *@
+@page "/transfers"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Transfers" Subtitle="Warehouse transfers" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>From</th><th>To</th><th>Status</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var t in _items.Items)
+            {
+                <tr>
+                    <td>@t.TransferNumber</td><td>@t.FromWarehouseName</td><td>@t.ToWarehouseName</td><td>@t.Status</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => OpenAsync(t.Id)">Open</button>
+                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ApproveAsync(t.Id)">Approve</button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CompleteAsync(t.Id)">Complete</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>Create transfer</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="From Wh" @bind="_create.FromWarehouseId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="To Wh" @bind="_create.ToWarehouseId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@if (_detail is not null)
+{
+    <div class="cap-card">
+        <h5>@_detail.TransferNumber — @_detail.Status</h5>
+        <ul>@foreach (var l in _detail.Lines) { <li>@l.ProductName x @l.Quantity</li> }</ul>
+    </div>
+}
+
+@code {
+    private PagedResult<TransferListDto>? _items;
+    private TransferDetailDto? _detail;
+    private TransferCreateDto _create = new();
+    private TransferLineDto _line = new() { Quantity = 1 };
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetTransfersAsync(new QuerySpec());
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task OpenAsync(int id)
+    {
+        var (data, error, _) = await Api.GetTransferAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _detail = data;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.Lines = [_line];
+        var (_, error, _) = await Api.CreateTransferAsync(_create);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Created"); await LoadAsync(); }
+    }
+
+    private async Task ApproveAsync(int id)
+    {
+        var (ok, error, _) = await Api.ApproveTransferAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+
+    private async Task CompleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.CompleteTransferAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+}

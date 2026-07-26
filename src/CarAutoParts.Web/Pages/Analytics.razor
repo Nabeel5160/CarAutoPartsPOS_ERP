@@ -1,0 +1,58 @@
+@page "/analytics"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Analytics" Subtitle="Date-range analytics from the API" />
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">From</label><input type="date" class="form-control" @bind="_from" /></div>
+        <div class="col-md-3"><label class="form-label">To</label><input type="date" class="form-control" @bind="_to" /></div>
+        <div class="col-md-3"><button class="btn btn-cap" @onclick="LoadAsync">Refresh</button></div>
+    </div>
+</div>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_data is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-6"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.TotalInventoryValue.ToString("N0")</span></div></div>
+        <div class="col-md-6"><div class="cap-card cap-kpi"><span class="label">Turnover ratio</span><span class="value">@_data.TurnoverRatio.ToString("N2")</span></div></div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <h5>Top selling</h5>
+                <ul class="mb-0">@foreach (var p in _data.TopSellingProducts.Take(8)) { <li>@p.ProductName — @p.Revenue.ToString("N0")</li> }</ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <h5>Slow moving</h5>
+                <ul class="mb-0">@foreach (var p in _data.SlowMovingProducts.Take(8)) { <li>@p.ProductName (@p.DaysSinceLastSale d)</li> }</ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <h5>ABC</h5>
+                <ul class="mb-0">@foreach (var p in _data.AbcAnalysis.Take(8)) { <li>@p.AbcClass — @p.ProductName</li> }</ul>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private AnalyticsDto? _data;
+    private DateTime? _from = DateTime.Today.AddDays(-30);
+    private DateTime? _to = DateTime.Today;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetAnalyticsAsync(_from, _to);
+        _data = data; _error = error; _busy = false;
+    }
+}

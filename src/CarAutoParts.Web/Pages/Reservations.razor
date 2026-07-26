@@ -1,0 +1,79 @@
+@page "/reservations"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Stock Reservations" Subtitle="Reserve and release inventory" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Id</th><th>Product</th><th>Warehouse</th><th>Qty</th><th>Ref</th><th>Status</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.Id</td>
+                    <td>@r.ProductId</td>
+                    <td>@r.WarehouseId</td>
+                    <td>@r.Quantity</td>
+                    <td>@r.ReferenceType #@r.ReferenceId</td>
+                    <td>@r.Status</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            @if (r.Status == 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => ReleaseAsync(r.Id)">Release</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New reservation</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_create.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_create.Quantity" /></div>
+        <div class="col-md-2"><input class="form-control" placeholder="Ref type" @bind="_create.ReferenceType" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Ref Id" @bind="_create.ReferenceId" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Reserve</button></div>
+    </div>
+</div>
+
+@code {
+    private List<StockReservationDto>? _items;
+    private ReserveStockRequest _create = new() { Quantity = 1, ReferenceType = "Manual", ReferenceId = 1 };
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetReservationsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        var (_, error, _) = await Api.CreateReservationAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Reserved"); await LoadAsync(); }
+    }
+
+    private async Task ReleaseAsync(int id)
+    {
+        var (ok, error, _) = await Api.ReleaseReservationAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Release failed");
+        else { Toast.ShowSuccess("Released"); await LoadAsync(); }
+    }
+}

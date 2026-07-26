@@ -1,0 +1,14 @@
+<UserControl x:Class="CarAutoParts.Presentation.Controls.LoadingShimmer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root">
+    <Grid Visibility="{Binding IsLoading, ElementName=Root, Converter={StaticResource BoolToVis}}">
+        <StackPanel>
+            <Border Height="18" CornerRadius="4" Margin="0,6" Background="#22000000" />
+            <Border Height="18" CornerRadius="4" Margin="0,6" Width="280" HorizontalAlignment="Left" Background="#18000000" />
+            <Border Height="18" CornerRadius="4" Margin="0,6" Background="#22000000" />
+            <Border Height="18" CornerRadius="4" Margin="0,6" Width="220" HorizontalAlignment="Left" Background="#18000000" />
+            <Border Height="18" CornerRadius="4" Margin="0,6" Background="#22000000" />
+        </StackPanel>
+    </Grid>
+</UserControl>

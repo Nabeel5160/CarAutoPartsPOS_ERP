@@ -1,0 +1,113 @@
+@page "/purchases"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Purchase Orders" Subtitle="Create, approve, receive" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Date</th><th>Total</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var o in _items.Items)
+            {
+                <tr>
+                    <td class="mono">@o.OrderNumber</td><td>@o.SupplierName</td><td>@o.Status</td>
+                    <td>@o.OrderDate.ToLocalTime().ToString("d")</td><td>@o.GrandTotal.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => OpenAsync(o.Id)">Open</button>
+                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ApproveAsync(o.Id)">Approve</button>
+                            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CancelAsync(o.Id)">Cancel</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New purchase order</h5>
+    <div class="row g-2">
+        <div class="col-md-3"><input type="number" class="form-control" placeholder="SupplierId" @bind="_create.SupplierId" /></div>
+        <div class="col-md-3"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Cost" @bind="_line.UnitCost" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@if (_detail is not null)
+{
+    <div class="cap-card">
+        <h5>@_detail.OrderNumber — @_detail.Status</h5>
+        <p>Supplier: @_detail.SupplierName | Total: @_detail.GrandTotal.ToString("N2")</p>
+        <ul>@foreach (var l in _detail.Lines) { <li>@l.ProductName x @l.Quantity · @l.UnitCost</li> }</ul>
+        <button class="btn btn-cap" @onclick="() => ReceiveAsync(_detail.Id)">Receive all remaining</button>
+    </div>
+}
+
+@code {
+    private PagedResult<PurchaseOrderListDto>? _items;
+    private PurchaseOrderDetailDto? _detail;
+    private PurchaseOrderCreateDto _create = new();
+    private PurchaseOrderLineCreateDto _line = new() { Quantity = 1 };
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetPurchaseOrdersAsync(new QuerySpec());
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task OpenAsync(int id)
+    {
+        var (data, error, _) = await Api.GetPurchaseOrderAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _detail = data;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.Lines = [_line];
+        var (_, error, _) = await Api.CreatePurchaseOrderAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Created"); await LoadAsync(); }
+    }
+
+    private async Task ApproveAsync(int id)
+    {
+        var (ok, error, _) = await Api.ApprovePurchaseOrderAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Approved"); await LoadAsync(); }
+    }
+
+    private async Task CancelAsync(int id)
+    {
+        var (ok, error, _) = await Api.CancelPurchaseOrderAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+
+    private async Task ReceiveAsync(int id)
+    {
+        if (_detail is null) return;
+        var dto = new ReceivePurchaseOrderDto
+        {
+            Lines = _detail.Lines.Select(l => new ReceivePurchaseOrderLineDto
+            {
+                LineId = l.Id,
+                QuantityReceived = Math.Max(0, l.Quantity - l.QuantityReceived)
+            }).Where(x => x.QuantityReceived > 0).ToList()
+        };
+        var (ok, error, _) = await Api.ReceivePurchaseOrderAsync(id, dto);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Received"); await OpenAsync(id); await LoadAsync(); }
+    }
+}

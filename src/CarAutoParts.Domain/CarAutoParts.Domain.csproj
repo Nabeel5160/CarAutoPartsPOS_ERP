@@ -1,0 +1,6 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>CarAutoParts.Domain</RootNamespace>
+    <AssemblyName>CarAutoParts.Domain</AssemblyName>
+  </PropertyGroup>
+</Project>

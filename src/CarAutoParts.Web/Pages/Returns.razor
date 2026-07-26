@@ -1,0 +1,117 @@
+@page "/returns"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Returns" Subtitle="Sales and supplier returns with stock + GL" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item"><button type="button" class="nav-link @(_tab == 0 ? "active" : null)" @onclick="() => _tab = 0">Sales</button></li>
+    <li class="nav-item"><button type="button" class="nav-link @(_tab == 1 ? "active" : null)" @onclick="() => _tab = 1">Purchase</button></li>
+</ul>
+
+@if (_tab == 0)
+{
+    @if (_items is not null)
+    {
+        <div class="cap-card table-responsive mb-3">
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Number</th><th>Invoice</th><th>Reason</th><th>Status</th><th>Date</th><th>Total</th></tr></thead>
+                <tbody>
+                @foreach (var r in _items.Items)
+                {
+                    <tr>
+                        <td>@r.ReturnNumber</td>
+                        <td>@(r.InvoiceNumber ?? r.SalesInvoiceId?.ToString())</td>
+                        <td>@r.ReasonCode</td>
+                        <td>@r.Status</td>
+                        <td>@r.ReturnDate.ToLocalTime().ToString("d")</td>
+                        <td>@r.GrandTotal.ToString("N2")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="cap-card">
+        <h5>Create sales return</h5>
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">Invoice Id</label><input type="number" class="form-control" @bind="_sales.SalesInvoiceId" /></div>
+            <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_sales.WarehouseId" /></div>
+            <div class="col-md-3"><label class="form-label">Reason code</label>
+                <select class="form-select" @bind="_sales.ReasonCode">
+                    <option value="CUSTOMER">CUSTOMER</option>
+                    <option value="DAMAGE">DAMAGE</option>
+                    <option value="WRONG_ITEM">WRONG_ITEM</option>
+                    <option value="WARRANTY">WARRANTY</option>
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_sales.Notes" /></div>
+            <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_salesLine.ProductId" /></div>
+            <div class="col-md-3"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_salesLine.Quantity" /></div>
+            <div class="col-md-3"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_salesLine.UnitPrice" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreateSalesAsync">Create return</button></div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="cap-card">
+        <h5>Create supplier return</h5>
+        <p class="text-muted small">Deducts stock, reduces supplier balance, posts PurchaseReturn GL.</p>
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_purchase.SupplierId" /></div>
+            <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_purchase.WarehouseId" /></div>
+            <div class="col-md-3"><label class="form-label">Reason code</label>
+                <select class="form-select" @bind="_purchase.ReasonCode">
+                    <option value="DEFECT">DEFECT</option>
+                    <option value="WRONG_SHIP">WRONG_SHIP</option>
+                    <option value="OVERSTOCK">OVERSTOCK</option>
+                    <option value="OTHER">OTHER</option>
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_purchase.Notes" /></div>
+            <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_purchaseLine.ProductId" /></div>
+            <div class="col-md-3"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_purchaseLine.Quantity" /></div>
+            <div class="col-md-3"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_purchaseLine.UnitPrice" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreatePurchaseAsync">Create return</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    private int _tab;
+    private PagedResult<SalesReturnDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+    private SalesReturnCreateDto _sales = new() { ReasonCode = "CUSTOMER", WarehouseId = 1 };
+    private SalesReturnLineDto _salesLine = new() { Quantity = 1 };
+    private PurchaseReturnCreateDto _purchase = new() { ReasonCode = "DEFECT", WarehouseId = 1 };
+    private PurchaseReturnLineDto _purchaseLine = new() { Quantity = 1 };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetSalesReturnsAsync(new QuerySpec());
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateSalesAsync()
+    {
+        _sales.Lines = [_salesLine];
+        var (_, error, _) = await Api.CreateSalesReturnAsync(_sales);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Return posted"); await LoadAsync(); }
+    }
+
+    private async Task CreatePurchaseAsync()
+    {
+        _purchase.Lines = [_purchaseLine];
+        var (ok, error, _) = await Api.CreatePurchaseReturnAsync(_purchase);
+        if (!ok || error is not null) Toast.ShowError(error ?? "Failed");
+        else Toast.ShowSuccess("Supplier return posted");
+    }
+}

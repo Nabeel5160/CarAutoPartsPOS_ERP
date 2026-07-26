@@ -1,0 +1,59 @@
+@page "/receipts"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Receipts &amp; Payments" Subtitle="Customer receipts and supplier payments" />
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="cap-card">
+            <h5>Customer receipt</h5>
+            <div class="mb-2"><label class="form-label">Sales invoice Id</label><input type="number" class="form-control" @bind="_receipt.SalesInvoiceId" /></div>
+            <div class="mb-2"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_receipt.Amount" /></div>
+            <div class="mb-2"><label class="form-label">Method</label><input class="form-control" @bind="_receipt.PaymentMethod" /></div>
+            <div class="mb-2"><label class="form-label">Reference</label><input class="form-control" @bind="_receipt.Reference" /></div>
+            <button class="btn btn-cap" @onclick="PostReceiptAsync">Post receipt</button>
+            @if (_receiptJournal is not null)
+            {
+                <p class="mt-2 small text-secondary">Journal Id: @_receiptJournal</p>
+            }
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="cap-card">
+            <h5>Supplier payment</h5>
+            <div class="mb-2"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_payment.SupplierId" /></div>
+            <div class="mb-2"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_payment.Amount" /></div>
+            <div class="mb-2"><label class="form-label">Method</label><input class="form-control" @bind="_payment.PaymentMethod" /></div>
+            <div class="mb-2"><label class="form-label">Reference</label><input class="form-control" @bind="_payment.Reference" /></div>
+            <div class="mb-2"><label class="form-label">Notes</label><input class="form-control" @bind="_payment.Notes" /></div>
+            <button class="btn btn-cap" @onclick="PostPaymentAsync">Post payment</button>
+            @if (_paymentJournal is not null)
+            {
+                <p class="mt-2 small text-secondary">Journal Id: @_paymentJournal</p>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private PostCustomerReceiptRequest _receipt = new() { PaymentMethod = "Cash" };
+    private PostSupplierPaymentRequest _payment = new() { PaymentMethod = "Cash" };
+    private int? _receiptJournal;
+    private int? _paymentJournal;
+
+    private async Task PostReceiptAsync()
+    {
+        var (data, error, _) = await Api.PostCustomerReceiptAsync(_receipt);
+        if (error is not null) Toast.ShowError(error);
+        else { _receiptJournal = data; Toast.ShowSuccess("Receipt posted"); }
+    }
+
+    private async Task PostPaymentAsync()
+    {
+        var (data, error, _) = await Api.PostSupplierPaymentAsync(_payment);
+        if (error is not null) Toast.ShowError(error);
+        else { _paymentJournal = data; Toast.ShowSuccess("Payment posted"); }
+    }
+}

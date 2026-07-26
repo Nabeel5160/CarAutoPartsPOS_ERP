@@ -1,0 +1,142 @@
+@page "/financial-reports"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IJSRuntime Js
+@inject IToastService Toast
+
+<PageHeader Title="Financial reports" Subtitle="Trial balance, P&amp;L, balance sheet" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3 d-flex flex-wrap gap-2">
+    <button class="btn btn-cap" @onclick="LoadTbAsync">Trial balance</button>
+    <button class="btn btn-outline-light" @onclick="LoadPlAsync">Profit &amp; loss</button>
+    <button class="btn btn-outline-light" @onclick="LoadBsAsync">Balance sheet</button>
+</div>
+
+@if (_tb is not null)
+{
+    <div class="cap-card mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Trial balance @(_tb.AsOfDate.ToString("yyyy-MM-dd"))</h5>
+            <button class="btn btn-sm btn-outline-light" @onclick="ExportTbCsvAsync">Export CSV</button>
+        </div>
+        <p>Total Dr @_tb.TotalDebit.ToString("N2") / Cr @_tb.TotalCredit.ToString("N2")</p>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>Debit</th><th>Credit</th></tr></thead>
+            <tbody>
+            @foreach (var l in _tb.Lines)
+            {
+                <tr><td>@l.Code</td><td>@l.Name</td><td>@l.Debit.ToString("N2")</td><td>@l.Credit.ToString("N2")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_pl is not null)
+{
+    <div class="cap-card mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">P&amp;L @_pl.FromDate.ToString("yyyy-MM-dd") – @_pl.ToDate.ToString("yyyy-MM-dd")</h5>
+            <button class="btn btn-sm btn-outline-light" @onclick="ExportPlCsvAsync">Export CSV</button>
+        </div>
+        <p>Revenue @_pl.TotalRevenue.ToString("N2") · Expense @_pl.TotalExpenses.ToString("N2") · Net @_pl.NetProfit.ToString("N2")</p>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>Amount</th></tr></thead>
+            <tbody>
+            @foreach (var l in _pl.Lines)
+            {
+                <tr><td>@l.Code</td><td>@l.Name</td><td>@l.Amount.ToString("N2")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_bs is not null)
+{
+    <div class="cap-card">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Balance sheet @_bs.AsOfDate.ToString("yyyy-MM-dd")</h5>
+            <button class="btn btn-sm btn-outline-light" @onclick="ExportBsCsvAsync">Export CSV</button>
+        </div>
+        <p>Assets @_bs.TotalAssets.ToString("N2") · Liabilities @_bs.TotalLiabilities.ToString("N2") · Equity @_bs.TotalEquity.ToString("N2")</p>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>Balance</th></tr></thead>
+            <tbody>
+            @foreach (var l in _bs.Lines)
+            {
+                <tr><td>@l.Code</td><td>@l.Name</td><td>@l.Balance.ToString("N2")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private TrialBalanceReportDto? _tb;
+    private ProfitAndLossReportDto? _pl;
+    private BalanceSheetReportDto? _bs;
+    private bool _busy;
+    private string? _error;
+
+    private async Task LoadTbAsync()
+    {
+        _busy = true; _error = null;
+        var (data, error, _) = await Api.GetTrialBalanceAsync();
+        _tb = data; _error = error; _busy = false;
+    }
+
+    private async Task LoadPlAsync()
+    {
+        _busy = true; _error = null;
+        var to = DateTime.Today;
+        var from = to.AddMonths(-1);
+        var (data, error, _) = await Api.GetProfitLossAsync(from, to);
+        _pl = data; _error = error; _busy = false;
+    }
+
+    private async Task LoadBsAsync()
+    {
+        _busy = true; _error = null;
+        var (data, error, _) = await Api.GetBalanceSheetAsync();
+        _bs = data; _error = error; _busy = false;
+    }
+
+    private async Task ExportTbCsvAsync()
+    {
+        if (_tb is null) { Toast.ShowError("Load trial balance first"); return; }
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Code,Name,Debit,Credit");
+        foreach (var l in _tb.Lines)
+            sb.AppendLine($"{CsvExportHelper.Escape(l.Code)},{CsvExportHelper.Escape(l.Name)},{l.Debit},{l.Credit}");
+        await DownloadCsvAsync(sb.ToString(), $"trial-balance-{_tb.AsOfDate:yyyyMMdd}.csv");
+    }
+
+    private async Task ExportPlCsvAsync()
+    {
+        if (_pl is null) { Toast.ShowError("Load P&L first"); return; }
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Code,Name,Amount");
+        foreach (var l in _pl.Lines)
+            sb.AppendLine($"{CsvExportHelper.Escape(l.Code)},{CsvExportHelper.Escape(l.Name)},{l.Amount}");
+        await DownloadCsvAsync(sb.ToString(), $"profit-loss-{_pl.FromDate:yyyyMMdd}-{_pl.ToDate:yyyyMMdd}.csv");
+    }
+
+    private async Task ExportBsCsvAsync()
+    {
+        if (_bs is null) { Toast.ShowError("Load balance sheet first"); return; }
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Code,Name,Balance");
+        foreach (var l in _bs.Lines)
+            sb.AppendLine($"{CsvExportHelper.Escape(l.Code)},{CsvExportHelper.Escape(l.Name)},{l.Balance}");
+        await DownloadCsvAsync(sb.ToString(), $"balance-sheet-{_bs.AsOfDate:yyyyMMdd}.csv");
+    }
+
+    private async Task DownloadCsvAsync(string csv, string fileName)
+    {
+        var bytes = CsvExportHelper.ToUtf8Bytes(csv);
+        await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), fileName, "text/csv");
+        Toast.ShowSuccess("CSV download started");
+    }
+}

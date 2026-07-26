@@ -1,0 +1,73 @@
+@page "/serials"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Serial Numbers" Subtitle="Track and register serials" />
+<div class="cap-card mb-3">
+    <div class="row g-2">
+        <div class="col-md-3"><input type="number" class="form-control" placeholder="ProductId" @bind="_reg.ProductId" /></div>
+        <div class="col-md-3"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_reg.WarehouseId" /></div>
+        <div class="col-md-4"><input class="form-control" placeholder="Serial" @bind="_reg.Serial" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="RegisterAsync">Register</button></div>
+    </div>
+</div>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Serial</th><th>Product</th><th>Status</th><th>Warehouse</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var s in _items.Items)
+            {
+                <tr>
+                    <td class="mono">@s.Serial</td><td>@s.ProductName</td><td>@s.Status</td><td>@s.CurrentWarehouseName</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => HistoryAsync(s.Id)">History</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_history is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>History</h5>
+        <ul>@foreach (var h in _history) { <li>@h.ActionDate.ToLocalTime().ToString("g") — @h.Action @h.Notes</li> }</ul>
+    </div>
+}
+
+@code {
+    private PagedResult<SerialNumberDto>? _items;
+    private List<SerialNumberHistoryDto>? _history;
+    private RegisterSerialRequest _reg = new();
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetSerialsAsync(new QuerySpec());
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task RegisterAsync()
+    {
+        var (ok, error, _) = await Api.RegisterSerialAsync(_reg);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Registered"); await OnInitializedAsync(); }
+    }
+
+    private async Task HistoryAsync(int id)
+    {
+        var (data, error, _) = await Api.GetSerialHistoryAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _history = data;
+    }
+}

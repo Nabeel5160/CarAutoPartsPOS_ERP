@@ -1,0 +1,84 @@
+@page "/reorder"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject NavigationManager Nav
+
+<PageHeader Title="Reorder suggestions" Subtitle="Products at or below reorder/minimum — create draft PR (no velocity forecasting)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_warehouseId" /></div>
+        <div class="col-md-2"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_supplierId" /></div>
+        <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="LoadAsync">Refresh</button></div>
+        <div class="col-md-3"><button class="btn btn-cap w-100" @onclick="CreatePrAsync">Create draft PR</button></div>
+    </div>
+</div>
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead>
+            <tr>
+                <th></th><th>SKU</th><th>Product</th><th>Available</th><th>Min</th><th>Reorder</th><th>Max</th><th>Suggest</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var s in _items)
+            {
+                <tr>
+                    <td><input type="checkbox" @bind="s.Selected" /></td>
+                    <td class="mono">@s.Sku</td>
+                    <td>@s.ProductName</td>
+                    <td>@s.AvailableQty.ToString("N0")</td>
+                    <td>@s.MinimumStock</td>
+                    <td>@s.ReorderLevel</td>
+                    <td>@(s.MaximumStock?.ToString() ?? "—")</td>
+                    <td><input type="number" class="form-control form-control-sm" style="width:6rem" @bind="s.SuggestedQty" /></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<ReorderSuggestionDto>? _items;
+    private int? _warehouseId;
+    private int? _supplierId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetReorderSuggestionsAsync(_warehouseId);
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreatePrAsync()
+    {
+        if (_items is null) return;
+        var lines = _items.Where(x => x.Selected && x.SuggestedQty > 0)
+            .Select(x => new ReorderSuggestionLineDto { ProductId = x.ProductId, SuggestedQty = x.SuggestedQty, UnitPrice = x.PurchasePrice })
+            .ToList();
+        if (lines.Count == 0) { Toast.ShowError("Select at least one line"); return; }
+
+        var (pr, error, _) = await Api.CreateReorderPrAsync(new CreateReorderPrRequest
+        {
+            SupplierId = _supplierId,
+            WarehouseId = _warehouseId,
+            Lines = lines
+        });
+        if (error is not null) Toast.ShowError(error);
+        else
+        {
+            Toast.ShowSuccess($"Draft PR {pr?.RequisitionNumber} created");
+            Nav.NavigateTo("requisitions");
+        }
+    }
+}

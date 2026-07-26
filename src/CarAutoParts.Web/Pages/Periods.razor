@@ -1,0 +1,69 @@
+@page "/periods"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Accounting periods" Subtitle="Open / close fiscal periods (period lock)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_periods is not null)
+{
+    <div class="cap-card">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>#</th><th>Name</th><th>Start</th><th>End</th><th>Status</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var p in _periods)
+            {
+                <tr>
+                    <td>@p.PeriodNumber</td>
+                    <td>@p.Name</td>
+                    <td>@p.StartDate.ToString("yyyy-MM-dd")</td>
+                    <td>@p.EndDate.ToString("yyyy-MM-dd")</td>
+                    <td>@(p.IsClosed ? "Closed" : "Open")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            @if (p.IsClosed)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => ReopenAsync(p.Id)">Reopen</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CloseAsync(p.Id)">Close</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<AccountingPeriodDto>? _periods;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetPeriodsAsync();
+        _periods = data; _error = error; _busy = false;
+    }
+
+    private async Task CloseAsync(int id)
+    {
+        var (ok, error, _) = await Api.ClosePeriodAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Close failed");
+        else { Toast.ShowSuccess("Period closed"); await ReloadAsync(); }
+    }
+
+    private async Task ReopenAsync(int id)
+    {
+        var (ok, error, _) = await Api.ReopenPeriodAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Reopen failed");
+        else { Toast.ShowSuccess("Period reopened"); await ReloadAsync(); }
+    }
+}

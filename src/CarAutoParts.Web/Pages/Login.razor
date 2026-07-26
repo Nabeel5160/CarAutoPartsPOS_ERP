@@ -1,0 +1,57 @@
+@page "/login"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject AuthApiService Auth
+@inject NavigationManager Nav
+@inject ThemeService Theme
+
+<div class="cap-scene login-wrap">
+    <div class="login-panel">
+        <h1 class="page-title mb-1">Car Auto <span style="color:var(--cap-accent)">Parts</span></h1>
+        <p class="page-sub">Sign in to the ERP console</p>
+
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <div class="alert alert-danger py-2">@_error</div>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <InputText class="form-control" @bind-Value="_model.Username" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <InputText type="password" class="form-control" @bind-Value="_model.Password" />
+            </div>
+            <button class="btn btn-cap w-100" disabled="@_busy">@(_busy ? "Signing in…" : "Sign in")</button>
+        </EditForm>
+        <div class="mt-3 small text-secondary">Default: admin / admin123</div>
+    </div>
+</div>
+
+@code {
+    private readonly LoginRequest _model = new() { Username = "admin", Password = "admin123" };
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Theme.InitializeAsync();
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        var (data, error) = await Auth.LoginAsync(_model.Username, _model.Password);
+        _busy = false;
+        if (data is null)
+        {
+            _error = error ?? "Invalid username or password.";
+            return;
+        }
+
+        if (data.User.MustChangePassword)
+            Nav.NavigateTo("/settings?forcePassword=1", true);
+        else
+            Nav.NavigateTo("/", true);
+    }
+}

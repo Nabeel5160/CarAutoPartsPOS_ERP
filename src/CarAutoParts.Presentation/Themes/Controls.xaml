@@ -1,0 +1,92 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:behaviors="clr-namespace:CarAutoParts.Presentation.Behaviors">
+
+    <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+        <Setter Property="behaviors:ButtonHoverScale.IsEnabled" Value="True" />
+        <Setter Property="Padding" Value="16,8" />
+    </Style>
+
+    <Style x:Key="GhostActionButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+        <Setter Property="behaviors:ButtonHoverScale.IsEnabled" Value="True" />
+        <Setter Property="Padding" Value="14,8" />
+    </Style>
+
+    <Style x:Key="NavMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NavSelectedForegroundBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ModuleListItemBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="PremiumDataGrid" TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Setter Property="behaviors:DataGridRowFadeIn.IsEnabled" Value="True" />
+        <Setter Property="AutoGenerateColumns" Value="False" />
+        <Setter Property="CanUserAddRows" Value="False" />
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="HeadersVisibility" Value="Column" />
+        <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="RowBackground" Value="Transparent" />
+        <Setter Property="AlternatingRowBackground" Value="#08000000" />
+    </Style>
+
+    <Style x:Key="RoundedTextBox" TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="EmptyStatePanelStyle" TargetType="StackPanel">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="EmptyStateIconStyle" TargetType="Control">
+        <Setter Property="Width" Value="48" />
+        <Setter Property="Height" Value="48" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <Style x:Key="EmptyStateTextStyle" TargetType="TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="StatusBadgeStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+
+    <Style x:Key="StatusBadgeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="FormSectionStyle" TargetType="StackPanel">
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+</ResourceDictionary>

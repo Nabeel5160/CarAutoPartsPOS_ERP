@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="amber">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Car Auto Parts ERP</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/cap-theme.css" />
+    <link rel="stylesheet" href="CarAutoParts.Web.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+</head>
+
+<body>
+    <div id="app">
+        <div class="cap-scene login-wrap">
+            <div class="login-panel">
+                <strong>Car Auto <span style="color:#f5a623">Parts</span></strong>
+                <div class="mt-2 text-secondary">Loading Blazor UI…</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+    <script src="js/theme.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        Blazor.start().catch(err => {
+            console.error(err);
+            const el = document.querySelector('#app .login-panel');
+            if (el) {
+                el.innerHTML = '<strong>Car Auto <span style="color:#f5a623">Parts</span></strong>' +
+                    '<div class="mt-2 text-danger">Failed to load UI. Hard-refresh (Ctrl+F5) or check the console.</div>' +
+                    '<pre class="small mt-2" style="white-space:pre-wrap">' + (err && err.message ? err.message : err) + '</pre>';
+            }
+        });
+    </script>
+</body>
+
+</html>

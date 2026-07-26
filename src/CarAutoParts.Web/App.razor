@@ -1,0 +1,36 @@
+﻿<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <div class="cap-scene login-wrap">
+                            <div class="login-panel alert-cap">
+                                <h3>Access denied</h3>
+                                <p class="mb-0">You do not have permission for this page.</p>
+                                <a class="btn btn-cap mt-3" href="/">Go to Dashboard</a>
+                            </div>
+                        </div>
+                    }
+                </NotAuthorized>
+                <Authorizing>
+                    <div class="cap-scene login-wrap"><div class="login-panel">Loading…</div></div>
+                </Authorizing>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <div class="cap-card">
+                    <h1 class="page-title">Not found</h1>
+                    <p class="page-sub">That page does not exist.</p>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

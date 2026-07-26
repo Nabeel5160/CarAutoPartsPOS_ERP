@@ -1,0 +1,34 @@
+@page "/"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Dashboard" Subtitle="Live KPIs from the API" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_data is not null)
+{
+    <div class="row g-3">
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today sales</span><span class="value">@_data.TodaySales.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month sales</span><span class="value">@_data.MonthSales.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.InventoryValue.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Low stock</span><span class="value">@_data.LowStockCount</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month purchases</span><span class="value">@_data.MonthPurchases.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending POs</span><span class="value">@_data.PendingPurchaseOrders</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending transfers</span><span class="value">@_data.PendingTransfers</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Unread alerts</span><span class="value">@_data.UnreadNotifications</span></div></div>
+    </div>
+}
+
+@code {
+    private DashboardDto? _data;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetDashboardAsync();
+        _data = data;
+        _error = error;
+        _busy = false;
+    }
+}

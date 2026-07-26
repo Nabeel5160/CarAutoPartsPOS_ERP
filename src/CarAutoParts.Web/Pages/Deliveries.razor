@@ -1,0 +1,81 @@
+@page "/deliveries"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Deliveries" Subtitle="Create delivery notes and ship" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>SO</th><th>Warehouse</th><th>Status</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var d in _items)
+            {
+                <tr>
+                    <td class="mono">@d.DeliveryNumber</td>
+                    <td>@(d.SalesOrderId?.ToString() ?? "—")</td>
+                    <td>@d.WarehouseId</td>
+                    <td>@d.Status</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            @if (d.Status == 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ShipAsync(d.Id)">Ship</button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New delivery</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="SalesOrderId (opt)" @bind="_soId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty ordered" @bind="_line.QuantityOrdered" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty shipped" @bind="_line.QuantityShipped" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@code {
+    private List<DeliveryNoteDto>? _items;
+    private CreateDeliveryNoteRequest _create = new() { DeliveryDate = DateTime.UtcNow };
+    private CreateDeliveryNoteLineRequest _line = new() { QuantityOrdered = 1, QuantityShipped = 1 };
+    private int? _soId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetDeliveriesAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.SalesOrderId = _soId;
+        _create.Lines = [_line];
+        var (_, error, _) = await Api.CreateDeliveryAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Delivery created"); await LoadAsync(); }
+    }
+
+    private async Task ShipAsync(int id)
+    {
+        var (_, error, _) = await Api.ShipDeliveryAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Shipped"); await LoadAsync(); }
+    }
+}

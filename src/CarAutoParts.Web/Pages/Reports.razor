@@ -1,0 +1,48 @@
+@page "/reports"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject IJSRuntime Js
+
+<PageHeader Title="Reports" Subtitle="Download Excel/PDF exports from the API" />
+
+<div class="row g-3">
+    <div class="col-md-6"><div class="cap-card"><h5>Inventory</h5><button class="btn btn-cap" @onclick='() => DownloadAsync("inventory", "?format=xlsx", "inventory.xlsx")'>Export XLSX</button></div></div>
+    <div class="col-md-6">
+        <div class="cap-card">
+            <h5>Sales / Purchases / Profit</h5>
+            <div class="row g-2 mb-2">
+                <div class="col"><input type="date" class="form-control" @bind="_from" /></div>
+                <div class="col"><input type="date" class="form-control" @bind="_to" /></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-cap" @onclick="ExportSales">Sales</button>
+                <button class="btn btn-outline-light" @onclick="ExportPurchases">Purchases</button>
+                <button class="btn btn-outline-light" @onclick="ExportProfit">Profit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private DateTime _from = DateTime.Today.AddDays(-30);
+    private DateTime _to = DateTime.Today;
+
+    private async Task ExportSales() =>
+        await DownloadAsync("sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&period=daily&format=xlsx", "sales.xlsx");
+
+    private async Task ExportPurchases() =>
+        await DownloadAsync("purchases", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx", "purchases.xlsx");
+
+    private async Task ExportProfit() =>
+        await DownloadAsync("profit", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx", "profit.xlsx");
+
+    private async Task DownloadAsync(string kind, string query, string fileName)
+    {
+        var (bytes, error) = await Api.ExportReportAsync(kind, query);
+        if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+        await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), fileName,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        Toast.ShowSuccess("Download started");
+    }
+}

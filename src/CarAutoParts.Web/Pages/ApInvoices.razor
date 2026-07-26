@@ -1,0 +1,96 @@
+@page "/ap-invoices"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="AP Invoices" Subtitle="Create, three-way match, post" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Matched</th><th>Total</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var i in _items)
+            {
+                <tr>
+                    <td class="mono">@i.InvoiceNumber</td>
+                    <td>@i.SupplierId</td>
+                    <td>@i.Status</td>
+                    <td>@(i.ThreeWayMatched ? "Yes" : "No")</td>
+                    <td>@i.GrandTotal.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => MatchAsync(i.Id)">Match</button>
+                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => PostAsync(i.Id)">Post</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_match is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Match result — @_match.Summary</h5>
+        <p>Fully matched: @(_match.IsFullyMatched ? "Yes" : "No")</p>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New AP invoice</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="SupplierId" @bind="_create.SupplierId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="GRN Id (opt)" @bind="_grnId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Cost" @bind="_line.UnitCost" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@code {
+    private List<PurchaseInvoiceDto>? _items;
+    private ThreeWayMatchResultDto? _match;
+    private CreatePurchaseInvoiceRequest _create = new() { InvoiceDate = DateTime.UtcNow };
+    private CreatePurchaseInvoiceLineRequest _line = new() { Quantity = 1 };
+    private int? _grnId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetApInvoicesAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.GoodsReceiptNoteId = _grnId;
+        _create.Lines = [_line];
+        var (_, error, _) = await Api.CreateApInvoiceAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("AP invoice created"); await LoadAsync(); }
+    }
+
+    private async Task MatchAsync(int id)
+    {
+        var (data, error, _) = await Api.MatchApInvoiceAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { _match = data; Toast.ShowSuccess("Match complete"); await LoadAsync(); }
+    }
+
+    private async Task PostAsync(int id)
+    {
+        var (_, error, _) = await Api.PostApInvoiceAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("AP invoice posted"); await LoadAsync(); }
+    }
+}

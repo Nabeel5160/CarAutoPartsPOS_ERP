@@ -1,0 +1,43 @@
+<UserControl x:Class="CarAutoParts.Presentation.Views.StockMovementsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:CarAutoParts.Presentation.Views"
+             xmlns:behaviors="clr-namespace:CarAutoParts.Presentation.Behaviors"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    <views:EntityModuleView>
+        <views:EntityModuleView.MainContent>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+                    <DatePicker Width="160" Margin="0,0,12,0"
+                                materialDesign:HintAssist.Hint="From"
+                                SelectedDate="{Binding FilterFromDate}" />
+                    <DatePicker Width="160" Margin="0,0,12,0"
+                                materialDesign:HintAssist.Hint="To"
+                                SelectedDate="{Binding FilterToDate}" />
+                    <Button Content="Apply" Style="{StaticResource GhostActionButton}"
+                            Command="{Binding ApplyFiltersCommand}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding Items}"
+                          Style="{StaticResource PremiumDataGrid}"
+                          behaviors:DataGridRowFadeIn.IsEnabled="True"
+                          MinHeight="280"
+                          Visibility="{Binding PlaceholderMessage, Converter={StaticResource NullToVis}, ConverterParameter=invert}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding MovementDate, StringFormat=yyyy-MM-dd HH:mm}" Width="140" />
+                        <DataGridTextColumn Header="Type" Binding="{Binding MovementType}" Width="110" />
+                        <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="*" />
+                        <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat=N0}" Width="90" />
+                        <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="160" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </views:EntityModuleView.MainContent>
+    </views:EntityModuleView>
+</UserControl>

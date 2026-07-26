@@ -1,0 +1,109 @@
+@page "/settings"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject AuthApiService AuthApi
+@inject ThemeService Theme
+@inject LocaleService Locale
+@inject IToastService Toast
+@inject NavigationManager Nav
+@inject JwtAuthStateProvider AuthState
+
+<PageHeader Title="Settings" Subtitle="@(_forcePassword ? "You must change the default password before continuing" : "Company settings + theme packs")" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_forcePassword)
+{
+    <div class="alert alert-warning">Default or temporary password detected. Update your password to unlock the rest of the app.</div>
+}
+
+@if (_settings is not null && !_forcePassword)
+{
+    <div class="cap-card mb-3">
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">Company</label><input class="form-control" @bind="_settings.CompanyName" /></div>
+            <div class="col-md-3"><label class="form-label">City</label><input class="form-control" @bind="_settings.City" /></div>
+            <div class="col-md-3"><label class="form-label">Phone</label><input class="form-control" @bind="_settings.Phone" /></div>
+            <div class="col-md-4"><label class="form-label">Email</label><input class="form-control" @bind="_settings.Email" /></div>
+            <div class="col-md-4"><label class="form-label">NTN</label><input class="form-control" @bind="_settings.Ntn" /></div>
+            <div class="col-md-4"><label class="form-label">POS Id</label><input class="form-control" @bind="_settings.PosId" /></div>
+            <div class="col-md-3"><label class="form-label">Default tax %</label><input type="number" class="form-control" @bind="_settings.DefaultTaxRate" /></div>
+            <div class="col-md-3"><label class="form-label">API Theme field</label><input class="form-control" @bind="_settings.Theme" /></div>
+            <div class="col-12"><label class="form-label">Address</label><textarea class="form-control" @bind="_settings.Address"></textarea></div>
+        </div>
+        <button class="btn btn-cap mt-3" @onclick="SaveAsync">Save settings</button>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>Change password</h5>
+    <div class="row g-2">
+        <div class="col-md-4"><input type="password" class="form-control" placeholder="Current" @bind="_currentPassword" /></div>
+        <div class="col-md-4"><input type="password" class="form-control" placeholder="New password" @bind="_newPassword" /></div>
+        <div class="col-md-4"><button class="btn btn-cap w-100" @onclick="ChangePasswordAsync">Update password</button></div>
+    </div>
+</div>
+
+@if (!_forcePassword)
+{
+    <div class="cap-card mb-3">
+        <h5>Language</h5>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-light" @onclick='() => Locale.SetCultureAsync("en")'>English</button>
+            <button class="btn btn-outline-light" @onclick='() => Locale.SetCultureAsync("ur")'>اردو</button>
+        </div>
+    </div>
+
+    <div class="cap-card">
+        <h5>UI theme (local)</h5>
+        <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-light" @onclick='() => Theme.SetAsync("dark", "amber")'>Dark Amber</button>
+            <button class="btn btn-outline-light" @onclick='() => Theme.SetAsync("dark", "cyan")'>Dark Cyan</button>
+            <button class="btn btn-outline-light" @onclick='() => Theme.SetAsync("light", "emerald")'>Light Emerald</button>
+            <button class="btn btn-outline-light" @onclick='() => Theme.SetAsync("light", "rose")'>Light Rose</button>
+        </div>
+    </div>
+}
+
+@code {
+    private CompanySettingsDto? _settings;
+    private bool _busy = true;
+    private string? _error;
+    private string _currentPassword = "";
+    private string _newPassword = "";
+    private bool _forcePassword;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        _forcePassword = uri.Query.Contains("forcePassword=1", StringComparison.OrdinalIgnoreCase)
+            || (await AuthState.GetUserAsync())?.MustChangePassword == true;
+
+        if (!_forcePassword)
+        {
+            var (data, error, _) = await Api.GetSettingsAsync();
+            _settings = data;
+            _error = error;
+        }
+        _busy = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings is null) return;
+        var (ok, error, _) = await Api.UpdateSettingsAsync(_settings);
+        if (!ok) Toast.ShowError(error ?? Locale["Toast_Error"]); else Toast.ShowSuccess(Locale["Toast_Saved"]);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        var (ok, error, _) = await AuthApi.ChangePasswordAsync(_currentPassword, _newPassword);
+        if (!ok) Toast.ShowError(error ?? Locale["Toast_Error"]);
+        else
+        {
+            Toast.ShowSuccess(Locale["Toast_Saved"]);
+            _currentPassword = _newPassword = "";
+            _forcePassword = false;
+            Nav.NavigateTo("/", true);
+        }
+    }
+}

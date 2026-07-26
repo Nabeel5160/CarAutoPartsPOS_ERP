@@ -1,0 +1,106 @@
+@page "/users"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Users & Roles" Subtitle="User CRUD + roles list">
+    <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add user</button>
+</PageHeader>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_users is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Username</th><th>Display</th><th>Roles</th><th>Active</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var u in _users)
+            {
+                <tr>
+                    <td>@u.Username</td><td>@u.DisplayName</td><td>@string.Join(", ", u.Roles)</td><td>@(u.IsActive ? "Yes" : "No")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginEdit(u)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(u.Id)">Del</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_roles is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Roles</h5>
+        <ul>@foreach (var r in _roles) { <li><strong>@r.Name</strong> — @r.Description (@r.PermissionCodes.Count perms)</li> }</ul>
+    </div>
+}
+
+@if (_editing)
+{
+    <div class="cap-card">
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Username" @bind="_form.Username" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="Display name" @bind="_form.DisplayName" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="Email" @bind="_form.Email" /></div>
+            <div class="col-md-3"><input class="form-control" type="password" placeholder="Password" @bind="_form.Password" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="RoleIds csv" @bind="_roleIdsText" /></div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<UserDto>? _users;
+    private List<RoleDto>? _roles;
+    private bool _busy = true, _editing;
+    private string? _error, _roleIdsText;
+    private int? _editId;
+    private UserCreateDto _form = new() { IsActive = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var users = await Api.GetUsersAsync();
+        var roles = await Api.GetRolesAsync();
+        _users = users.Data; _roles = roles.Data; _error = users.Error; _busy = false;
+    }
+
+    private void BeginEdit(UserDto? u)
+    {
+        _editing = true;
+        if (u is null) { _editId = null; _form = new() { IsActive = true }; _roleIdsText = _roles?.FirstOrDefault()?.Id.ToString(); return; }
+        _editId = u.Id;
+        _form = new UserCreateDto { Username = u.Username, DisplayName = u.DisplayName, Email = u.Email, IsActive = u.IsActive };
+        _roleIdsText = string.Join(",", _roles?.Where(r => u.Roles.Contains(r.Name)).Select(r => r.Id) ?? []);
+    }
+
+    private async Task SaveAsync()
+    {
+        _form.RoleIds = (_roleIdsText ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => int.TryParse(x, out var id) ? id : 0).Where(x => x > 0).ToList();
+        if (_editId is null)
+        {
+            var (_, error, _) = await Api.CreateUserAsync(_form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        else
+        {
+            var (_, error, _) = await Api.UpdateUserAsync(_editId.Value, _form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        _editing = false;
+        await OnInitializedAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteUserAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await OnInitializedAsync();
+    }
+}

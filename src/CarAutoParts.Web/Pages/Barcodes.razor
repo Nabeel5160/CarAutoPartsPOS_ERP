@@ -1,0 +1,32 @@
+@page "/barcodes"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Barcodes" Subtitle="Generate PNG from GET /api/barcodes/{code}" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-6"><label class="form-label">Code</label><input class="form-control" @bind="_code" /></div>
+        <div class="col-md-3"><button class="btn btn-cap" @onclick="GenerateAsync">Generate</button></div>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_imageDataUrl))
+{
+    <div class="cap-card text-center">
+        <img src="@_imageDataUrl" alt="barcode" class="img-fluid" style="max-width:420px;background:#fff;padding:1rem;border-radius:.75rem" />
+    </div>
+}
+
+@code {
+    private string _code = "TEST123";
+    private string? _imageDataUrl;
+
+    private async Task GenerateAsync()
+    {
+        var (bytes, error) = await Api.GetBarcodeAsync(_code);
+        if (bytes is null) { Toast.ShowError(error ?? "Failed"); return; }
+        _imageDataUrl = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+    }
+}

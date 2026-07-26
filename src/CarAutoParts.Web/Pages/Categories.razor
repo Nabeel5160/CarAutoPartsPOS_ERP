@@ -1,0 +1,125 @@
+@page "/categories"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Categories" Subtitle="Tree from GET /api/categories">
+    <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add</button>
+</PageHeader>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card">
+        @RenderTree(_items)
+    </div>
+}
+
+@if (_editing)
+{
+    <div class="cap-card mt-3">
+        <div class="row g-2">
+            <div class="col-md-4"><label class="form-label">Name</label><input class="form-control" @bind="_form.Name" /></div>
+            <div class="col-md-4"><label class="form-label">Parent Id</label><input type="number" class="form-control" @bind="_form.ParentId" /></div>
+            <div class="col-md-4"><label class="form-label">Description</label><input class="form-control" @bind="_form.Description" /></div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CategoryDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+    private bool _editing;
+    private int? _editId;
+    private CategoryDto _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetCategoriesAsync();
+        _items = data;
+        _error = error;
+        _busy = false;
+    }
+
+    private RenderFragment RenderTree(List<CategoryDto> nodes) => builder =>
+    {
+        builder.OpenElement(0, "ul");
+        builder.AddAttribute(1, "class", "cap-list");
+        var i = 0;
+        foreach (var n in nodes)
+        {
+            builder.OpenElement(10 + i, "li");
+            builder.AddAttribute(11 + i, "class", "cap-list-row");
+
+            builder.OpenElement(12 + i, "span");
+            builder.AddAttribute(13 + i, "class", "cap-list-label");
+            builder.AddContent(14 + i, n.Name);
+            builder.CloseElement();
+
+            builder.OpenElement(15 + i, "div");
+            builder.AddAttribute(16 + i, "class", "cap-actions");
+
+            builder.OpenElement(17 + i, "button");
+            builder.AddAttribute(18 + i, "type", "button");
+            builder.AddAttribute(19 + i, "class", "btn btn-sm btn-outline-light");
+            builder.AddAttribute(20 + i, "onclick", EventCallback.Factory.Create(this, () => BeginEdit(n)));
+            builder.AddContent(21 + i, "Edit");
+            builder.CloseElement();
+
+            builder.OpenElement(22 + i, "button");
+            builder.AddAttribute(23 + i, "type", "button");
+            builder.AddAttribute(24 + i, "class", "btn btn-sm btn-outline-danger");
+            builder.AddAttribute(25 + i, "onclick", EventCallback.Factory.Create(this, () => DeleteAsync(n.Id)));
+            builder.AddContent(26 + i, "Del");
+            builder.CloseElement();
+
+            builder.CloseElement(); // actions
+            builder.CloseElement(); // row
+
+            if (n.Children.Count > 0)
+                builder.AddContent(27 + i, RenderTree(n.Children));
+
+            i += 30;
+        }
+        builder.CloseElement();
+    };
+
+    private void BeginEdit(CategoryDto? c)
+    {
+        _editing = true;
+        if (c is null) { _editId = null; _form = new CategoryDto(); return; }
+        _editId = c.Id;
+        _form = new CategoryDto { Id = c.Id, Name = c.Name, Description = c.Description, ParentId = c.ParentId, Icon = c.Icon };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editId is null)
+        {
+            var (_, error, _) = await Api.CreateCategoryAsync(_form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        else
+        {
+            var (_, error, _) = await Api.UpdateCategoryAsync(_editId.Value, _form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        _editing = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteCategoryAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else await LoadAsync();
+    }
+}

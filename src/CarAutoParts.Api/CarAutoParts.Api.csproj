@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>CarAutoParts.Api</RootNamespace>
+    <AssemblyName>CarAutoParts.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <PackageReference Include="AspNetCore.HealthChecks.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CarAutoParts.Application\CarAutoParts.Application.csproj" />
+    <ProjectReference Include="..\CarAutoParts.Infrastructure\CarAutoParts.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,66 @@
+@page "/backup"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Backup" Subtitle="Create & restore database backups">
+    <button class="btn btn-cap btn-sm" @onclick="CreateAsync">Create backup</button>
+</PageHeader>
+
+<div class="cap-card mb-3">
+    <label class="form-label">Restore from file</label>
+    <InputFile OnChange="RestoreAsync" class="form-control" />
+</div>
+
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Date</th><th>Type</th><th>Size</th><th>OK</th><th>Path</th></tr></thead>
+            <tbody>
+            @foreach (var b in _items)
+            {
+                <tr>
+                    <td>@b.BackupDate.ToLocalTime().ToString("g")</td>
+                    <td>@b.BackupType</td>
+                    <td>@((b.FileSizeBytes / 1024.0).ToString("N0")) KB</td>
+                    <td>@(b.IsSuccessful ? "Yes" : "No")</td>
+                    <td class="small mono">@b.FilePath</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<BackupHistoryDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetBackupsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        var (path, error, _) = await Api.CreateBackupAsync();
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess(path ?? "Backup created"); await LoadAsync(); }
+    }
+
+    private async Task RestoreAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        await using var stream = file.OpenReadStream(500_000_000);
+        var (ok, error) = await Api.RestoreBackupAsync(stream, file.Name);
+        if (!ok) Toast.ShowError(error ?? "Restore failed"); else Toast.ShowSuccess("Restore completed");
+    }
+}

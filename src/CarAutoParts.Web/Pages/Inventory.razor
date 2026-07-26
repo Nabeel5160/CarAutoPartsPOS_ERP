@@ -1,0 +1,112 @@
+@page "/inventory"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Inventory" Subtitle="Balances, alerts, adjust & receive" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_value is not null)
+{
+    <div class="cap-card cap-kpi mb-3"><span class="label">Total inventory value</span><span class="value">@_value.Value.ToString("N2")</span></div>
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <div class="cap-card">
+            <h5>Adjust stock</h5>
+            <div class="row g-2">
+                <div class="col-4"><input type="number" class="form-control" placeholder="ProductId" @bind="_adjust.ProductId" /></div>
+                <div class="col-4"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_adjust.WarehouseId" /></div>
+                <div class="col-4"><input type="number" class="form-control" placeholder="Delta" @bind="_adjust.QuantityDelta" /></div>
+                <div class="col-8"><input class="form-control" placeholder="Reason" @bind="_adjust.Reason" /></div>
+                <div class="col-4"><button class="btn btn-cap w-100" @onclick="AdjustAsync">Adjust</button></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="cap-card">
+            <h5>Receive stock</h5>
+            <div class="row g-2">
+                <div class="col-3"><input type="number" class="form-control" placeholder="ProductId" @bind="_receive.ProductId" /></div>
+                <div class="col-3"><input type="number" class="form-control" placeholder="Wh" @bind="_receive.WarehouseId" /></div>
+                <div class="col-3"><input type="number" class="form-control" placeholder="Qty" @bind="_receive.Quantity" /></div>
+                <div class="col-3"><input type="number" class="form-control" placeholder="Cost" @bind="_receive.UnitCost" /></div>
+                <div class="col-8"><input class="form-control" placeholder="Batch" @bind="_receive.BatchNumber" /></div>
+                <div class="col-4"><button class="btn btn-cap w-100" @onclick="ReceiveAsync">Receive</button></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>SKU</th><th>Product</th><th>Warehouse</th><th>On hand</th><th>Available</th><th>Value</th></tr></thead>
+            <tbody>
+            @foreach (var i in _items.Items)
+            {
+                <tr>
+                    <td class="mono">@i.Sku</td><td>@i.ProductName</td><td>@i.WarehouseName</td>
+                    <td>@i.QuantityOnHand</td><td>@i.AvailableQuantity</td><td>@i.StockValue.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="cap-card">
+            <h5>Low stock</h5>
+            @if (_low is not null)
+            {
+                <ul class="mb-0">@foreach (var a in _low) { <li>@a.ProductName (@a.QuantityOnHand / @a.MinimumStock)</li> }</ul>
+            }
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cap-card">
+            <h5>Overstock</h5>
+            @if (_over is not null)
+            {
+                <ul class="mb-0">@foreach (var a in _over) { <li>@a.ProductName (@a.QuantityOnHand)</li> }</ul>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private PagedResult<InventoryItemDto>? _items;
+    private InventoryValueResponse? _value;
+    private List<LowStockAlertDto>? _low, _over;
+    private bool _busy = true;
+    private string? _error;
+    private StockAdjustmentDto _adjust = new();
+    private ReceiveStockRequest _receive = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var inv = await Api.GetInventoryAsync();
+        var val = await Api.GetInventoryValueAsync();
+        var low = await Api.GetLowStockAsync();
+        var over = await Api.GetOverstockAsync();
+        _items = inv.Data; _value = val.Data; _low = low.Data; _over = over.Data;
+        _error = inv.Error ?? val.Error;
+        _busy = false;
+    }
+
+    private async Task AdjustAsync()
+    {
+        var (ok, error, _) = await Api.AdjustStockAsync(_adjust);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Adjusted"); await OnInitializedAsync(); }
+    }
+
+    private async Task ReceiveAsync()
+    {
+        var (ok, error, _) = await Api.ReceiveStockAsync(_receive);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Received"); await OnInitializedAsync(); }
+    }
+}

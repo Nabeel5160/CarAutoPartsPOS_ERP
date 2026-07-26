@@ -1,0 +1,80 @@
+@page "/coa"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Chart of Accounts" Subtitle="Pakistan-friendly GL structure" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2"><label class="form-label">Code</label><input class="form-control" @bind="_code" /></div>
+        <div class="col-md-4"><label class="form-label">Name</label><input class="form-control" @bind="_name" /></div>
+        <div class="col-md-2">
+            <label class="form-label">Type</label>
+            <select class="form-select" @bind="_accountType">
+                <option value="0">Asset</option>
+                <option value="1">Liability</option>
+                <option value="2">Equity</option>
+                <option value="3">Revenue</option>
+                <option value="4">Expense</option>
+                <option value="5">COGS</option>
+            </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Add account</button></div>
+    </div>
+</div>
+
+@if (_accounts is not null)
+{
+    <div class="cap-card">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Postable</th></tr></thead>
+            <tbody>
+            @foreach (var a in _accounts)
+            {
+                <tr>
+                    <td>@a.Code</td>
+                    <td>@a.Name</td>
+                    <td>@a.AccountType</td>
+                    <td>@(a.IsPostable ? "Yes" : "No")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<GlAccountDto>? _accounts;
+    private bool _busy = true;
+    private string? _error;
+    private string _code = "";
+    private string _name = "";
+    private int _accountType;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetCoaAsync();
+        _accounts = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        var (data, error, _) = await Api.CreateGlAccountAsync(new
+        {
+            Code = _code,
+            Name = _name,
+            AccountType = _accountType,
+            ParentAccountId = (int?)null,
+            IsPostable = true
+        });
+        if (error is not null) { Toast.ShowError(error); return; }
+        Toast.ShowSuccess($"Created {data?.Code}");
+        _code = ""; _name = "";
+        await ReloadAsync();
+    }
+}

@@ -1,0 +1,37 @@
+@page "/audit"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Audit Logs" Subtitle="GET /api/audit-logs" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Changes</th></tr></thead>
+            <tbody>
+            @foreach (var a in _items.Items)
+            {
+                <tr>
+                    <td>@a.Timestamp.ToLocalTime().ToString("g")</td>
+                    <td>@a.UserName</td><td>@a.Action</td><td>@a.EntityType #@a.EntityId</td>
+                    <td class="small">@a.OldValues → @a.NewValues</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PagedResult<AuditLogDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetAuditLogsAsync(new QuerySpec { PageSize = 100 });
+        _items = data; _error = error; _busy = false;
+    }
+}

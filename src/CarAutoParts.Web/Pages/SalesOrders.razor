@@ -1,0 +1,36 @@
+@page "/sales-orders"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Sales Orders" Subtitle="GET /api/sales/orders" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Date</th><th>Total</th></tr></thead>
+            <tbody>
+            @foreach (var o in _items.Items)
+            {
+                <tr>
+                    <td class="mono">@o.OrderNumber</td><td>@o.CustomerName</td><td>@o.Status</td>
+                    <td>@o.OrderDate.ToLocalTime().ToString("d")</td><td>@o.GrandTotal.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PagedResult<SalesOrderListDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetSalesOrdersAsync(new QuerySpec());
+        _items = data; _error = error; _busy = false;
+    }
+}

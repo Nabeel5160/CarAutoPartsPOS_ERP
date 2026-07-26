@@ -1,0 +1,92 @@
+@page "/price-lists"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Price Lists" Subtitle="Customer-specific pricing tiers" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Name</th><th>Currency</th><th>Default</th><th>Customer</th><th>Items</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var p in _items)
+            {
+                <tr>
+                    <td>@p.Name</td>
+                    <td>@p.CurrencyCode</td>
+                    <td>@(p.IsDefault ? "Yes" : "No")</td>
+                    <td>@(p.CustomerId?.ToString() ?? "—")</td>
+                    <td>@p.Items.Count</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => SelectList(p.Id)">Edit items</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New price list</h5>
+    <div class="row g-2">
+        <div class="col-md-3"><input class="form-control" placeholder="Name" @bind="_create.Name" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="CustomerId (opt)" @bind="_customerId" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateListAsync">Create</button></div>
+    </div>
+</div>
+
+@if (_selectedListId is int listId)
+{
+    <div class="cap-card mb-3">
+        <h5>Update items — list #@listId</h5>
+        <div class="row g-2">
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_item.ProductId" /></div>
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="Min qty" @bind="_item.MinQuantity" /></div>
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit price" @bind="_item.UnitPrice" /></div>
+            <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="() => SaveItemsAsync(listId)">Save items</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PriceListDto>? _items;
+    private CreatePriceListRequest _create = new();
+    private UpsertPriceListItemRequest _item = new() { MinQuantity = 1 };
+    private int? _customerId;
+    private int? _selectedListId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetPriceListsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private void SelectList(int id) => _selectedListId = id;
+
+    private async Task CreateListAsync()
+    {
+        _create.CustomerId = _customerId;
+        var (_, error, _) = await Api.CreatePriceListAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Price list created"); _create = new(); await LoadAsync(); }
+    }
+
+    private async Task SaveItemsAsync(int listId)
+    {
+        var dto = new UpdatePriceListItemsRequest { Items = [_item] };
+        var (_, error, _) = await Api.UpdatePriceListItemsAsync(listId, dto);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Items updated"); await LoadAsync(); }
+    }
+}

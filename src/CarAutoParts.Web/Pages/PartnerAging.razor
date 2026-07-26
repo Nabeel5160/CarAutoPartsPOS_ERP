@@ -1,0 +1,78 @@
+@page "/partner-aging"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Partner Aging" Subtitle="Customer and supplier AR/AP buckets" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3 d-flex flex-wrap gap-2">
+    <button class="btn btn-cap" @onclick="LoadCustomersAsync">Customer aging</button>
+    <button class="btn btn-outline-light" @onclick="LoadSuppliersAsync">Supplier aging</button>
+</div>
+
+@if (_customers is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <h5>Customer aging @(_customers.AsOfDate.ToString("yyyy-MM-dd"))</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Customer</th><th>Current</th><th>30</th><th>60</th><th>90+</th><th>Total</th></tr></thead>
+            <tbody>
+            @foreach (var l in _customers.Lines)
+            {
+                <tr>
+                    <td>@l.Name</td>
+                    <td>@l.Current.ToString("N2")</td>
+                    <td>@l.Days30.ToString("N2")</td>
+                    <td>@l.Days60.ToString("N2")</td>
+                    <td>@l.Days90.ToString("N2")</td>
+                    <td>@l.Total.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_suppliers is not null)
+{
+    <div class="cap-card table-responsive">
+        <h5>Supplier aging @(_suppliers.AsOfDate.ToString("yyyy-MM-dd"))</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Supplier</th><th>Current</th><th>30</th><th>60</th><th>90+</th><th>Total</th></tr></thead>
+            <tbody>
+            @foreach (var l in _suppliers.Lines)
+            {
+                <tr>
+                    <td>@l.Name</td>
+                    <td>@l.Current.ToString("N2")</td>
+                    <td>@l.Days30.ToString("N2")</td>
+                    <td>@l.Days60.ToString("N2")</td>
+                    <td>@l.Days90.ToString("N2")</td>
+                    <td>@l.Total.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PartnerAgingReportDto? _customers;
+    private PartnerAgingReportDto? _suppliers;
+    private bool _busy;
+    private string? _error;
+
+    private async Task LoadCustomersAsync()
+    {
+        _busy = true; _error = null;
+        var (data, error, _) = await Api.GetCustomerAgingAsync();
+        _customers = data; _error = error; _busy = false;
+    }
+
+    private async Task LoadSuppliersAsync()
+    {
+        _busy = true; _error = null;
+        var (data, error, _) = await Api.GetSupplierAgingAsync();
+        _suppliers = data; _error = error; _busy = false;
+    }
+}

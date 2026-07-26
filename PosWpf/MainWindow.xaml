@@ -1,0 +1,339 @@
+﻿<Window x:Class="PosWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:PosWpf.ViewModels"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="POS Terminal — FBR Digital Invoicing"
+        Height="820" Width="1280"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}"
+        FontFamily="Segoe UI">
+
+    <Grid Margin="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ============ HEADER ============ -->
+        <Border Grid.Row="0" Background="{StaticResource PrimaryBrush}" Padding="20,14">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🧾" FontSize="26" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <StackPanel>
+                        <TextBlock Text="Point of Sale Terminal" Foreground="White" FontSize="20" FontWeight="Bold" />
+                        <TextBlock Text="Integrated with FBR Digital Invoicing" Foreground="#DBEAFE" FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Background="#1E40AF" CornerRadius="6" Padding="12,6">
+                    <TextBlock Text="{Binding FbrModeLabel}" Foreground="White" FontWeight="SemiBold" FontSize="12" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ============ BODY ============ -->
+        <Grid Grid.Row="1" Margin="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="460" />
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: Product catalog -->
+            <Border Grid.Column="0" Background="{StaticResource CardBrush}" CornerRadius="12"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,12,0">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Products" FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource TextBrush}" Margin="0,0,0,10" />
+
+                    <TextBox Grid.Row="1" Margin="0,0,0,12"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Search products by name or SKU..." />
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Products}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Width="172" Height="118" Margin="6"
+                                            Command="{Binding DataContext.AddToCartCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Cursor="Hand">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="card" Background="#F8FAFC" CornerRadius="10"
+                                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                        Padding="12">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="*" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <TextBlock Grid.Row="0" Text="{Binding Name}" TextWrapping="Wrap"
+                                                                   FontWeight="SemiBold" FontSize="13"
+                                                                   Foreground="{StaticResource TextBrush}" />
+                                                        <TextBlock Grid.Row="1" Text="{Binding Sku}" FontSize="11"
+                                                                   Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
+                                                        <TextBlock Grid.Row="2"
+                                                                   Text="{Binding UnitPrice, Converter={StaticResource Currency}}"
+                                                                   FontWeight="Bold" FontSize="15"
+                                                                   Foreground="{StaticResource PrimaryBrush}" Margin="0,6,0,0" />
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="card" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                                                        <Setter TargetName="card" Property="Background" Value="#EFF6FF" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- RIGHT: Cart / checkout -->
+            <Border Grid.Column="1" Background="{StaticResource CardBrush}" CornerRadius="12"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Title + item count -->
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Current Sale" FontSize="16" FontWeight="Bold"
+                                   Foreground="{StaticResource TextBrush}" />
+                        <TextBlock HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}">
+                            <Run Text="{Binding ItemCount, Mode=OneWay}" /><Run Text=" item(s)" />
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- Buyer fields -->
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Buyer" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="150" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding BuyerName, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Grid.Column="2" Text="{Binding BuyerNtn, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="Buyer NTN/CNIC (required when Registered)" />
+                        </Grid>
+                    </Grid>
+
+                    <!-- FBR buyer / tax details -->
+                    <Expander Grid.Row="2" Header="FBR Buyer &amp; Tax Details" Margin="0,0,0,8"
+                              IsExpanded="{Binding IsFbrDetailsExpanded}">
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Text="Registration type" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding RegistrationTypes}"
+                                      SelectedItem="{Binding BuyerRegistrationType}"
+                                      Margin="0,0,0,8" />
+
+                            <TextBlock Text="Buyer province" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding Provinces}"
+                                      SelectedItem="{Binding BuyerProvince}"
+                                      IsEditable="True"
+                                      Margin="0,0,0,8" />
+
+                            <TextBlock Text="Buyer address" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                            <TextBox Text="{Binding BuyerAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,8" />
+
+                            <StackPanel Visibility="{Binding ShowScenarioField, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8">
+                                <TextBlock Text="Sandbox scenario ID (e.g. SN001)" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding SandboxScenarios}"
+                                          Text="{Binding ScenarioId, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEditable="True" />
+                            </StackPanel>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="SRO schedule no." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                                    <TextBox Text="{Binding SroScheduleNo, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="SRO item serial no." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                                    <TextBox Text="{Binding SroItemSerialNo, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Sale type" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,4" />
+                            <ComboBox ItemsSource="{Binding SaleTypes}"
+                                      SelectedItem="{Binding SaleType}" />
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- Cart items -->
+                    <Border Grid.Row="3" Background="#F8FAFC" CornerRadius="8"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                        <Grid>
+                            <TextBlock Text="Cart is empty — tap a product to add it."
+                                       Foreground="{StaticResource MutedBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding Cart.Count, Converter={StaticResource BoolToVis}, ConverterParameter=invert, FallbackValue=Visible}" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Cart}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="White" CornerRadius="8" Margin="8,6"
+                                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="10">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid Grid.Row="0">
+                                                        <TextBlock Text="{Binding Product.Name}" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
+                                                        <TextBlock HorizontalAlignment="Right"
+                                                                   Text="{Binding LineTotal, Converter={StaticResource Currency}}"
+                                                                   FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                                    </Grid>
+                                                    <Grid Grid.Row="1" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Button Content="−" Width="28" Height="28" FontSize="16"
+                                                                    Style="{StaticResource GhostButton}" Padding="0"
+                                                                    Command="{Binding DataContext.DecreaseQtyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <TextBlock Text="{Binding Quantity}" Width="40" TextAlignment="Center"
+                                                                       VerticalAlignment="Center" FontWeight="SemiBold" />
+                                                            <Button Content="+" Width="28" Height="28" FontSize="16"
+                                                                    Style="{StaticResource PrimaryButton}" Padding="0"
+                                                                    Command="{Binding DataContext.IncreaseQtyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                                                                       Foreground="{StaticResource MutedBrush}" FontSize="11">
+                                                                <Run Text="@ " /><Run Text="{Binding Product.UnitPrice, Converter={StaticResource Currency}, Mode=OneWay}" />
+                                                                <Run Text="  •  Tax " /><Run Text="{Binding LineTax, Converter={StaticResource Currency}, Mode=OneWay}" />
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                        <Button HorizontalAlignment="Right" Content="Remove"
+                                                                Background="Transparent" Foreground="#DC2626"
+                                                                BorderThickness="0" Cursor="Hand" Padding="6,2"
+                                                                Command="{Binding DataContext.RemoveItemCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+
+                    <!-- Totals -->
+                    <StackPanel Grid.Row="4" Margin="0,12,0,0">
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Subtotal" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock HorizontalAlignment="Right" Foreground="{StaticResource TextBrush}"
+                                       Text="{Binding Subtotal, Converter={StaticResource Currency}}" />
+                        </Grid>
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Sales Tax" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock HorizontalAlignment="Right" Foreground="{StaticResource TextBrush}"
+                                       Text="{Binding TaxTotal, Converter={StaticResource Currency}}" />
+                        </Grid>
+                        <Separator Margin="0,8" />
+                        <Grid>
+                            <TextBlock Text="TOTAL" FontWeight="Bold" FontSize="18" Foreground="{StaticResource TextBrush}" />
+                            <TextBlock HorizontalAlignment="Right" FontWeight="Bold" FontSize="18"
+                                       Foreground="{StaticResource PrimaryBrush}"
+                                       Text="{Binding GrandTotal, Converter={StaticResource Currency}}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Actions -->
+                    <Grid Grid.Row="5" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="Clear" Style="{StaticResource GhostButton}"
+                                Command="{Binding ClearCartCommand}" />
+                        <Button Grid.Column="2" Content="Print Receipt" Style="{StaticResource GhostButton}"
+                                Command="{Binding PrintReceiptCommand}" />
+                        <Button Grid.Column="4" Content="Checkout &amp; Send to FBR"
+                                Style="{StaticResource PrimaryButton}" FontSize="15"
+                                Command="{Binding CheckoutCommand}" />
+                    </Grid>
+
+                    <!-- FBR result / QR -->
+                    <Border Grid.Row="6" Margin="0,14,0,0" CornerRadius="8" Padding="12"
+                            Background="#F8FAFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            Visibility="{Binding LastFbrInvoiceNumber, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="FBR Invoice Number" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                                <TextBlock Text="{Binding LastFbrInvoiceNumber}" FontWeight="Bold" TextWrapping="Wrap"
+                                           Foreground="{StaticResource AccentBrush}" FontSize="13" />
+                                <TextBlock Text="Scan QR to verify on FBR" FontSize="10"
+                                           Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" />
+                            </StackPanel>
+                            <Image Grid.Column="1" Source="{Binding QrImage}" Width="96" Height="96" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ============ STATUS BAR ============ -->
+        <Border Grid.Row="2" Background="#0F172A" Padding="16,8">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Margin="0,0,8,0"
+                             Fill="{Binding LastPostSuccess, Converter={StaticResource StatusBrush}}" />
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="White" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock HorizontalAlignment="Right" Foreground="#94A3B8" VerticalAlignment="Center"
+                           Text="Posting to FBR..."
+                           Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

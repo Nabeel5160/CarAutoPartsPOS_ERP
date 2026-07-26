@@ -1,0 +1,99 @@
+@page "/warehouses"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Warehouses" Subtitle="Warehouse master data">
+    <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add</button>
+</PageHeader>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Name</th><th>City</th><th>Default</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var w in _items)
+            {
+                <tr>
+                    <td>@w.Name</td><td>@w.City</td><td>@(w.IsDefault ? "Yes" : "")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginEdit(w)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(w.Id)">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_editing)
+{
+    <div class="cap-card mt-3">
+        <div class="row g-2">
+            <div class="col-md-4"><label class="form-label">Name</label><input class="form-control" @bind="_form.Name" /></div>
+            <div class="col-md-4"><label class="form-label">City</label><input class="form-control" @bind="_form.City" /></div>
+            <div class="col-md-4"><label class="form-label">Phone</label><input class="form-control" @bind="_form.PhoneNumber" /></div>
+            <div class="col-12"><label class="form-label">Address</label><input class="form-control" @bind="_form.Address" /></div>
+            <div class="col-md-4 form-check mt-3"><InputCheckbox class="form-check-input" @bind-Value="_form.IsDefault" /> Default</div>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+            <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<WarehouseDto>? _items;
+    private bool _busy = true, _editing;
+    private string? _error;
+    private int? _editId;
+    private WarehouseDto _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetWarehousesAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private void BeginEdit(WarehouseDto? w)
+    {
+        _editing = true;
+        if (w is null) { _editId = null; _form = new(); return; }
+        _editId = w.Id;
+        _form = new WarehouseDto
+        {
+            Id = w.Id, Name = w.Name, Address = w.Address, City = w.City,
+            ContactPerson = w.ContactPerson, PhoneNumber = w.PhoneNumber, IsDefault = w.IsDefault
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editId is null)
+        {
+            var (_, error, _) = await Api.CreateWarehouseAsync(_form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        else
+        {
+            var (_, error, _) = await Api.UpdateWarehouseAsync(_editId.Value, _form);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        _editing = false; await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var (ok, error, _) = await Api.DeleteWarehouseAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+}

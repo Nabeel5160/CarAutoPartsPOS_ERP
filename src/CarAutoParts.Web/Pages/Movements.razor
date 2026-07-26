@@ -1,0 +1,38 @@
+@page "/movements"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Stock Movements" Subtitle="GET /api/inventory/movements" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Date</th><th>Product</th><th>Warehouse</th><th>Type</th><th>Qty</th><th>Cost</th><th>Ref</th></tr></thead>
+            <tbody>
+            @foreach (var m in _items.Items)
+            {
+                <tr>
+                    <td>@m.MovementDate.ToLocalTime().ToString("g")</td>
+                    <td>@m.ProductName</td><td>@m.WarehouseName</td><td>@m.MovementType</td>
+                    <td>@m.Quantity</td><td>@m.UnitCost.ToString("N2")</td>
+                    <td>@m.ReferenceType #@m.ReferenceId</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PagedResult<StockMovementDto>? _items;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetMovementsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+}

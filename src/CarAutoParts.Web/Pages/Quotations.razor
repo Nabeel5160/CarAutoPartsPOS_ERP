@@ -1,0 +1,86 @@
+@page "/quotations"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Quotations" Subtitle="Create quotes and convert to sales orders" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Number</th><th>Customer</th><th>Status</th><th>Date</th><th>Total</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var q in _items)
+            {
+                <tr>
+                    <td class="mono">@q.QuotationNumber</td>
+                    <td>@(q.CustomerId?.ToString() ?? "—")</td>
+                    <td>@q.Status</td>
+                    <td>@q.QuotationDate.ToLocalTime().ToString("d")</td>
+                    <td>@q.GrandTotal.ToString("N2")</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ConvertAsync(q.Id)">Convert to SO</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_convert is not null)
+{
+    <div class="cap-card mb-3 alert-cap p-3 rounded">
+        Converted to sales order <strong>@_convert.OrderNumber</strong> (Id @_convert.SalesOrderId)
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>New quotation</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="CustomerId (opt)" @bind="_customerId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit price" @bind="_line.UnitPrice" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@code {
+    private List<SalesQuotationDto>? _items;
+    private ConvertQuotationResultDto? _convert;
+    private CreateQuotationRequest _create = new() { QuotationDate = DateTime.UtcNow };
+    private CreateQuotationLineRequest _line = new() { Quantity = 1 };
+    private int? _customerId;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetQuotationsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _create.CustomerId = _customerId;
+        _create.Lines = [_line];
+        var (_, error, _) = await Api.CreateQuotationAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Quotation created"); await LoadAsync(); }
+    }
+
+    private async Task ConvertAsync(int id)
+    {
+        var (data, error, _) = await Api.ConvertQuotationAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else { _convert = data; Toast.ShowSuccess("Converted to sales order"); await LoadAsync(); }
+    }
+}

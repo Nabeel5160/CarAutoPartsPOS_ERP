@@ -1,0 +1,69 @@
+@page "/notifications"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Notifications" Subtitle="Inbox & create alerts">
+    <button class="btn btn-outline-light btn-sm" @onclick="() => LoadAsync(true)">Unread only</button>
+    <button class="btn btn-cap btn-sm" @onclick="() => LoadAsync(false)">All</button>
+</PageHeader>
+
+<div class="cap-card mb-3">
+    <div class="row g-2">
+        <div class="col-md-2"><input class="form-control" placeholder="Type" @bind="_type" /></div>
+        <div class="col-md-3"><input class="form-control" placeholder="Title" @bind="_title" /></div>
+        <div class="col-md-5"><input class="form-control" placeholder="Message" @bind="_message" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card">
+        @foreach (var n in _items)
+        {
+            <div class="cap-list-row">
+                <div class="cap-list-label">
+                    <strong>@n.Title</strong>
+                    <div class="small text-secondary">@n.Message</div>
+                    <div class="small">@n.CreatedAt.ToLocalTime().ToString("g") · @n.Type</div>
+                </div>
+                <div class="cap-actions">
+                    @if (!n.IsRead)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => MarkAsync(n.Id)">Mark read</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<NotificationDto>? _items;
+    private bool _busy = true;
+    private string? _error, _type = "Success", _title, _message;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync(false);
+
+    private async Task LoadAsync(bool unreadOnly)
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetNotificationsAsync(unreadOnly);
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task MarkAsync(int id)
+    {
+        var (ok, error, _) = await Api.MarkNotificationReadAsync(id);
+        if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync(false);
+    }
+
+    private async Task CreateAsync()
+    {
+        var (ok, error, _) = await Api.CreateNotificationAsync(new { type = _type, title = _title, message = _message, entityType = (string?)null, entityId = (int?)null });
+        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Created"); await LoadAsync(false); }
+    }
+}

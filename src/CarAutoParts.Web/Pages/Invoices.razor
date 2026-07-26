@@ -1,0 +1,64 @@
+@page "/invoices"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Sales Invoices" Subtitle="GET /api/sales/invoices" />
+<div class="cap-card mb-3"><input class="form-control" placeholder="Search" @bind="_search" /><button class="btn btn-cap mt-2" @onclick="LoadAsync">Search</button></div>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Total</th><th>Payment</th><th>FBR</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var i in _items.Items)
+            {
+                <tr>
+                    <td class="mono">@i.InvoiceNumber</td><td>@i.CustomerName</td>
+                    <td>@i.InvoiceDate.ToLocalTime().ToString("g")</td><td>@i.GrandTotal.ToString("N2")</td>
+                    <td>@i.PaymentStatus</td><td>@i.FbrInvoiceNumber</td>
+                    <td class="cap-col-actions">
+                        <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => OpenAsync(i.Id)">Detail</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_detail is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>@_detail.InvoiceNumber</h5>
+        <p>@_detail.BuyerName — @_detail.GrandTotal.ToString("N2") (tax @_detail.TaxAmount.ToString("N2"))</p>
+        <ul>@foreach (var l in _detail.Lines) { <li>@l.ProductName x @l.Quantity = @l.LineTotal.ToString("N2")</li> }</ul>
+    </div>
+}
+
+@code {
+    private PagedResult<SalesInvoiceListDto>? _items;
+    private SalesInvoiceDetailDto? _detail;
+    private bool _busy = true;
+    private string? _error, _search;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetInvoicesAsync(new QuerySpec { Search = _search });
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task OpenAsync(int id)
+    {
+        var (data, error, _) = await Api.GetInvoiceAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        _detail = data;
+    }
+}

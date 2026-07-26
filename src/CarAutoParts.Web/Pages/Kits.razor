@@ -1,0 +1,62 @@
+@page "/kits"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Product Kits" Subtitle="Parent product + component BOM" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Name</th><th>Parent product</th><th>Components</th></tr></thead>
+            <tbody>
+            @foreach (var k in _items)
+            {
+                <tr>
+                    <td>@k.Name</td>
+                    <td>@k.ParentProductId</td>
+                    <td>@string.Join(", ", k.Components.Select(c => $"{c.ComponentProductId}×{c.Quantity}"))</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="cap-card mb-3">
+    <h5>Upsert kit</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ParentProductId" @bind="_create.ParentProductId" /></div>
+        <div class="col-md-3"><input class="form-control" placeholder="Kit name" @bind="_create.Name" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Component product" @bind="_component.ComponentProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Component qty" @bind="_component.Quantity" /></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="SaveAsync">Save</button></div>
+    </div>
+</div>
+
+@code {
+    private List<ProductKitDto>? _items;
+    private UpsertKitRequest _create = new();
+    private ProductKitComponentRequest _component = new() { Quantity = 1 };
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetKitsAsync();
+        _items = data; _error = error; _busy = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _create.Components = [_component];
+        var (_, error, _) = await Api.UpsertKitAsync(_create);
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess("Kit saved"); await LoadAsync(); }
+    }
+}
