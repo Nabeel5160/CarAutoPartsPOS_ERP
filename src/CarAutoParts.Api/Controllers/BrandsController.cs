@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Products;
 using CarAutoParts.Application.Interfaces;
@@ -14,10 +15,25 @@ public class BrandsController : ApiControllerBase
 
     public BrandsController(IBrandService brands) => _brands = brands;
 
+    /// <summary>Full list (dropdowns) when no page; paged grid when page/pageSize present.</summary>
     [HttpGet]
     [Authorize(Policy = Permissions.BrandsView)]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _brands.GetAllAsync(ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? search,
+        CancellationToken ct)
+    {
+        if (page is null && pageSize is null && string.IsNullOrWhiteSpace(search))
+            return Ok(await _brands.GetAllAsync(ct));
+
+        return Ok(await _brands.GetPagedAsync(new QuerySpec
+        {
+            Page = page ?? 1,
+            PageSize = pageSize ?? QueryLimits.DefaultPageSize,
+            Search = search
+        }, ct));
+    }
 
     [HttpPost]
     [Authorize(Policy = Permissions.BrandsManage)]

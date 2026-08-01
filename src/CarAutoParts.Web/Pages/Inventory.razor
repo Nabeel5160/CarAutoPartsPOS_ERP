@@ -3,15 +3,30 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="Inventory" Subtitle="Balances, alerts, adjust & receive" />
+<PageHeader Title="Inventory" Subtitle="Balances, alerts, adjust & receive">
+    <a class="btn btn-sm btn-outline-light d-lg-none" href="m/stock">Phone stock check</a>
+</PageHeader>
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_value is not null)
 {
-    <div class="cap-card cap-kpi mb-3"><span class="label">Total inventory value</span><span class="value">@_value.Value.ToString("N2")</span></div>
+    <div class="cap-card mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Valuation method</label>
+                <select class="form-select" @bind="_valueMethod" @bind:after="ReloadValueAsync">
+                    <option value="Average">Average</option>
+                    <option value="Fifo">FIFO (batch sum)</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <div class="cap-kpi mb-0"><span class="label">Inventory value (@_value.Method)</span><span class="value">@_value.Value.ToString("N2")</span></div>
+            </div>
+        </div>
+    </div>
 }
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-3 cap-desktop-only">
     <div class="col-lg-6">
         <div class="cap-card">
             <h5>Adjust stock</h5>
@@ -39,9 +54,18 @@
     </div>
 </div>
 
+<div class="cap-card mb-3">
+    <label class="form-label" for="inv-search">Search</label>
+    <div class="cap-m-search">
+        <input id="inv-search" class="form-control" placeholder="SKU or name…" @bind="_search" @bind:event="oninput"
+               @onkeydown="OnSearchKey" />
+        <button type="button" class="btn btn-cap" disabled="@_busy" @onclick="ReloadListAsync">Search</button>
+    </div>
+</div>
+
 @if (_items is not null)
 {
-    <div class="cap-card table-responsive mb-3">
+    <div class="cap-card table-responsive mb-3 d-none d-md-block">
         <table class="table table-cap table-striped mb-0">
             <thead><tr><th>SKU</th><th>Product</th><th>Warehouse</th><th>On hand</th><th>Available</th><th>Value</th></tr></thead>
             <tbody>
@@ -54,6 +78,27 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
+    </div>
+
+    <div class="cap-m-cards mb-3 d-md-none">
+        @foreach (var i in _items.Items)
+        {
+            <article class="cap-m-card">
+                <div class="cap-m-card-head">
+                    <strong>@i.ProductName</strong>
+                    <span class="mono text-secondary">@i.Sku</span>
+                </div>
+                <div class="cap-m-card-meta">@i.WarehouseName</div>
+                <div class="cap-m-kpis">
+                    <div><span class="label">On hand</span><span class="value">@i.QuantityOnHand.ToString("N0")</span></div>
+                    <div><span class="label">Available</span><span class="value">@i.AvailableQuantity.ToString("N0")</span></div>
+                </div>
+            </article>
+        }
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -68,7 +113,7 @@
         </div>
     </div>
     <div class="col-md-6">
-        <div class="cap-card">
+        <div class="cap-card cap-desktop-only">
             <h5>Overstock</h5>
             @if (_over is not null)
             {
@@ -84,29 +129,79 @@
     private List<LowStockAlertDto>? _low, _over;
     private bool _busy = true;
     private string? _error;
+    private string _valueMethod = "Average";
+    private string _search = "";
+    private int _page = 1;
+    private int _pageSize = 10;
     private StockAdjustmentDto _adjust = new();
     private ReceiveStockRequest _receive = new();
 
     protected override async Task OnInitializedAsync()
     {
-        var inv = await Api.GetInventoryAsync();
-        var val = await Api.GetInventoryValueAsync();
+        await LoadCoreAsync();
+        _busy = false;
+    }
+
+    private async Task LoadCoreAsync()
+    {
+        var inv = await Api.GetInventoryAsync(_page, _search.Trim(), _pageSize);
+        var val = await Api.GetInventoryValueAsync(_valueMethod);
         var low = await Api.GetLowStockAsync();
         var over = await Api.GetOverstockAsync();
         _items = inv.Data; _value = val.Data; _low = low.Data; _over = over.Data;
         _error = inv.Error ?? val.Error;
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ReloadListAsync();
+    }
+
+    private async Task ReloadListAsync()
+    {
+        _page = 1;
+        _busy = true;
+        var inv = await Api.GetInventoryAsync(_page, _search.Trim(), _pageSize);
+        _items = inv.Data;
+        if (inv.Error is not null) Toast.ShowError(inv.Error);
         _busy = false;
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _page = page;
+        _busy = true;
+        var inv = await Api.GetInventoryAsync(_page, _search.Trim(), _pageSize);
+        _items = inv.Data;
+        if (inv.Error is not null) Toast.ShowError(inv.Error);
+        _busy = false;
+    }
+
+    private async Task OnPageSizeChanged(int size)
+    {
+        _pageSize = size;
+        _page = 1;
+        await OnPageChanged(1);
+    }
+
+    private async Task ReloadValueAsync()
+    {
+        var val = await Api.GetInventoryValueAsync(_valueMethod);
+        _value = val.Data;
+        if (val.Error is not null) Toast.ShowError(val.Error);
     }
 
     private async Task AdjustAsync()
     {
         var (ok, error, _) = await Api.AdjustStockAsync(_adjust);
-        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Adjusted"); await OnInitializedAsync(); }
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Adjusted"); _busy = true; await LoadCoreAsync(); _busy = false; }
     }
 
     private async Task ReceiveAsync()
     {
         var (ok, error, _) = await Api.ReceiveStockAsync(_receive);
-        if (!ok) Toast.ShowError(error ?? "Failed"); else { Toast.ShowSuccess("Received"); await OnInitializedAsync(); }
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Received"); _busy = true; await LoadCoreAsync(); _busy = false; }
     }
 }

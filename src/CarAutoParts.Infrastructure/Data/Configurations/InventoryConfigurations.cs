@@ -19,6 +19,20 @@ public class InventoryItemConfiguration : IEntityTypeConfiguration<InventoryItem
     }
 }
 
+public class InventoryLocationBalanceConfiguration : IEntityTypeConfiguration<InventoryLocationBalance>
+{
+    public void Configure(EntityTypeBuilder<InventoryLocationBalance> builder)
+    {
+        builder.ToTable("InventoryLocationBalances");
+        builder.HasIndex(b => new { b.InventoryItemId, b.WarehouseLocationId }).IsUnique();
+        builder.Property(b => b.QuantityOnHand).HasPrecision(18, 3);
+        builder.HasOne(b => b.InventoryItem).WithMany(i => i.LocationBalances).HasForeignKey(b => b.InventoryItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(b => b.WarehouseLocation).WithMany(l => l.Balances).HasForeignKey(b => b.WarehouseLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement>
 {
     public void Configure(EntityTypeBuilder<StockMovement> builder)
@@ -97,5 +111,7 @@ public class InventoryTransferLineConfiguration : IEntityTypeConfiguration<Inven
 
         builder.HasOne(l => l.InventoryTransfer).WithMany(t => t.Lines).HasForeignKey(l => l.InventoryTransferId);
         builder.HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId);
+        builder.HasOne(l => l.FromLocation).WithMany().HasForeignKey(l => l.FromLocationId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(l => l.ToLocation).WithMany().HasForeignKey(l => l.ToLocationId).OnDelete(DeleteBehavior.Restrict);
     }
 }

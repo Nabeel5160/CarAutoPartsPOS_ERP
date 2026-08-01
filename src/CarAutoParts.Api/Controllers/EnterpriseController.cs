@@ -1,3 +1,6 @@
+using CarAutoParts.Api.Filters;
+using CarAutoParts.Application.Common;
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.Enterprise;
 using Microsoft.AspNetCore.Authorization;
@@ -41,8 +44,8 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("grn")]
     [Authorize(Policy = Permissions.GrnManage)]
-    public async Task<IActionResult> GetGrns(CancellationToken ct) =>
-        Ok(await _inventory.GetGrnsAsync(ct));
+    public async Task<IActionResult> GetGrns([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _inventory.GetGrnsAsync(query, ct));
 
     [HttpPost("reservations")]
     [Authorize(Policy = Permissions.InventoryAdjust)]
@@ -91,8 +94,8 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("ap-invoices")]
     [Authorize(Policy = Permissions.ApInvoiceManage)]
-    public async Task<IActionResult> GetApInvoices(CancellationToken ct) =>
-        Ok(await _purchase.GetPurchaseInvoicesAsync(ct));
+    public async Task<IActionResult> GetApInvoices([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _purchase.GetPurchaseInvoicesAsync(query, ct));
 
     [HttpPost("ap-invoices")]
     [Authorize(Policy = Permissions.ApInvoiceManage)]
@@ -111,33 +114,73 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("quotations")]
     [Authorize(Policy = Permissions.QuotationsManage)]
-    public async Task<IActionResult> GetQuotations(CancellationToken ct) =>
-        Ok(await _sales.GetQuotationsAsync(ct));
+    [RequireFeature(ConfigKeys.ModSalesQuotations)]
+    public async Task<IActionResult> GetQuotations([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _sales.GetQuotationsAsync(query, ct));
 
     [HttpPost("quotations")]
     [Authorize(Policy = Permissions.QuotationsManage)]
+    [RequireFeature(ConfigKeys.ModSalesQuotations)]
     public async Task<IActionResult> CreateQuote([FromBody] CreateQuotationRequest request, CancellationToken ct) =>
         FromResult(await _sales.CreateQuotationAsync(request, ct));
 
     [HttpPost("quotations/{id:int}/convert")]
     [Authorize(Policy = Permissions.QuotationsManage)]
+    [RequireFeature(ConfigKeys.ModSalesQuotations)]
     public async Task<IActionResult> ConvertQuote(int id, CancellationToken ct) =>
         FromResult(await _sales.ConvertQuotationToSalesOrderAsync(id, ct));
 
+    [HttpGet("sales-orders")]
+    [Authorize(Policy = Permissions.SalesView)]
+    [RequireFeature(ConfigKeys.ModSalesOrders)]
+    public async Task<IActionResult> GetWholesaleSalesOrders([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _sales.GetWholesaleSalesOrdersAsync(query, ct));
+
+    [HttpPost("sales-orders/{id:int}/create-delivery")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
+    public async Task<IActionResult> CreateDeliveryFromSo(int id, [FromBody] CreateDeliveryFromSalesOrderRequest request, CancellationToken ct) =>
+        FromResult(await _sales.CreateDeliveryFromSalesOrderAsync(id, request, ct));
+
+    [HttpPost("sales-orders/{id:int}/create-invoice")]
+    [Authorize(Policy = Permissions.SalesView)]
+    [RequireFeature(ConfigKeys.ModSalesInvoices)]
+    public async Task<IActionResult> CreateInvoiceFromSo(int id, [FromQuery] int? warehouseId, CancellationToken ct) =>
+        FromResult(await _sales.CreateInvoiceFromSalesOrderAsync(id, warehouseId, ct));
+
     [HttpGet("deliveries")]
     [Authorize(Policy = Permissions.DeliveriesManage)]
-    public async Task<IActionResult> GetDeliveries(CancellationToken ct) =>
-        Ok(await _sales.GetDeliveriesAsync(ct));
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
+    public async Task<IActionResult> GetDeliveries([FromQuery] QuerySpec query, [FromQuery] int? salesOrderId, CancellationToken ct)
+    {
+        if (salesOrderId is int so)
+            query.Filters["salesOrderId"] = so;
+        return Ok(await _sales.GetDeliveriesAsync(query, ct));
+    }
 
     [HttpPost("deliveries")]
     [Authorize(Policy = Permissions.DeliveriesManage)]
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
     public async Task<IActionResult> CreateDelivery([FromBody] CreateDeliveryNoteRequest request, CancellationToken ct) =>
         FromResult(await _sales.CreateDeliveryNoteAsync(request, ct));
 
+    [HttpPost("deliveries/{id:int}/confirm-pick")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
+    public async Task<IActionResult> ConfirmDeliveryPick(int id, [FromBody] ConfirmDeliveryPickRequest? request, CancellationToken ct) =>
+        FromResult(await _sales.ConfirmDeliveryPickAsync(id, request, ct));
+
     [HttpPost("deliveries/{id:int}/ship")]
     [Authorize(Policy = Permissions.DeliveriesManage)]
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
     public async Task<IActionResult> ShipDelivery(int id, CancellationToken ct) =>
         FromResult(await _sales.ShipDeliveryAsync(id, ct));
+
+    [HttpPost("deliveries/{id:int}/create-invoice")]
+    [Authorize(Policy = Permissions.SalesView)]
+    [RequireFeature(ConfigKeys.ModSalesInvoices)]
+    public async Task<IActionResult> CreateInvoiceFromDelivery(int id, CancellationToken ct) =>
+        FromResult(await _sales.CreateInvoiceFromDeliveryAsync(id, ct));
 
     [HttpGet("price")]
     [Authorize(Policy = Permissions.SalesView)]
@@ -171,8 +214,8 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("price-lists")]
     [Authorize(Policy = Permissions.PriceListsManage)]
-    public async Task<IActionResult> GetPriceLists(CancellationToken ct) =>
-        Ok(await _sales.GetPriceListsAsync(ct));
+    public async Task<IActionResult> GetPriceLists([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _sales.GetPriceListsAsync(query, ct));
 
     [HttpPost("price-lists")]
     [Authorize(Policy = Permissions.PriceListsManage)]
@@ -186,8 +229,15 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("fbr/submissions")]
     [Authorize(Policy = Permissions.PosCheckout)]
-    public async Task<IActionResult> GetFbrSubmissions(CancellationToken ct) =>
-        Ok(await _sales.GetFbrSubmissionsAsync(ct));
+    [RequireFeature(ConfigKeys.ModSalesFbr)]
+    public async Task<IActionResult> GetFbrSubmissions([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _sales.GetFbrSubmissionsAsync(query, ct));
+
+    [HttpGet("fbr/metrics")]
+    [Authorize(Policy = Permissions.PosCheckout)]
+    [RequireFeature(ConfigKeys.ModSalesFbr)]
+    public async Task<IActionResult> GetFbrMetrics(CancellationToken ct) =>
+        Ok(await _sales.GetFbrMetricsAsync(ct));
 
     [HttpGet("aging/customers")]
     [Authorize(Policy = Permissions.FinanceView)]
@@ -211,7 +261,8 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("kits")]
     [Authorize(Policy = Permissions.KitsManage)]
-    public async Task<IActionResult> Kits(CancellationToken ct) => Ok(await _master.GetKitsAsync(ct: ct));
+    public async Task<IActionResult> Kits([FromQuery] QuerySpec query, [FromQuery] int? parentProductId, CancellationToken ct) =>
+        Ok(await _master.GetKitsAsync(query, parentProductId, ct));
 
     [HttpPost("kits")]
     [Authorize(Policy = Permissions.KitsManage)]
@@ -220,7 +271,8 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("supersessions")]
     [Authorize(Policy = Permissions.KitsManage)]
-    public async Task<IActionResult> Supersessions(CancellationToken ct) => Ok(await _master.GetSupersessionsAsync(ct: ct));
+    public async Task<IActionResult> Supersessions([FromQuery] int? productId, CancellationToken ct) =>
+        Ok(await _master.GetSupersessionsAsync(productId, ct));
 
     [HttpPost("supersessions")]
     [Authorize(Policy = Permissions.KitsManage)]
@@ -229,13 +281,20 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpGet("reports/trial-balance")]
     [Authorize(Policy = Permissions.FinanceView)]
-    public async Task<IActionResult> TrialBalance([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
-        FromResult(await _reports.TrialBalanceAsync(asOf ?? DateTime.UtcNow.Date, ct));
+    public async Task<IActionResult> TrialBalance(
+        [FromQuery] DateTime? asOf = null,
+        [FromQuery] int? branchId = null,
+        CancellationToken ct = default) =>
+        FromResult(await _reports.TrialBalanceAsync(asOf ?? DateTime.UtcNow.Date, branchId, ct));
 
     [HttpGet("reports/profit-loss")]
     [Authorize(Policy = Permissions.FinanceView)]
-    public async Task<IActionResult> ProfitLoss([FromQuery] DateTime from, [FromQuery] DateTime to, CancellationToken ct = default) =>
-        FromResult(await _reports.ProfitAndLossAsync(from, to, ct));
+    public async Task<IActionResult> ProfitLoss(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] int? branchId = null,
+        CancellationToken ct = default) =>
+        FromResult(await _reports.ProfitAndLossAsync(from, to, branchId, ct));
 
     [HttpGet("reports/balance-sheet")]
     [Authorize(Policy = Permissions.FinanceView)]
@@ -244,6 +303,7 @@ public class EnterpriseController : ApiControllerBase
 
     [HttpPost("fbr/retry/{invoiceId:int}")]
     [Authorize(Policy = Permissions.PosCheckout)]
+    [RequireFeature(ConfigKeys.ModSalesFbr)]
     public IActionResult RetryFbr(int invoiceId)
     {
         _fbrOutbox.EnqueueFbrRetry(invoiceId);

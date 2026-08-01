@@ -17,12 +17,18 @@ public sealed class FinancialReportService : IFinancialReportService
         _company = company;
     }
 
-    public async Task<Result<TrialBalanceReportDto>> TrialBalanceAsync(DateTime asOfDate, CancellationToken ct = default)
+    public async Task<Result<TrialBalanceReportDto>> TrialBalanceAsync(
+        DateTime asOfDate,
+        int? branchId = null,
+        CancellationToken ct = default)
     {
         if (!EnsureCompany(out _, out var error))
             return Result<TrialBalanceReportDto>.Failure(error!);
 
-        var lines = await GetPostedLinesAsync(null, asOfDate, ct);
+        if (branchId is int bid && !_company.IsBranchAllowed(bid))
+            return Result<TrialBalanceReportDto>.Failure("Branch is not allowed for this user.");
+
+        var lines = await GetPostedLinesAsync(null, asOfDate, branchId, ct);
         var accounts = await _db.GlAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, ct);
 
         var grouped = lines
@@ -55,12 +61,16 @@ public sealed class FinancialReportService : IFinancialReportService
     public async Task<Result<ProfitAndLossReportDto>> ProfitAndLossAsync(
         DateTime fromDate,
         DateTime toDate,
+        int? branchId = null,
         CancellationToken ct = default)
     {
         if (!EnsureCompany(out _, out var error))
             return Result<ProfitAndLossReportDto>.Failure(error!);
 
-        var lines = await GetPostedLinesAsync(fromDate, toDate, ct);
+        if (branchId is int bid && !_company.IsBranchAllowed(bid))
+            return Result<ProfitAndLossReportDto>.Failure("Branch is not allowed for this user.");
+
+        var lines = await GetPostedLinesAsync(fromDate, toDate, branchId, ct);
         var accounts = await _db.GlAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, ct);
 
         var plTypes = new[] { AccountType.Revenue, AccountType.Expense, AccountType.CostOfGoods };
@@ -97,7 +107,7 @@ public sealed class FinancialReportService : IFinancialReportService
         if (!EnsureCompany(out _, out var error))
             return Result<BalanceSheetReportDto>.Failure(error!);
 
-        var lines = await GetPostedLinesAsync(null, asOfDate, ct);
+        var lines = await GetPostedLinesAsync(null, asOfDate, null, ct);
         var accounts = await _db.GlAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, ct);
 
         var bsTypes = new[] { AccountType.Asset, AccountType.Liability, AccountType.Equity };
@@ -263,16 +273,21 @@ public sealed class FinancialReportService : IFinancialReportService
     private async Task<List<JournalLine>> GetPostedLinesAsync(
         DateTime? fromDate,
         DateTime toDate,
+        int? branchId,
         CancellationToken ct)
     {
         var q = _db.JournalLines
             .AsNoTracking()
             .Include(l => l.JournalEntry)
+            .Include(l => l.CostCenter)
             .Where(l => l.JournalEntry.Status == JournalStatus.Posted &&
                         l.JournalEntry.JournalDate <= toDate.Date);
 
         if (fromDate.HasValue)
             q = q.Where(l => l.JournalEntry.JournalDate >= fromDate.Value.Date);
+
+        if (branchId.HasValue)
+            q = q.Where(l => l.CostCenter != null && l.CostCenter.BranchId == branchId.Value);
 
         return await q.ToListAsync(ct);
     }

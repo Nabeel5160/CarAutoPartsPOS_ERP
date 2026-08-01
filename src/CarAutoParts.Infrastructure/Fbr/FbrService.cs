@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using CarAutoParts.Application.DTOs.Fbr;
 using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CarAutoParts.Infrastructure.Fbr;
@@ -10,11 +12,13 @@ namespace CarAutoParts.Infrastructure.Fbr;
 /// <summary>
 /// Posts invoices to FBR's Digital Invoicing (DI) REST API.
 /// Falls back to stub mode when no Bearer token is configured.
+/// Sandbox vs production URL: CompanySettings.FbrUseSandbox overrides appsettings Fbr:UseSandbox.
 /// </summary>
 public class FbrService : IFbrService
 {
     private readonly FbrOptions _options;
     private readonly HttpClient _http;
+    private readonly ApplicationDbContext _db;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,16 +27,18 @@ public class FbrService : IFbrService
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    public FbrService(IOptions<FbrOptions> options, HttpClient http)
+    public FbrService(IOptions<FbrOptions> options, HttpClient http, ApplicationDbContext db)
     {
         _options = options.Value;
         _http = http;
+        _db = db;
         _http.Timeout = TimeSpan.FromSeconds(Math.Max(5, _options.TimeoutSeconds));
     }
 
     public async Task<FbrPostResultDto> PostInvoiceAsync(FbrInvoiceRequestDto request, CancellationToken ct = default)
     {
         var requestJson = JsonSerializer.Serialize(request, JsonOptions);
+        var postUrl = await ResolvePostUrlAsync(ct);
 
         if (!_options.HasToken)
         {
@@ -49,7 +55,7 @@ public class FbrService : IFbrService
 
         try
         {
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.PostInvoiceUrl)
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, postUrl)
             {
                 Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
             };
@@ -100,6 +106,17 @@ public class FbrService : IFbrService
         }
     }
 
-    private static string GenerateStubInvoiceNumber()
-        => $"TEST-{DateTime.Now:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
+    /// <summary>Company setting wins; otherwise appsettings Fbr:UseSandbox (no code change to flip).</summary>
+    private async Task<string> ResolvePostUrlAsync(CancellationToken ct)
+    {
+        var companySandbox = await _db.CompanySettings.AsNoTracking()
+            .Where(s => !s.IsDeleted)
+            .Select(s => (bool?)s.FbrUseSandbox)
+            .FirstOrDefaultAsync(ct);
+        var useSandbox = companySandbox ?? _options.UseSandbox;
+        return useSandbox ? _options.PostInvoiceUrlSandbox : _options.PostInvoiceUrlProduction;
+    }
+
+    private static string GenerateStubInvoiceNumber() =>
+        $"TEST-{DateTime.Now:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
 }

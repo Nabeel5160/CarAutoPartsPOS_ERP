@@ -62,6 +62,12 @@ public static class Permissions
 
     public const string AuditView = "audit.view";
 
+    public const string ApprovalsView = "approvals.view";
+    public const string ApprovalsDecide = "approvals.decide";
+    public const string ApprovalsManage = "approvals.manage";
+    public const string FinanceVoid = "finance.void";
+    public const string MfaManage = "auth.mfa.manage";
+
     public const string SettingsView = "settings.view";
     public const string SettingsManage = "settings.manage";
 
@@ -73,12 +79,15 @@ public static class Permissions
     public const string FinanceView = "finance.view";
     public const string FinanceManage = "finance.manage";
     public const string FinancePost = "finance.post";
+    public const string FinanceForceClose = "finance.force-close";
     public const string GrnManage = "grn.manage";
     public const string ApInvoiceManage = "ap.invoice.manage";
     public const string CycleCountManage = "cyclecount.manage";
     public const string QuotationsManage = "quotations.manage";
     public const string DeliveriesManage = "deliveries.manage";
     public const string PriceListsManage = "pricelists.manage";
+    /// <summary>Override resolved price-list / catalog unit price on wholesale quote/SO lines.</summary>
+    public const string SalesPriceOverride = "sales.price.override";
     public const string KitsManage = "kits.manage";
 
     /// <summary>All defined permission codes.</summary>
@@ -101,11 +110,12 @@ public static class Permissions
         AnalyticsView,
         UsersView, UsersManage,
         AuditView,
+        ApprovalsView, ApprovalsDecide, ApprovalsManage, FinanceVoid, MfaManage,
         SettingsView, SettingsManage,
         BackupView, BackupManage,
         PlatformView, PlatformManage,
-        FinanceView, FinanceManage, FinancePost,
+        FinanceView, FinanceManage, FinancePost, FinanceForceClose,
         GrnManage, ApInvoiceManage, CycleCountManage,
-        QuotationsManage, DeliveriesManage, PriceListsManage, KitsManage
+        QuotationsManage, DeliveriesManage, PriceListsManage, SalesPriceOverride, KitsManage
     ];
 }

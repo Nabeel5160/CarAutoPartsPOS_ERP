@@ -4,21 +4,30 @@
 @inject AuthApiService AuthApi
 @inject ThemeService Theme
 @inject LocaleService Locale
+@inject WebAppConfigService AppConfig
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject JwtAuthStateProvider AuthState
 
-<PageHeader Title="Settings" Subtitle="@(_forcePassword ? "You must change the default password before continuing" : "Company settings + theme packs")" />
+<PageHeader Title="Settings" Subtitle="@(_forcePassword ? "You must change the default password before continuing" : "Company settings + business profile + theme")" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_forcePassword)
 {
-    <div class="alert alert-warning">Default or temporary password detected. Update your password to unlock the rest of the app.</div>
+    <div class="alert alert-cap border-danger">Default or temporary password detected. Update your password to unlock the rest of the app.</div>
+}
+
+@if (!_busy && string.IsNullOrWhiteSpace(_error) && _settings is null && !_forcePassword)
+{
+    <EmptyState Title="Settings unavailable"
+                Message="Company settings did not load. Retry after checking API reachability, or sign in with an account that can view settings." />
 }
 
 @if (_settings is not null && !_forcePassword)
 {
     <div class="cap-card mb-3">
+        <h5 class="cap-section-title">Company</h5>
+        <p class="cap-section-sub">Legal name, contact, tax defaults, and operational tolerances.</p>
         <div class="row g-2">
             <div class="col-md-6"><label class="form-label">Company</label><input class="form-control" @bind="_settings.CompanyName" /></div>
             <div class="col-md-3"><label class="form-label">City</label><input class="form-control" @bind="_settings.City" /></div>
@@ -26,8 +35,14 @@
             <div class="col-md-4"><label class="form-label">Email</label><input class="form-control" @bind="_settings.Email" /></div>
             <div class="col-md-4"><label class="form-label">NTN</label><input class="form-control" @bind="_settings.Ntn" /></div>
             <div class="col-md-4"><label class="form-label">POS Id</label><input class="form-control" @bind="_settings.PosId" /></div>
-            <div class="col-md-3"><label class="form-label">Default tax %</label><input type="number" class="form-control" @bind="_settings.DefaultTaxRate" /></div>
+            <div class="col-md-3"><label class="form-label">Default tax % (POS fallback when product tax is 0)</label><input type="number" class="form-control" @bind="_settings.DefaultTaxRate" /></div>
             <div class="col-md-3"><label class="form-label">API Theme field</label><input class="form-control" @bind="_settings.Theme" /></div>
+            <div class="col-md-3"><label class="form-label">Default valuation</label>
+                <select class="form-select" @bind="_settings.DefaultValuationMethod">
+                    <option value="Average">Average</option>
+                    <option value="Fifo">FIFO</option>
+                </select>
+            </div>
             <div class="col-md-3"><label class="form-label">GRN over-receive %</label><input type="number" class="form-control" @bind="_settings.GrnOverReceivePercent" /></div>
             <div class="col-md-3"><label class="form-label">3-way qty tol %</label><input type="number" class="form-control" @bind="_settings.ThreeWayQtyTolerancePercent" /></div>
             <div class="col-md-3"><label class="form-label">3-way price tol %</label><input type="number" class="form-control" @bind="_settings.ThreeWayPriceTolerancePercent" /></div>
@@ -42,6 +57,92 @@
             <div class="col-12"><label class="form-label">Address</label><textarea class="form-control" @bind="_settings.Address"></textarea></div>
         </div>
         <button class="btn btn-cap mt-3" @onclick="SaveAsync">Save settings</button>
+    </div>
+}
+
+@if (_cfg is not null && !_forcePassword)
+{
+    <div class="cap-card mb-3">
+        <h5 class="cap-section-title">Business profile</h5>
+        <p class="cap-section-sub">Pick a vertical preset, then override modules, fields, branding, and labels. Changes apply immediately after save.</p>
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Vertical</label>
+                <select class="form-select" @bind="_selectedVertical">
+                    @foreach (var v in _cfg.AvailableVerticals)
+                    {
+                        <option value="@v.Key">@v.DisplayName — @v.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end gap-2">
+                <button class="btn btn-outline-warning" @onclick="ApplyPresetAsync">Apply preset defaults</button>
+                <button class="btn btn-cap" @onclick="SaveConfigAsync">Save profile</button>
+            </div>
+        </div>
+
+        <h6 class="mt-3">Branding</h6>
+        <div class="row g-2 mb-3">
+            <div class="col-md-3"><label class="form-label">App name</label><input class="form-control" @bind="_brandAppName" /></div>
+            <div class="col-md-2"><label class="form-label">Short name</label><input class="form-control" @bind="_brandShort" /></div>
+            <div class="col-md-2"><label class="form-label">Accent word</label><input class="form-control" @bind="_brandAccentWord" /></div>
+            <div class="col-md-3"><label class="form-label">Logo URL</label><input class="form-control" @bind="_brandLogo" /></div>
+            <div class="col-md-1"><label class="form-label">Theme</label><input class="form-control" @bind="_brandTheme" /></div>
+            <div class="col-md-1"><label class="form-label">Accent</label><input class="form-control" @bind="_brandAccent" /></div>
+        </div>
+
+        <h6>Modules</h6>
+        <div class="row g-1 mb-3">
+            @foreach (var key in _moduleKeys)
+            {
+                <div class="col-md-3 form-check">
+                    <input class="form-check-input" type="checkbox" id="mod_@key" checked="@_modules.GetValueOrDefault(key)"
+                           @onchange="e => _modules[key] = (bool)(e.Value ?? false)" />
+                    <label class="form-check-label" for="mod_@key">@key</label>
+                </div>
+            }
+        </div>
+
+        <h6>Behaviors</h6>
+        <div class="row g-2 mb-3">
+            @foreach (var key in _behaviorBoolKeys)
+            {
+                <div class="col-md-3 form-check">
+                    <input class="form-check-input" type="checkbox" id="beh_@key"
+                           checked="@IsBehaviorOn(key)"
+                           @onchange="e => SetBehavior(key, (bool)(e.Value ?? false))" />
+                    <label class="form-check-label" for="beh_@key">@key</label>
+                </div>
+            }
+            <div class="col-md-2"><label class="form-label">Currency</label><input class="form-control" @bind="_currency" /></div>
+            <div class="col-md-2"><label class="form-label">Decimals</label><input class="form-control" @bind="_decimals" /></div>
+        </div>
+
+        <h6>Fields</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-cap table-sm">
+                <thead><tr><th>Field</th><th>Visible</th><th>Required</th><th>Label</th></tr></thead>
+                <tbody>
+                @foreach (var key in _fieldKeys)
+                {
+                    var f = _fields[key];
+                    <tr>
+                        <td class="mono">@key</td>
+                        <td><input type="checkbox" checked="@f.Visible" @onchange="e => f.Visible = (bool)(e.Value ?? false)" /></td>
+                        <td><input type="checkbox" checked="@f.Required" @onchange="e => f.Required = (bool)(e.Value ?? false)" /></td>
+                        <td><input class="form-control form-control-sm" @bind="f.Label" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        <h6>Label overrides (en)</h6>
+        <div class="row g-2">
+            <div class="col-md-4"><label class="form-label">POS search placeholder</label><input class="form-control" @bind="_labelSearch" /></div>
+            <div class="col-md-4"><label class="form-label">POS checkout</label><input class="form-control" @bind="_labelCheckout" /></div>
+            <div class="col-md-4"><label class="form-label">Nav POS</label><input class="form-control" @bind="_labelNavPos" /></div>
+        </div>
     </div>
 }
 
@@ -77,11 +178,23 @@
 
 @code {
     private CompanySettingsDto? _settings;
+    private AppConfigClientDto? _cfg;
     private bool _busy = true;
     private string? _error;
     private string _currentPassword = "";
     private string _newPassword = "";
     private bool _forcePassword;
+
+    private string _selectedVertical = "auto-parts";
+    private string _brandAppName = "", _brandShort = "", _brandAccentWord = "", _brandLogo = "", _brandTheme = "dark", _brandAccent = "amber";
+    private string _currency = "PKR", _decimals = "2";
+    private string _labelSearch = "", _labelCheckout = "", _labelNavPos = "";
+    private readonly Dictionary<string, bool> _modules = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _behaviors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FieldConfigClientDto> _fields = new(StringComparer.OrdinalIgnoreCase);
+    private List<string> _moduleKeys = [];
+    private List<string> _fieldKeys = [];
+    private readonly string[] _behaviorBoolKeys = ["fbr.enabled", "tax.enabled", "pos.fitmentSearch", "pos.supersession"];
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,8 +207,40 @@
             var (data, error, _) = await Api.GetSettingsAsync();
             _settings = data;
             _error = error;
+            await AppConfig.RefreshFullAsync();
+            LoadConfigEditor(AppConfig.Current);
         }
         _busy = false;
+    }
+
+    private void LoadConfigEditor(AppConfigClientDto? cfg)
+    {
+        _cfg = cfg;
+        if (cfg is null) return;
+        _selectedVertical = cfg.VerticalKey;
+        _brandAppName = cfg.Branding.AppName;
+        _brandShort = cfg.Branding.ShortName;
+        _brandAccentWord = cfg.Branding.AccentWord;
+        _brandLogo = cfg.Branding.LogoUrl ?? "";
+        _brandTheme = cfg.Branding.Theme;
+        _brandAccent = cfg.Branding.Accent;
+        _modules.Clear();
+        foreach (var kv in cfg.Modules) _modules[kv.Key] = kv.Value;
+        _moduleKeys = _modules.Keys.OrderBy(k => k).ToList();
+        _behaviors.Clear();
+        foreach (var kv in cfg.Behaviors) _behaviors[kv.Key] = kv.Value;
+        _currency = _behaviors.GetValueOrDefault("currency", "PKR");
+        _decimals = _behaviors.GetValueOrDefault("decimals", "2");
+        _fields.Clear();
+        foreach (var kv in cfg.Fields)
+            _fields[kv.Key] = new FieldConfigClientDto { Visible = kv.Value.Visible, Required = kv.Value.Required, Label = kv.Value.Label };
+        _fieldKeys = _fields.Keys.OrderBy(k => k).ToList();
+        if (cfg.Labels.TryGetValue("en", out var en))
+        {
+            _labelSearch = en.GetValueOrDefault("POS_SearchPlaceholder", "");
+            _labelCheckout = en.GetValueOrDefault("POS_Checkout", "");
+            _labelNavPos = en.GetValueOrDefault("Nav_POS", "");
+        }
     }
 
     private async Task SaveAsync()
@@ -104,6 +249,71 @@
         var (ok, error, _) = await Api.UpdateSettingsAsync(_settings);
         if (!ok) Toast.ShowError(error ?? Locale["Toast_Error"]); else Toast.ShowSuccess(Locale["Toast_Saved"]);
     }
+
+    private async Task ApplyPresetAsync()
+    {
+        if (!await ConfirmAsync($"Reset all overrides and apply '{_selectedVertical}' defaults?")) return;
+        var (data, error) = await AppConfig.UpdateAsync(new AppConfigUpdateClientRequest
+        {
+            VerticalKey = _selectedVertical,
+            ApplyPresetDefaults = true
+        });
+        if (error is not null) { Toast.ShowError(error); return; }
+        LoadConfigEditor(data);
+        Toast.ShowSuccess("Preset applied");
+    }
+
+    private async Task SaveConfigAsync()
+    {
+        _behaviors["currency"] = _currency;
+        _behaviors["decimals"] = _decimals;
+        var labels = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["en"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        };
+        if (!string.IsNullOrWhiteSpace(_labelSearch)) labels["en"]["POS_SearchPlaceholder"] = _labelSearch;
+        if (!string.IsNullOrWhiteSpace(_labelCheckout)) labels["en"]["POS_Checkout"] = _labelCheckout;
+        if (!string.IsNullOrWhiteSpace(_labelNavPos)) labels["en"]["Nav_POS"] = _labelNavPos;
+
+        var (data, error) = await AppConfig.UpdateAsync(new AppConfigUpdateClientRequest
+        {
+            VerticalKey = _selectedVertical,
+            ApplyPresetDefaults = false,
+            Modules = new Dictionary<string, bool>(_modules),
+            Fields = new Dictionary<string, FieldConfigClientDto>(_fields),
+            Behaviors = new Dictionary<string, string>(_behaviors),
+            Brand = new Dictionary<string, string>
+            {
+                ["appName"] = _brandAppName,
+                ["shortName"] = _brandShort,
+                ["accentWord"] = _brandAccentWord,
+                ["logoUrl"] = _brandLogo,
+                ["theme"] = _brandTheme,
+                ["accent"] = _brandAccent
+            },
+            Labels = labels
+        });
+        if (error is not null) { Toast.ShowError(error); return; }
+        LoadConfigEditor(data);
+        Toast.ShowSuccess(Locale["Toast_Saved"]);
+    }
+
+    private async Task<bool> ConfirmAsync(string message)
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("confirm", message);
+        }
+        catch { return true; }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private bool IsBehaviorOn(string key) =>
+        string.Equals(_behaviors.GetValueOrDefault(key), "true", StringComparison.OrdinalIgnoreCase);
+
+    private void SetBehavior(string key, bool on) =>
+        _behaviors[key] = on ? "true" : "false";
 
     private async Task ChangePasswordAsync()
     {

@@ -1,13 +1,28 @@
 @page "/analytics"
 @attribute [Authorize]
 @inject CapApiService Api
+@inject AuthApiService Auth
+@inject IToastService Toast
+@inject IJSRuntime Js
 
-<PageHeader Title="Analytics" Subtitle="Date-range analytics from the API" />
+<PageHeader Title="Insights" Subtitle="Dead / fast stock, margin, ABC" />
 <div class="cap-card mb-3">
     <div class="row g-2 align-items-end">
-        <div class="col-md-3"><label class="form-label">From</label><input type="date" class="form-control" @bind="_from" /></div>
-        <div class="col-md-3"><label class="form-label">To</label><input type="date" class="form-control" @bind="_to" /></div>
-        <div class="col-md-3"><button class="btn btn-cap" @onclick="LoadAsync">Refresh</button></div>
+        <div class="col-md-2"><label class="form-label">From</label><input type="date" class="form-control" @bind="_from" /></div>
+        <div class="col-md-2"><label class="form-label">To</label><input type="date" class="form-control" @bind="_to" /></div>
+        <div class="col-md-2">
+            <label class="form-label">Branch</label>
+            <select class="form-select" @bind="_branchId">
+                <option value="">All / default</option>
+                @foreach (var b in _branches)
+                {
+                    <option value="@b">Branch @b</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2"><label class="form-label">Dead days</label><input type="number" class="form-control" @bind="_deadDays" /></div>
+        <div class="col-md-2"><button class="btn btn-cap" @onclick="LoadAsync">Refresh</button></div>
+        <div class="col-md-2"><button class="btn btn-outline-light" @onclick="ExportAsync" disabled="@_exporting">@(_exporting ? "Exporting…" : "Export XLSX")</button></div>
     </div>
 </div>
 <LoadingState Busy="@_busy" Error="@_error" />
@@ -15,14 +30,45 @@
 @if (_data is not null)
 {
     <div class="row g-3 mb-3">
-        <div class="col-md-6"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.TotalInventoryValue.ToString("N0")</span></div></div>
-        <div class="col-md-6"><div class="cap-card cap-kpi"><span class="label">Turnover ratio</span><span class="value">@_data.TurnoverRatio.ToString("N2")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.TotalInventoryValue.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Turnover</span><span class="value">@_data.TurnoverRatio.ToString("N2")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Gross margin</span><span class="value">@_data.GrossMarginAmount.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">GM%</span><span class="value">@_data.GrossMarginPercent.ToString("N1")%</span></div></div>
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <CapChart Title="Top selling revenue" Spec="@_topSpec" Height="240" />
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <CapChart Title="ABC class mix" Spec="@_abcSpec" Height="240" />
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <CapChart Title="Dead stock value" Spec="@_deadSpec" Height="240" />
+            </div>
+        </div>
     </div>
     <div class="row g-3">
         <div class="col-lg-4">
             <div class="cap-card">
-                <h5>Top selling</h5>
-                <ul class="mb-0">@foreach (var p in _data.TopSellingProducts.Take(8)) { <li>@p.ProductName — @p.Revenue.ToString("N0")</li> }</ul>
+                <h5>Top selling (with profit)</h5>
+                <ul class="mb-0">@foreach (var p in _data.TopSellingProducts.Take(8)) { <li>@p.ProductName — @p.Revenue.ToString("N0") / GM @p.Profit.ToString("N0")</li> }</ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <h5>Fast movers</h5>
+                <ul class="mb-0">@foreach (var p in _data.FastMovers.Take(8)) { <li>@p.ProductName — qty @p.QuantitySold.ToString("0.##")</li> }</ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <h5>Dead stock (≥ @_deadDays d)</h5>
+                <ul class="mb-0">@foreach (var p in _data.DeadStock.Take(8)) { <li>@p.ProductName — @p.StockValue.ToString("N0") (@p.DaysSinceLastSale d)</li> }</ul>
             </div>
         </div>
         <div class="col-lg-4">
@@ -42,17 +88,83 @@
 
 @code {
     private AnalyticsDto? _data;
+    private CapChartSpec? _topSpec;
+    private CapChartSpec? _abcSpec;
+    private CapChartSpec? _deadSpec;
     private DateTime? _from = DateTime.Today.AddDays(-30);
     private DateTime? _to = DateTime.Today;
+    private string _branchId = "";
+    private int _deadDays = 90;
+    private List<int> _branches = [];
     private bool _busy = true;
+    private bool _exporting;
     private string? _error;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var me = await Auth.MeAsync();
+        if (me.Data?.AllowedBranchIds is { Count: > 0 } ids)
+            _branches = ids;
+        else if (me.Data?.BranchId is int b)
+            _branches = [b];
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetAnalyticsAsync(_from, _to);
-        _data = data; _error = error; _busy = false;
+        int? branch = int.TryParse(_branchId, out var b) ? b : null;
+        var (data, error, _) = await Api.GetAnalyticsAsync(_from, _to, branch, _deadDays);
+        _data = data; _error = error;
+        BuildCharts();
+        _busy = false;
+    }
+
+    private void BuildCharts()
+    {
+        _topSpec = _abcSpec = _deadSpec = null;
+        if (_data is null) return;
+
+        var top = _data.TopSellingProducts.Take(8).Reverse().ToList();
+        if (top.Count > 0)
+            _topSpec = CapChartFactory.HorizontalBar(
+                top.Select(p => p.ProductName.Length > 22 ? p.ProductName[..21] + "…" : p.ProductName),
+                "Revenue",
+                top.Select(p => p.Revenue));
+
+        var abc = _data.AbcAnalysis
+            .GroupBy(a => a.AbcClass.ToString())
+            .Select(g => new { Class = g.Key, Value = g.Sum(x => x.AnnualUsageValue) })
+            .OrderBy(x => x.Class)
+            .ToList();
+        if (abc.Count > 0)
+            _abcSpec = CapChartFactory.Doughnut(abc.Select(a => $"Class {a.Class}"), "ABC", abc.Select(a => a.Value));
+
+        var dead = _data.DeadStock.OrderByDescending(d => d.StockValue).Take(8).Reverse().ToList();
+        if (dead.Count > 0)
+            _deadSpec = CapChartFactory.HorizontalBar(
+                dead.Select(p => p.ProductName.Length > 22 ? p.ProductName[..21] + "…" : p.ProductName),
+                "Stock value",
+                dead.Select(p => p.StockValue),
+                "accent2");
+    }
+
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        try
+        {
+            int? branch = int.TryParse(_branchId, out var b) ? b : null;
+            var q = $"?deadStockDays={_deadDays}&format=xlsx";
+            if (_from is DateTime f) q += $"&from={f:yyyy-MM-dd}";
+            if (_to is DateTime t) q += $"&to={t:yyyy-MM-dd}";
+            if (branch is int br) q += $"&branchId={br}";
+            var (bytes, error) = await Api.ExportReportAsync("analytics-export", q);
+            if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+            await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), "analytics.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Toast.ShowSuccess("Download started");
+        }
+        finally { _exporting = false; }
     }
 }

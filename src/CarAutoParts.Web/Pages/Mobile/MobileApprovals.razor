@@ -1,0 +1,102 @@
+@page "/m/approvals"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject PermissionService Perms
+@inject IToastService Toast
+
+<div class="cap-mobile">
+    <PageHeader Title="Approvals" Subtitle="Pending inbox">
+        <a class="btn btn-sm btn-outline-light" href="m">← Mobile</a>
+    </PageHeader>
+
+    @if (!_allowed)
+    {
+        <div class="alert alert-warning">Approvals access required.</div>
+    }
+    else
+    {
+        <LoadingState Busy="@_busy" Error="@_error" />
+
+        @if (_pending is not null)
+        {
+            @if (_pending.Count == 0 && !_busy)
+            {
+                <div class="cap-card mb-3"><p class="mb-0 text-secondary">No pending approvals.</p></div>
+            }
+            else
+            {
+                <div class="cap-m-cards mb-3">
+                    @foreach (var r in _pending)
+                    {
+                        <article class="cap-m-card">
+                            <div class="cap-m-card-head">
+                                <strong>@r.DocumentType #@r.DocumentId</strong>
+                                <span class="badge badge-soft">@r.Amount.ToString("N0")</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(r.DocumentNumber))
+                            {
+                                <div class="cap-m-card-meta">@r.DocumentNumber</div>
+                            }
+                            <div class="cap-m-card-meta">
+                                @r.RequestedByUserName · @r.RequestedAt.ToLocalTime().ToString("g")
+                            </div>
+                            @if (_canDecide)
+                            {
+                                <div class="cap-m-actions">
+                                    <button type="button" class="btn btn-success btn-lg flex-fill"
+                                            disabled="@_deciding" @onclick="() => DecideAsync(r.Id, true)">Approve</button>
+                                    <button type="button" class="btn btn-outline-danger btn-lg flex-fill"
+                                            disabled="@_deciding" @onclick="() => DecideAsync(r.Id, false)">Reject</button>
+                                </div>
+                            }
+                        </article>
+                    }
+                </div>
+            }
+        }
+
+        <p class="cap-m-footnote mb-0">
+            Policies &amp; full desk: <a href="approvals">Open Approvals</a>
+        </p>
+    }
+</div>
+
+@code {
+    private bool _allowed;
+    private bool _canDecide;
+    private bool _busy = true;
+    private bool _deciding;
+    private string? _error;
+    private List<ApprovalRequestWebDto>? _pending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allowed = await Perms.HasAsync(Permissions.ApprovalsView);
+        _canDecide = await Perms.HasAsync(Permissions.ApprovalsDecide);
+        if (!_allowed) { _busy = false; return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (pending, error, _) = await Api.GetPendingApprovalsAsync();
+        _pending = pending ?? [];
+        _error = error;
+        _busy = false;
+    }
+
+    private async Task DecideAsync(int id, bool approve)
+    {
+        if (!_canDecide) return;
+        _deciding = true;
+        var (ok, error, _) = await Api.DecideApprovalAsync(id, approve, null);
+        _deciding = false;
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else
+        {
+            Toast.ShowSuccess(approve ? "Approved" : "Rejected");
+            await LoadAsync();
+        }
+    }
+}

@@ -51,6 +51,9 @@ public class GoodsReceiptLine : CompanyEntity
     public DateTime? ExpiryDate { get; set; }
     /// <summary>JSON array of serial numbers captured at receive.</summary>
     public string? SerialNumbersJson { get; set; }
+    /// <summary>Putaway bin; when null at post, warehouse receiving-default location is used.</summary>
+    public int? WarehouseLocationId { get; set; }
+    public WarehouseLocation? WarehouseLocation { get; set; }
 }
 
 public class GrnLandedCostLine : CompanyEntity
@@ -97,6 +100,9 @@ public class CycleCount : CompanyEntity
     public string CountNumber { get; set; } = string.Empty;
     public int WarehouseId { get; set; }
     public Warehouse Warehouse { get; set; } = null!;
+    /// <summary>When set, count sheet is scoped to this bin; system qty comes from location balance.</summary>
+    public int? WarehouseLocationId { get; set; }
+    public WarehouseLocation? WarehouseLocation { get; set; }
     public DateTime CountDate { get; set; } = DateTime.UtcNow;
     public CycleCountStatus Status { get; set; } = CycleCountStatus.Draft;
     public string? Notes { get; set; }
@@ -109,6 +115,8 @@ public class CycleCountLine : CompanyEntity
     public CycleCount CycleCount { get; set; } = null!;
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
+    public int? WarehouseLocationId { get; set; }
+    public WarehouseLocation? WarehouseLocation { get; set; }
     public decimal SystemQuantity { get; set; }
     public decimal CountedQuantity { get; set; }
     public decimal Variance => CountedQuantity - SystemQuantity;
@@ -163,6 +171,9 @@ public class DeliveryNoteLine : CompanyEntity
     public Product Product { get; set; } = null!;
     public decimal QuantityOrdered { get; set; }
     public decimal QuantityShipped { get; set; }
+    public int? FromLocationId { get; set; }
+    public WarehouseLocation? FromLocation { get; set; }
+    public bool IsPicked { get; set; }
 }
 
 public class PriceList : CompanyEntity

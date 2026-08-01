@@ -1,0 +1,112 @@
+@page "/approvals"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Approvals" Subtitle="Pending requests and policies">
+    <a class="btn btn-sm btn-outline-light d-lg-none" href="m/approvals">Phone view</a>
+</PageHeader>
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_pending is not null)
+{
+    <div class="cap-card table-responsive mb-3 d-none d-md-block">
+        <h5>Pending</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Doc</th><th>Number</th><th>Amount</th><th>By</th><th>When</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var r in _pending)
+            {
+                <tr>
+                    <td>@r.DocumentType #@r.DocumentId</td>
+                    <td>@r.DocumentNumber</td>
+                    <td>@r.Amount.ToString("N0")</td>
+                    <td>@r.RequestedByUserName</td>
+                    <td>@r.RequestedAt.ToLocalTime().ToString("g")</td>
+                    <td class="cap-col-actions">
+                        <button class="btn btn-sm btn-outline-success" @onclick="() => DecideAsync(r.Id, true)">Approve</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DecideAsync(r.Id, false)">Reject</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cap-m-cards mb-3 d-md-none">
+        <h5 class="mb-2">Pending</h5>
+        @if (_pending.Count == 0)
+        {
+            <div class="cap-card"><p class="mb-0 text-secondary">No pending approvals.</p></div>
+        }
+        else
+        {
+            @foreach (var r in _pending)
+            {
+                <article class="cap-m-card">
+                    <div class="cap-m-card-head">
+                        <strong>@r.DocumentType #@r.DocumentId</strong>
+                        <span class="badge badge-soft">@r.Amount.ToString("N0")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(r.DocumentNumber))
+                    {
+                        <div class="cap-m-card-meta">@r.DocumentNumber</div>
+                    }
+                    <div class="cap-m-card-meta">@r.RequestedByUserName · @r.RequestedAt.ToLocalTime().ToString("g")</div>
+                    <div class="cap-m-actions">
+                        <button type="button" class="btn btn-success btn-lg flex-fill" @onclick="() => DecideAsync(r.Id, true)">Approve</button>
+                        <button type="button" class="btn btn-outline-danger btn-lg flex-fill" @onclick="() => DecideAsync(r.Id, false)">Reject</button>
+                    </div>
+                </article>
+            }
+        }
+    </div>
+}
+
+@if (_policies is not null)
+{
+    <div class="cap-card table-responsive mb-3 cap-desktop-only">
+        <h5>Policies</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Document</th><th>Min amount</th><th>Permission</th><th>Active</th></tr></thead>
+            <tbody>
+            @foreach (var p in _policies)
+            {
+                <tr>
+                    <td>@p.DocumentType</td>
+                    <td>@p.MinAmount.ToString("N0")</td>
+                    <td>@p.RequiredPermission</td>
+                    <td>@(p.IsActive ? "Yes" : "No")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<ApprovalRequestWebDto>? _pending;
+    private List<ApprovalPolicyWebDto>? _policies;
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (pending, e1, _) = await Api.GetPendingApprovalsAsync();
+        var (policies, e2, _) = await Api.GetApprovalPoliciesAsync();
+        _pending = pending;
+        _policies = policies;
+        _error = e1 ?? e2;
+        _busy = false;
+    }
+
+    private async Task DecideAsync(int id, bool approve)
+    {
+        var (ok, error, _) = await Api.DecideApprovalAsync(id, approve, null);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess(approve ? "Approved" : "Rejected"); await LoadAsync(); }
+    }
+}

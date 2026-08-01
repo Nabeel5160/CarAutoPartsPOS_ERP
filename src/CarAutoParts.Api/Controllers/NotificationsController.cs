@@ -1,4 +1,5 @@
 using CarAutoParts.Api.Contracts;
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -15,8 +16,11 @@ public class NotificationsController : ApiControllerBase
     public NotificationsController(INotificationService notifications) => _notifications = notifications;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] bool unreadOnly = false, CancellationToken ct = default)
-        => Ok(await _notifications.GetNotificationsAsync(unreadOnly, ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] QuerySpec query,
+        [FromQuery] bool unreadOnly = false,
+        CancellationToken ct = default)
+        => Ok(await _notifications.GetNotificationsAsync(query, unreadOnly, ct));
 
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)

@@ -1,4 +1,5 @@
 using AutoMapper;
+using CarAutoParts.Application.Enterprise;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Application.Mapping;
 using CarAutoParts.Application.Services;
@@ -157,9 +158,22 @@ public class TransferServiceTests
         var warehouses = new Repository<Warehouse>(db);
         var products = new Repository<Product>(db);
         var inventory = new Mock<IInventoryService>();
+        inventory.Setup(i => i.TransferOutAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result<decimal>.Success(10m));
+        inventory.Setup(i => i.TransferInAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result.Success());
         var currentUser = new CurrentUserService();
+        var company = new CurrentCompanyContext();
+        company.Set(1, 1, [1]);
+        var gl = new Mock<IGlPostingService>();
         var unitOfWork = new UnitOfWork(db);
         var mapper = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>()).CreateMapper();
-        return new TransferService(transfers, warehouses, products, inventory.Object, currentUser, unitOfWork, mapper);
+        var approvals = new Mock<IApprovalWorkflowService>();
+        approvals.Setup(a => a.EnsureApprovedOrQueueAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result.Success());
+        var moneyAudit = new Mock<IMoneyAuditService>();
+        moneyAudit.Setup(m => m.RecordAsync(It.IsAny<AuditAction>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return new TransferService(transfers, warehouses, products, inventory.Object, currentUser, company, gl.Object, unitOfWork, mapper, approvals.Object, moneyAudit.Object);
     }
 }

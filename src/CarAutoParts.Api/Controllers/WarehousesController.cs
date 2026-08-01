@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Products;
 using CarAutoParts.Application.Interfaces;
@@ -16,8 +17,22 @@ public class WarehousesController : ApiControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.WarehousesView)]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _warehouses.GetAllAsync(ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? search,
+        CancellationToken ct)
+    {
+        if (page is null && pageSize is null && string.IsNullOrWhiteSpace(search))
+            return Ok(await _warehouses.GetAllAsync(ct));
+
+        return Ok(await _warehouses.GetPagedAsync(new QuerySpec
+        {
+            Page = page ?? 1,
+            PageSize = pageSize ?? QueryLimits.DefaultPageSize,
+            Search = search
+        }, ct));
+    }
 
     [HttpPost]
     [Authorize(Policy = Permissions.WarehousesManage)]

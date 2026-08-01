@@ -3,8 +3,29 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="Accounting periods" Subtitle="Open / close fiscal periods (period lock)" />
+<PageHeader Title="Accounting periods" Subtitle="Close checklist gates draft journals and TB imbalance" />
 <LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_checklist is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Close checklist — @_checklist.PeriodName</h5>
+        <ul>
+            @foreach (var i in _checklist.Items)
+            {
+                <li class="@(i.IsBlocker && i.Count > 0 ? "text-warning" : "")">
+                    @i.Label: @i.Count (@i.Severity)
+                </li>
+            }
+        </ul>
+        <button class="btn btn-cap me-2" disabled="@(!_checklist.CanClose)" @onclick="() => ConfirmCloseAsync(false)">Close</button>
+        @if (_checklist.RequiresForceClose)
+        {
+            <button class="btn btn-outline-warning" @onclick="() => ConfirmCloseAsync(true)">Force close</button>
+        }
+        <button class="btn btn-outline-light ms-2" @onclick="() => _checklist = null">Cancel</button>
+    </div>
+}
 
 @if (_periods is not null)
 {
@@ -28,7 +49,7 @@
                             }
                             else
                             {
-                                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => CloseAsync(p.Id)">Close</button>
+                                <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => BeginCloseAsync(p.Id)">Close…</button>
                             }
                         </div>
                     </td>
@@ -41,6 +62,8 @@
 
 @code {
     private List<AccountingPeriodDto>? _periods;
+    private PeriodCloseChecklistDto? _checklist;
+    private int _closingId;
     private bool _busy = true;
     private string? _error;
 
@@ -53,11 +76,19 @@
         _periods = data; _error = error; _busy = false;
     }
 
-    private async Task CloseAsync(int id)
+    private async Task BeginCloseAsync(int id)
     {
-        var (ok, error, _) = await Api.ClosePeriodAsync(id);
+        _closingId = id;
+        var (data, error, _) = await Api.GetPeriodCloseChecklistAsync(id);
+        if (data is null) Toast.ShowError(error ?? "Checklist failed");
+        else _checklist = data;
+    }
+
+    private async Task ConfirmCloseAsync(bool force)
+    {
+        var (ok, error, _) = await Api.ClosePeriodAsync(_closingId, force);
         if (!ok) Toast.ShowError(error ?? "Close failed");
-        else { Toast.ShowSuccess("Period closed"); await ReloadAsync(); }
+        else { Toast.ShowSuccess("Period closed"); _checklist = null; await ReloadAsync(); }
     }
 
     private async Task ReopenAsync(int id)

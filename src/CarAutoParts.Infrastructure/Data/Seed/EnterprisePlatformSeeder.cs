@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Constants;
 using CarAutoParts.Domain.Entities;
 using CarAutoParts.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,16 @@ public sealed class EnterprisePlatformSeeder
             BranchId = branch.Id,
             Code = "CC-MAIN",
             Name = "Main Operations",
+            CreatedBy = "system"
+        });
+
+        _db.Tills.Add(new Till
+        {
+            CompanyId = company.Id,
+            BranchId = branch.Id,
+            Code = "TILL-01",
+            Name = "Front Counter",
+            IsActive = true,
             CreatedBy = "system"
         });
 
@@ -135,6 +146,7 @@ public sealed class EnterprisePlatformSeeder
         Add("1110", "Bank", AccountType.Asset);
         Add("1200", "Accounts Receivable", AccountType.Asset);
         Add("1300", "Inventory Asset", AccountType.Asset);
+        Add("1350", "Goods In Transit", AccountType.Asset);
         Add("1400", "GRN Clearing", AccountType.Liability);
         Add("2000", "Liabilities", AccountType.Liability, false);
         Add("2100", "Accounts Payable", AccountType.Liability);
@@ -145,6 +157,7 @@ public sealed class EnterprisePlatformSeeder
         Add("4100", "Sales Revenue", AccountType.Revenue);
         Add("5000", "Cost of Goods Sold", AccountType.CostOfGoods, false);
         Add("5100", "COGS", AccountType.CostOfGoods);
+        Add("5200", "Cash Over/Short", AccountType.Expense);
         Add("6000", "Expenses", AccountType.Expense, false);
         Add("6100", "Operating Expense", AccountType.Expense);
 
@@ -185,6 +198,26 @@ public sealed class EnterprisePlatformSeeder
             });
             await _db.SaveChangesAsync(ct);
         }
+
+        async Task EnsureAccount(string code, string name, AccountType type)
+        {
+            if (await _db.GlAccounts.IgnoreQueryFilters().AnyAsync(a => a.CompanyId == companyId && a.Code == code, ct))
+                return;
+            _db.GlAccounts.Add(new GlAccount
+            {
+                CompanyId = companyId,
+                Code = code,
+                Name = name,
+                AccountType = type,
+                IsPostable = true,
+                IsActive = true,
+                CreatedBy = "system"
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+
+        await EnsureAccount("1350", "Goods In Transit", AccountType.Asset);
+        await EnsureAccount("5200", "Cash Over/Short", AccountType.Expense);
 
         if (!await _db.NumberSequences.IgnoreQueryFilters()
                 .AnyAsync(s => s.CompanyId == companyId && s.DocumentType == "REQ", ct))
@@ -237,6 +270,7 @@ public sealed class EnterprisePlatformSeeder
         EnsureMap("PurchaseInvoice", "Payable", "2100");
         EnsureMap("PurchaseInvoice", "Inventory", "1300");
         EnsureMap("PurchaseInvoice", "GrnClearing", "1400");
+        EnsureMap("PurchaseInvoice", "Tax", "2200");
         EnsureMap("Grn", "Inventory", "1300");
         EnsureMap("Grn", "GrnClearing", "1400");
         EnsureMap("Payment", "Cash", "1100");
@@ -255,8 +289,38 @@ public sealed class EnterprisePlatformSeeder
         EnsureMap("PurchaseReturn", "Inventory", "1300");
         EnsureMap("PurchaseReturn", "Payable", "2100");
         EnsureMap("PurchaseReturn", "GrnClearing", "1400");
+        EnsureMap("PurchaseReturn", "Tax", "2200");
+        EnsureMap("InventoryTransfer", "Inventory", "1300");
+        EnsureMap("InventoryTransfer", "GoodsInTransit", "1350");
+        EnsureMap("CashierShift", "Cash", "1100");
+        EnsureMap("CashierShift", "OverShort", "5200");
+
+        // Phase 6 default approval policies (large PO / transfer / AP / period close)
+        async Task EnsurePolicy(string doc, decimal min, string perm)
+        {
+            if (await _db.ApprovalPolicies.IgnoreQueryFilters()
+                    .AnyAsync(p => p.CompanyId == companyId && p.DocumentType == doc && p.MinAmount == min, ct))
+                return;
+            _db.ApprovalPolicies.Add(new ApprovalPolicy
+            {
+                CompanyId = companyId,
+                DocumentType = doc,
+                MinAmount = min,
+                RequiredPermission = perm,
+                IsActive = true,
+                Notes = "Phase 6 default",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await EnsurePolicy("PurchaseOrder", 100_000m, Permissions.PurchasesApprove);
+        await EnsurePolicy("InventoryTransfer", 50_000m, Permissions.TransfersApprove);
+        await EnsurePolicy("PurchaseInvoice", 100_000m, Permissions.ApInvoiceManage);
+        await EnsurePolicy("PeriodClose", 0m, Permissions.FinanceForceClose);
 
         await _db.SaveChangesAsync(ct);
+
+        await EnsureDefaultTillsAsync(companyId, ct);
 
         // Loud guard: required money-path mappings must exist after seed.
         var required = new (string Doc, string Key)[]
@@ -284,6 +348,10 @@ public sealed class EnterprisePlatformSeeder
             ("Payment", "Bank"),
             ("Payment", "Receivable"),
             ("Payment", "Payable"),
+            ("InventoryTransfer", "Inventory"),
+            ("InventoryTransfer", "GoodsInTransit"),
+            ("CashierShift", "Cash"),
+            ("CashierShift", "OverShort"),
         };
 
         var present = await _db.AccountMappings.IgnoreQueryFilters()
@@ -306,5 +374,40 @@ public sealed class EnterprisePlatformSeeder
             _logger.LogError(msg);
             throw new InvalidOperationException(msg);
         }
+    }
+
+    private async Task EnsureDefaultTillsAsync(int companyId, CancellationToken ct)
+    {
+        var branches = await _db.Branches.IgnoreQueryFilters()
+            .Where(b => b.CompanyId == companyId && !b.IsDeleted && b.IsActive)
+            .Select(b => new { b.Id })
+            .ToListAsync(ct);
+
+        foreach (var branch in branches)
+        {
+            if (await _db.Tills.IgnoreQueryFilters()
+                    .AnyAsync(t => t.BranchId == branch.Id && !t.IsDeleted, ct))
+                continue;
+
+            var warehouseId = await _db.Warehouses.IgnoreQueryFilters()
+                .Where(w => w.BranchId == branch.Id && !w.IsDeleted)
+                .OrderByDescending(w => w.IsDefault)
+                .Select(w => (int?)w.Id)
+                .FirstOrDefaultAsync(ct);
+
+            _db.Tills.Add(new Till
+            {
+                CompanyId = companyId,
+                BranchId = branch.Id,
+                WarehouseId = warehouseId,
+                Code = "TILL-01",
+                Name = "Front Counter",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "system"
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 }

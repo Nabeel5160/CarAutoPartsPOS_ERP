@@ -106,6 +106,7 @@ public class DocumentPostingIntegrationTests
         Map("PurchaseInvoice", "Inventory", 4);
         Map("PurchaseInvoice", "GrnClearing", 5);
         Map("PurchaseInvoice", "Payable", 6);
+        Map("PurchaseInvoice", "Tax", 7);
         Map("Payment", "Cash", 1);
         Map("Payment", "Bank", 2);
         Map("Payment", "Receivable", 3);
@@ -168,12 +169,15 @@ public class DocumentPostingIntegrationTests
         var periods = new AccountingPeriodService(enterprise, companyCtx);
         var gl = new GlPostingService(enterprise, companyCtx, outbox.Object, periods);
         var inv = new EnterpriseInventoryService(enterprise, companyCtx, gl);
-        var purchase = new EnterprisePurchaseService(enterprise, companyCtx, gl, outbox.Object);
+        var approvals = new Mock<IApprovalWorkflowService>();
+        approvals.Setup(a => a.EnsureApprovedOrQueueAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result.Success());
+        var purchase = new EnterprisePurchaseService(enterprise, companyCtx, gl, outbox.Object, approvals.Object);
 
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock
             .Setup(i => i.DeductStockAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Application.Common.Result.Success());
+            .ReturnsAsync(Application.Common.Result<decimal>.Success(10m));
 
         var fbrMock = new Mock<IFbrService>();
         fbrMock
@@ -200,6 +204,7 @@ public class DocumentPostingIntegrationTests
             new Repository<CashierShift>(db),
             new Repository<HeldSale>(db),
             new Repository<ProductSupersession>(db),
+            new Repository<Warehouse>(db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(db),
@@ -209,7 +214,8 @@ public class DocumentPostingIntegrationTests
             companyCtx,
             new CurrentUserService(),
             salesEnt.Object,
-            new AtpService(enterprise));
+            new AtpService(enterprise),
+            PosCheckoutServiceTests.CreateFeatureGate());
 
         return new TestHarness
         {
@@ -320,7 +326,7 @@ public class DocumentPostingIntegrationTests
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock
             .Setup(i => i.DeductStockAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Application.Common.Result.Success());
+            .ReturnsAsync(Application.Common.Result<decimal>.Success(10m));
         var fbrMock = new Mock<IFbrService>();
         fbrMock
             .Setup(f => f.PostInvoiceAsync(It.IsAny<FbrInvoiceRequestDto>(), It.IsAny<CancellationToken>()))
@@ -344,6 +350,7 @@ public class DocumentPostingIntegrationTests
             new Repository<CashierShift>(h.Db),
             new Repository<HeldSale>(h.Db),
             new Repository<ProductSupersession>(h.Db),
+            new Repository<Warehouse>(h.Db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(h.Db),
@@ -353,12 +360,65 @@ public class DocumentPostingIntegrationTests
             h.Company,
             new CurrentUserService(),
             salesEnt.Object,
-            new AtpService(new EnterpriseDbAdapter(h.Db)));
+            new AtpService(new EnterpriseDbAdapter(h.Db)),
+            PosCheckoutServiceTests.CreateFeatureGate());
 
         await pos.CheckoutAsync(CashCheckout(), CancellationToken.None);
         fbrOutbox.Verify(o => o.EnqueueFbrRetry(It.IsAny<int>(), It.IsAny<string?>()), Times.Once);
         (await h.Db.SalesInvoices.CountAsync()).Should().Be(1);
         (await h.Db.Payments.CountAsync()).Should().Be(1);
         (await h.Db.JournalEntries.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Fbr_throw_does_not_roll_back_sale()
+    {
+        var h = await CreateAsync();
+        var inventoryMock = new Mock<IInventoryService>();
+        inventoryMock
+            .Setup(i => i.DeductStockAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result<decimal>.Success(10m));
+        var fbrMock = new Mock<IFbrService>();
+        fbrMock
+            .Setup(f => f.PostInvoiceAsync(It.IsAny<FbrInvoiceRequestDto>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("FBR transport exploded"));
+        var fbrOutbox = new Mock<IFbrOutboxService>();
+        var salesEnt = new Mock<IEnterpriseSalesService>();
+        salesEnt.Setup(s => s.GetPriceForProductAsync(It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int pid, int? _, decimal __, CancellationToken ___) =>
+                Application.Common.Result<PriceLookupResultDto>.Success(new PriceLookupResultDto(pid, 100, null, null)));
+        salesEnt.Setup(s => s.CheckCreditLimitAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result<CreditCheckResultDto>.Success(
+                new CreditCheckResultDto(true, 10000, 0, 10000, null)));
+        var pos = new PosCheckoutService(
+            new Repository<Product>(h.Db),
+            new Repository<SalesInvoice>(h.Db),
+            new Repository<FbrSubmission>(h.Db),
+            new Repository<CompanySettings>(h.Db),
+            new Repository<Payment>(h.Db),
+            new Repository<Customer>(h.Db),
+            new Repository<ProductKit>(h.Db),
+            new Repository<CashierShift>(h.Db),
+            new Repository<HeldSale>(h.Db),
+            new Repository<ProductSupersession>(h.Db),
+            new Repository<Warehouse>(h.Db),
+            inventoryMock.Object,
+            fbrMock.Object,
+            new UnitOfWork(h.Db),
+            new PosCheckoutValidator(),
+            h.Gl,
+            fbrOutbox.Object,
+            h.Company,
+            new CurrentUserService(),
+            salesEnt.Object,
+            new AtpService(new EnterpriseDbAdapter(h.Db)),
+            PosCheckoutServiceTests.CreateFeatureGate());
+
+        var result = await pos.CheckoutAsync(CashCheckout("idem-fbr-throw"), CancellationToken.None);
+        result.FbrSuccess.Should().BeFalse();
+        result.SalesInvoiceId.Should().BeGreaterThan(0);
+        fbrOutbox.Verify(o => o.EnqueueFbrRetry(It.IsAny<int>(), It.IsAny<string?>()), Times.Once);
+        (await h.Db.SalesInvoices.CountAsync()).Should().Be(1);
+        (await h.Db.Payments.CountAsync()).Should().Be(1);
     }
 }

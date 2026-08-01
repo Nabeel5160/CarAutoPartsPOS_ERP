@@ -52,6 +52,21 @@ public class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
     }
 }
 
+public class UserBranchConfiguration : IEntityTypeConfiguration<UserBranch>
+{
+    public void Configure(EntityTypeBuilder<UserBranch> builder)
+    {
+        builder.ToTable("UserBranches");
+        builder.HasIndex(ub => new { ub.UserId, ub.BranchId })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
+
+        builder.HasOne(ub => ub.User).WithMany(u => u.UserBranches).HasForeignKey(ub => ub.UserId);
+        builder.HasOne(ub => ub.Branch).WithMany().HasForeignKey(ub => ub.BranchId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermission>
 {
     public void Configure(EntityTypeBuilder<RolePermission> builder)
@@ -95,6 +110,8 @@ public class CompanySettingsConfiguration : IEntityTypeConfiguration<CompanySett
         builder.ToTable("CompanySettings");
         builder.Property(s => s.CompanyName).HasMaxLength(200).IsRequired();
         builder.Property(s => s.LogoPath).HasMaxLength(500);
+        builder.Property(s => s.LogoUrl).HasMaxLength(500);
+        builder.Property(s => s.VerticalKey).HasMaxLength(40).IsRequired();
         builder.Property(s => s.Phone).HasMaxLength(30);
         builder.Property(s => s.Email).HasMaxLength(100);
         builder.Property(s => s.Ntn).HasMaxLength(20);
@@ -107,6 +124,21 @@ public class CompanySettingsConfiguration : IEntityTypeConfiguration<CompanySett
         builder.Property(s => s.GrnOverReceivePercent).HasPrecision(9, 4);
         builder.Property(s => s.ThreeWayQtyTolerancePercent).HasPrecision(9, 4);
         builder.Property(s => s.ThreeWayPriceTolerancePercent).HasPrecision(9, 4);
+    }
+}
+
+public class AppConfigEntryConfiguration : IEntityTypeConfiguration<AppConfigEntry>
+{
+    public void Configure(EntityTypeBuilder<AppConfigEntry> builder)
+    {
+        builder.ToTable("AppConfigEntries");
+        builder.Property(e => e.Scope).HasMaxLength(40).IsRequired();
+        builder.Property(e => e.Key).HasMaxLength(120).IsRequired();
+        builder.Property(e => e.Culture).HasMaxLength(10);
+        builder.Property(e => e.Value).HasMaxLength(2000).IsRequired();
+        builder.HasIndex(e => new { e.Scope, e.Key, e.Culture })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
     }
 }
 

@@ -158,7 +158,9 @@ try
 catch (Exception ex)
 {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-    logger.LogError(ex, "Database initialization failed");
+    logger.LogError(ex,
+        "Database initialization failed — API will start but migrations/seed did not complete. " +
+        "Check connection string, required account mappings, and Seed:DemoData (Production hard-blocks demo seed). See docs/DEPLOYMENT.md and docs/PILOT-RUNBOOK.md.");
 }
 
 app.Run();

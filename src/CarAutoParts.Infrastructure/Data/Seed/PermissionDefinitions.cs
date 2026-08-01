@@ -2,7 +2,7 @@ using CarAutoParts.Application.Constants;
 
 namespace CarAutoParts.Infrastructure.Data.Seed;
 
-internal static class PermissionDefinitions
+public static class PermissionDefinitions
 {
     public static readonly (string Code, string Name, string Module)[] All =
     [
@@ -48,6 +48,11 @@ internal static class PermissionDefinitions
         (Permissions.UsersView, "View Users", "Users"),
         (Permissions.UsersManage, "Manage Users", "Users"),
         (Permissions.AuditView, "View Audit Logs", "Audit"),
+        (Permissions.ApprovalsView, "View Approvals", "Governance"),
+        (Permissions.ApprovalsDecide, "Decide Approvals", "Governance"),
+        (Permissions.ApprovalsManage, "Manage Approval Policies", "Governance"),
+        (Permissions.FinanceVoid, "Void Posted Documents", "Finance"),
+        (Permissions.MfaManage, "Manage MFA / Reset", "Users"),
         (Permissions.SettingsView, "View Settings", "Settings"),
         (Permissions.SettingsManage, "Manage Settings", "Settings"),
         (Permissions.BackupView, "View Backups", "Backups"),
@@ -57,12 +62,14 @@ internal static class PermissionDefinitions
         (Permissions.FinanceView, "View Finance", "Finance"),
         (Permissions.FinanceManage, "Manage Finance", "Finance"),
         (Permissions.FinancePost, "Post Journals", "Finance"),
+        (Permissions.FinanceForceClose, "Force Close Period", "Finance"),
         (Permissions.GrnManage, "Manage GRN", "Purchases"),
         (Permissions.ApInvoiceManage, "Manage AP Invoices", "Purchases"),
         (Permissions.CycleCountManage, "Manage Cycle Counts", "Inventory"),
         (Permissions.QuotationsManage, "Manage Quotations", "Sales"),
         (Permissions.DeliveriesManage, "Manage Deliveries", "Sales"),
         (Permissions.PriceListsManage, "Manage Price Lists", "Sales"),
+        (Permissions.SalesPriceOverride, "Override Wholesale Prices", "Sales"),
         (Permissions.KitsManage, "Manage Kits", "Products")
     ];
 
@@ -86,12 +93,14 @@ internal static class PermissionDefinitions
         Permissions.ReportsView, Permissions.ReportsExport,
         Permissions.AnalyticsView,
         Permissions.AuditView,
+        Permissions.ApprovalsView, Permissions.ApprovalsDecide, Permissions.ApprovalsManage, Permissions.FinanceVoid,
         Permissions.SettingsView, Permissions.SettingsManage,
         Permissions.BackupView,
         Permissions.PlatformView,
-        Permissions.FinanceView, Permissions.FinanceManage, Permissions.FinancePost,
+        Permissions.FinanceView, Permissions.FinanceManage, Permissions.FinancePost, Permissions.FinanceForceClose,
         Permissions.GrnManage, Permissions.ApInvoiceManage, Permissions.CycleCountManage,
-        Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.PriceListsManage, Permissions.KitsManage
+        Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.PriceListsManage,
+        Permissions.SalesPriceOverride, Permissions.KitsManage
     ];
 
     public static readonly string[] SalesUser =
@@ -106,7 +115,7 @@ internal static class PermissionDefinitions
         Permissions.PosShift,
         Permissions.ReturnsManage,
         Permissions.ReportsView,
-        Permissions.QuotationsManage, Permissions.DeliveriesManage
+        Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.SalesPriceOverride
     ];
 
     public static readonly string[] InventoryUser =
@@ -123,4 +132,46 @@ internal static class PermissionDefinitions
         Permissions.ReportsView,
         Permissions.GrnManage, Permissions.CycleCountManage, Permissions.KitsManage
     ];
+
+    /// <summary>Counter cashier — POS + shifts; no price override.</summary>
+    public static readonly string[] Cashier =
+    [
+        Permissions.DashboardView,
+        Permissions.ProductsView,
+        Permissions.CustomersView,
+        Permissions.SalesView,
+        Permissions.PosCheckout,
+        Permissions.PosHold,
+        Permissions.PosShift,
+        Permissions.ReturnsManage
+    ];
+
+    /// <summary>Back-office accountant — finance/reports without POS checkout.</summary>
+    public static readonly string[] Accountant =
+    [
+        Permissions.DashboardView,
+        Permissions.ProductsView,
+        Permissions.SuppliersView,
+        Permissions.CustomersView,
+        Permissions.PurchasesView,
+        Permissions.SalesView,
+        Permissions.ReportsView, Permissions.ReportsExport,
+        Permissions.AnalyticsView,
+        Permissions.AuditView,
+        Permissions.ApprovalsView, Permissions.ApprovalsDecide,
+        Permissions.FinanceView, Permissions.FinanceManage, Permissions.FinancePost, Permissions.FinanceVoid,
+        Permissions.ApInvoiceManage,
+        Permissions.SettingsView
+    ];
+
+    public static IReadOnlyDictionary<string, string[]> RoleTemplates { get; } =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Admin"] = Admin,
+            ["Manager"] = Manager,
+            ["SalesUser"] = SalesUser,
+            ["InventoryUser"] = InventoryUser,
+            ["Cashier"] = Cashier,
+            ["Accountant"] = Accountant
+        };
 }

@@ -11,6 +11,7 @@ public sealed class CreateGrnLineRequest
     public string? BatchNumber { get; set; }
     public DateTime? ExpiryDate { get; set; }
     public List<string>? SerialNumbers { get; set; }
+    public int? WarehouseLocationId { get; set; }
 }
 
 public sealed class CreateGrnLandedCostLineRequest
@@ -40,6 +41,7 @@ public sealed class GoodsReceiptLineDto
     public decimal UnitCost { get; set; }
     public int? PurchaseOrderLineId { get; set; }
     public List<string>? SerialNumbers { get; set; }
+    public int? WarehouseLocationId { get; set; }
 }
 
 public sealed class GrnLandedCostLineDto
@@ -151,6 +153,8 @@ public sealed class SalesQuotationLineDto
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
+    public string? PriceListName { get; set; }
+    public string? PriceSource { get; set; }
 }
 
 public sealed class SalesQuotationDto
@@ -164,6 +168,8 @@ public sealed class SalesQuotationDto
     public decimal GrandTotal { get; set; }
     public string? Notes { get; set; }
     public List<SalesQuotationLineDto> Lines { get; set; } = [];
+    public int? ConvertedSalesOrderId { get; set; }
+    public string? ConvertedOrderNumber { get; set; }
 }
 
 public sealed class ConvertQuotationResultDto
@@ -171,6 +177,7 @@ public sealed class ConvertQuotationResultDto
     public int SalesOrderId { get; set; }
     public string OrderNumber { get; set; } = "";
     public int QuotationId { get; set; }
+    public string QuotationNumber { get; set; } = "";
 }
 
 // —— Deliveries ——
@@ -190,12 +197,20 @@ public sealed class CreateDeliveryNoteRequest
     public List<CreateDeliveryNoteLineRequest> Lines { get; set; } = [];
 }
 
+public sealed class CreateDeliveryFromSalesOrderRequest
+{
+    public int WarehouseId { get; set; }
+    public DateTime? DeliveryDate { get; set; }
+}
+
 public sealed class DeliveryNoteLineDto
 {
     public int Id { get; set; }
     public int ProductId { get; set; }
     public decimal QuantityOrdered { get; set; }
     public decimal QuantityShipped { get; set; }
+    public int? FromLocationId { get; set; }
+    public bool IsPicked { get; set; }
 }
 
 public sealed class DeliveryNoteDto
@@ -203,10 +218,71 @@ public sealed class DeliveryNoteDto
     public int Id { get; set; }
     public string DeliveryNumber { get; set; } = "";
     public int? SalesOrderId { get; set; }
+    public string? SalesOrderNumber { get; set; }
     public int WarehouseId { get; set; }
     public DateTime DeliveryDate { get; set; }
     public int Status { get; set; }
     public List<DeliveryNoteLineDto> Lines { get; set; } = [];
+    public int? InvoiceId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public bool AllLinesPicked { get; set; }
+}
+
+public sealed class WholesaleSalesOrderLineDto
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal { get; set; }
+    public string? PriceListName { get; set; }
+    public string? PriceSource { get; set; }
+}
+
+public sealed class WholesaleSalesOrderDto
+{
+    public int Id { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public int? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public int Status { get; set; }
+    public DateTime OrderDate { get; set; }
+    public decimal GrandTotal { get; set; }
+    public int? QuotationId { get; set; }
+    public string? QuotationNumber { get; set; }
+    public int? DeliveryId { get; set; }
+    public string? DeliveryNumber { get; set; }
+    public int? DeliveryStatus { get; set; }
+    public int? InvoiceId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public List<WholesaleSalesOrderLineDto> Lines { get; set; } = [];
+}
+
+public sealed class WholesaleInvoiceResultDto
+{
+    public int InvoiceId { get; set; }
+    public string InvoiceNumber { get; set; } = "";
+    public int SalesOrderId { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public int? DeliveryId { get; set; }
+    public string? DeliveryNumber { get; set; }
+}
+
+public sealed class PriceLookupResultDto
+{
+    public int ProductId { get; set; }
+    public decimal UnitPrice { get; set; }
+    public int? PriceListId { get; set; }
+    public string? PriceListName { get; set; }
+}
+
+public sealed class CreditCheckResultDto
+{
+    public bool Approved { get; set; }
+    public decimal CreditLimit { get; set; }
+    public decimal CurrentBalance { get; set; }
+    public decimal AvailableCredit { get; set; }
+    public string? Message { get; set; }
 }
 
 // —— Account mappings ——
@@ -265,6 +341,7 @@ public sealed class CreateCycleCountLineRequest
 {
     public int ProductId { get; set; }
     public decimal CountedQuantity { get; set; }
+    public int? WarehouseLocationId { get; set; }
 }
 
 public sealed class CreateCycleCountRequest
@@ -273,6 +350,7 @@ public sealed class CreateCycleCountRequest
     public DateTime CountDate { get; set; } = DateTime.UtcNow;
     public string? Notes { get; set; }
     public List<CreateCycleCountLineRequest>? Lines { get; set; }
+    public int? WarehouseLocationId { get; set; }
 }
 
 public sealed class CycleCountLineDto
@@ -282,6 +360,8 @@ public sealed class CycleCountLineDto
     public decimal SystemQuantity { get; set; }
     public decimal CountedQuantity { get; set; }
     public decimal Variance { get; set; }
+    public int? WarehouseLocationId { get; set; }
+    public string? LocationCode { get; set; }
 }
 
 public sealed class CycleCountDto
@@ -293,6 +373,7 @@ public sealed class CycleCountDto
     public int Status { get; set; }
     public string? Notes { get; set; }
     public List<CycleCountLineDto> Lines { get; set; } = [];
+    public int? WarehouseLocationId { get; set; }
 }
 
 // —— Kits ——
@@ -381,6 +462,17 @@ public sealed class FbrSubmissionDto
     public int Status { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTime SubmittedAt { get; set; }
+}
+
+public sealed class FbrMetricsDto
+{
+    public int SuccessCount { get; set; }
+    public int StubCount { get; set; }
+    public int FailedCount { get; set; }
+    public int PendingCount { get; set; }
+    public int TotalCount { get; set; }
+    public decimal SuccessRatePercent { get; set; }
+    public int NeedsRetryCount { get; set; }
 }
 
 // —— Aging ——

@@ -24,6 +24,19 @@ public class DemoDataSeeder
         if (await _db.Products.AnyAsync(ct))
         {
             _logger.LogInformation("Demo data already present; skipping.");
+            await AssignDefaultBranchAclAsync(ct);
+            return;
+        }
+
+        var vertical = await _db.CompanySettings.AsNoTracking()
+            .Where(s => !s.IsDeleted)
+            .Select(s => s.VerticalKey)
+            .FirstOrDefaultAsync(ct) ?? "auto-parts";
+
+        if (!string.Equals(vertical, "auto-parts", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("Skipping auto-parts demo products for vertical {Vertical}.", vertical);
+            await AssignDefaultBranchAclAsync(ct);
             return;
         }
 
@@ -636,6 +649,7 @@ public class DemoDataSeeder
             DisplayName = "Store Manager",
             Email = "manager@carautoparts.local",
             IsActive = true,
+            MustChangePassword = false,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = SeedUser
         };
@@ -648,6 +662,7 @@ public class DemoDataSeeder
             DisplayName = "Sales Counter",
             Email = "sales@carautoparts.local",
             IsActive = true,
+            MustChangePassword = false,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = SeedUser
         };
@@ -658,6 +673,96 @@ public class DemoDataSeeder
         _db.UserRoles.AddRange(
             new UserRole { UserId = manager.Id, RoleId = roles["Manager"].Id, CreatedAt = DateTime.UtcNow, CreatedBy = SeedUser },
             new UserRole { UserId = sales.Id, RoleId = roles["SalesUser"].Id, CreatedAt = DateTime.UtcNow, CreatedBy = SeedUser });
+
+        if (roles.TryGetValue("Cashier", out var cashierRole) && !await _db.Users.AnyAsync(u => u.Username == "cashier", ct))
+        {
+            var cashier = new AppUser
+            {
+                Username = "cashier",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("cashier123"),
+                DisplayName = "Counter Cashier",
+                Email = "cashier@carautoparts.local",
+                IsActive = true,
+                MustChangePassword = false,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            _db.Users.Add(cashier);
+            await _db.SaveChangesAsync(ct);
+            _db.UserRoles.Add(new UserRole { UserId = cashier.Id, RoleId = cashierRole.Id, CreatedAt = DateTime.UtcNow, CreatedBy = SeedUser });
+        }
+
+        if (roles.TryGetValue("InventoryUser", out var invRole) && !await _db.Users.AnyAsync(u => u.Username == "inventory", ct))
+        {
+            var inv = new AppUser
+            {
+                Username = "inventory",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("inventory123"),
+                DisplayName = "Inventory Clerk",
+                Email = "inventory@carautoparts.local",
+                IsActive = true,
+                MustChangePassword = false,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            _db.Users.Add(inv);
+            await _db.SaveChangesAsync(ct);
+            _db.UserRoles.Add(new UserRole { UserId = inv.Id, RoleId = invRole.Id, CreatedAt = DateTime.UtcNow, CreatedBy = SeedUser });
+        }
+
+        if (roles.TryGetValue("Accountant", out var acctRole) && !await _db.Users.AnyAsync(u => u.Username == "accountant", ct))
+        {
+            var acct = new AppUser
+            {
+                Username = "accountant",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("accountant123"),
+                DisplayName = "Store Accountant",
+                Email = "accountant@carautoparts.local",
+                IsActive = true,
+                MustChangePassword = false,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            _db.Users.Add(acct);
+            await _db.SaveChangesAsync(ct);
+            _db.UserRoles.Add(new UserRole { UserId = acct.Id, RoleId = acctRole.Id, CreatedAt = DateTime.UtcNow, CreatedBy = SeedUser });
+        }
+
+        await _db.SaveChangesAsync(ct);
+        await AssignDefaultBranchAclAsync(ct);
+    }
+
+    private async Task AssignDefaultBranchAclAsync(CancellationToken ct)
+    {
+        var defaultBranchId = await _db.Branches.AsNoTracking()
+            .Where(b => b.IsActive && !b.IsDeleted && b.IsDefault)
+            .Select(b => (int?)b.Id)
+            .FirstOrDefaultAsync(ct);
+        if (defaultBranchId is null)
+            return;
+
+        // Use List (not array) so EF binds Enumerable.Contains — array.Contains can resolve to
+        // MemoryExtensions.Contains(ReadOnlySpan) and blow up seed with "ReadOnlySpan`1[System.String]".
+        var demoUsernames = new List<string> { "manager", "sales", "cashier", "inventory", "accountant" };
+        var users = await _db.Users
+            .Where(u => demoUsernames.Contains(u.Username) && !u.IsDeleted)
+            .Include(u => u.UserBranches)
+            .ToListAsync(ct);
+
+        foreach (var user in users)
+        {
+            if (user.UserBranches.Any(ub => !ub.IsDeleted))
+                continue;
+
+            _db.UserBranches.Add(new UserBranch
+            {
+                UserId = user.Id,
+                BranchId = defaultBranchId.Value,
+                IsDefault = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            });
+        }
 
         await _db.SaveChangesAsync(ct);
     }

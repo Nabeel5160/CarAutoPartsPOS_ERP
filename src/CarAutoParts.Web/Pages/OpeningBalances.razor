@@ -1,0 +1,110 @@
+@page "/opening-balances"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Opening balances" Subtitle="Go-live cutover: inventory, AR/AP, optional GL lines (equity 3100 offsets)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2">
+        <div class="col-md-3"><label class="form-label">Cutover date</label><input type="date" class="form-control" @bind="_cutover" /></div>
+        <div class="col-md-9"><label class="form-label">Notes</label><input class="form-control" @bind="_notes" /></div>
+        <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_invProductId" /></div>
+        <div class="col-md-2"><label class="form-label">Warehouse</label><input type="number" class="form-control" @bind="_invWarehouseId" /></div>
+        <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_invQty" /></div>
+        <div class="col-md-2"><label class="form-label">Unit cost</label><input type="number" class="form-control" @bind="_invCost" /></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddInv">Add inventory line</button></div>
+        <div class="col-md-3"><label class="form-label">Customer Id</label><input type="number" class="form-control" @bind="_arCustomerId" /></div>
+        <div class="col-md-3"><label class="form-label">AR amount</label><input type="number" class="form-control" @bind="_arAmount" /></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddAr">Add AR</button></div>
+        <div class="col-md-3"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_apSupplierId" /></div>
+        <div class="col-md-3"><label class="form-label">AP amount</label><input type="number" class="form-control" @bind="_apAmount" /></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddAp">Add AP</button></div>
+    </div>
+    <ul class="mt-3">
+        @foreach (var i in _inv) { <li>Inv P:@i.ProductId W:@i.WarehouseId Q:@i.Quantity @@ @i.UnitCost</li> }
+        @foreach (var a in _ar) { <li>AR C:@a.CustomerId = @a.Amount</li> }
+        @foreach (var a in _ap) { <li>AP S:@a.SupplierId = @a.Amount</li> }
+    </ul>
+    <button class="btn btn-cap" @onclick="PostAsync" disabled="@(_busy || (_inv.Count + _ar.Count + _ap.Count) == 0)">Post opening balances</button>
+</div>
+
+@if (_batches is not null)
+{
+    <div class="cap-card">
+        <table class="table table-cap mb-0">
+            <thead><tr><th>Batch</th><th>Cutover</th><th>Status</th><th>Journal</th></tr></thead>
+            <tbody>
+            @foreach (var b in _batches)
+            {
+                <tr><td>@b.BatchNumber</td><td>@b.CutoverDate.ToString("yyyy-MM-dd")</td><td>@b.Status</td><td>@b.JournalEntryId</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private bool _busy;
+    private string? _error;
+    private DateTime _cutover = DateTime.Today;
+    private string? _notes;
+    private int _invProductId = 1, _invWarehouseId = 1;
+    private decimal _invQty, _invCost, _arAmount, _apAmount;
+    private int _arCustomerId = 1, _apSupplierId = 1;
+    private readonly List<InvLine> _inv = [];
+    private readonly List<ArLine> _ar = [];
+    private readonly List<ApLine> _ap = [];
+    private List<OpeningBalanceBatchDto>? _batches;
+
+    private sealed class InvLine { public int ProductId { get; set; } public int WarehouseId { get; set; } public decimal Quantity { get; set; } public decimal UnitCost { get; set; } }
+    private sealed class ArLine { public int CustomerId { get; set; } public decimal Amount { get; set; } }
+    private sealed class ApLine { public int SupplierId { get; set; } public decimal Amount { get; set; } }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetOpeningBalancesAsync();
+        _batches = data; _error = error;
+    }
+
+    private void AddInv()
+    {
+        if (_invQty <= 0) return;
+        _inv.Add(new InvLine { ProductId = _invProductId, WarehouseId = _invWarehouseId, Quantity = _invQty, UnitCost = _invCost });
+    }
+    private void AddAr()
+    {
+        if (_arAmount <= 0) return;
+        _ar.Add(new ArLine { CustomerId = _arCustomerId, Amount = _arAmount });
+    }
+    private void AddAp()
+    {
+        if (_apAmount <= 0) return;
+        _ap.Add(new ApLine { SupplierId = _apSupplierId, Amount = _apAmount });
+    }
+
+    private async Task PostAsync()
+    {
+        _busy = true;
+        var body = new
+        {
+            CutoverDate = _cutover,
+            Notes = _notes,
+            InventoryLines = _inv,
+            ArLines = _ar,
+            ApLines = _ap,
+            GlLines = Array.Empty<object>()
+        };
+        var (data, error, _) = await Api.PostOpeningBalancesAsync(body);
+        _busy = false;
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else
+        {
+            Toast.ShowSuccess($"Posted {data.BatchNumber}");
+            _inv.Clear(); _ar.Clear(); _ap.Clear();
+            var (list, _, _) = await Api.GetOpeningBalancesAsync();
+            _batches = list;
+        }
+    }
+}

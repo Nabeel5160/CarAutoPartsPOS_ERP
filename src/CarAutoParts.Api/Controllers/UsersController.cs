@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Auth;
 using CarAutoParts.Application.Interfaces;
@@ -16,8 +17,22 @@ public class UsersController : ApiControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.UsersView)]
-    public async Task<IActionResult> GetAll(CancellationToken ct)
-        => Ok(await _users.GetUsersAsync(ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        [FromQuery] string? search,
+        CancellationToken ct)
+    {
+        if (page is null && pageSize is null && string.IsNullOrWhiteSpace(search))
+            return Ok(await _users.GetUsersAsync(ct));
+
+        return Ok(await _users.GetUsersPagedAsync(new QuerySpec
+        {
+            Page = page ?? 1,
+            PageSize = pageSize ?? QueryLimits.DefaultPageSize,
+            Search = search
+        }, ct));
+    }
 
     [HttpPost]
     [Authorize(Policy = Permissions.UsersManage)]

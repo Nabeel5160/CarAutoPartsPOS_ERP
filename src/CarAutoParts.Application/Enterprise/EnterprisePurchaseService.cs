@@ -1,5 +1,6 @@
 using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Application.Services;
 using CarAutoParts.Domain.Entities;
 using CarAutoParts.Domain.Services;
 using Microsoft.EntityFrameworkCore;
@@ -13,31 +14,54 @@ public sealed class EnterprisePurchaseService : IEnterprisePurchaseService
     private readonly ICurrentCompanyContext _company;
     private readonly IGlPostingService _glPosting;
     private readonly IOutboxWriter _outbox;
+    private readonly IApprovalWorkflowService _approvals;
 
     public EnterprisePurchaseService(
         IEnterpriseDb db,
         ICurrentCompanyContext company,
         IGlPostingService glPosting,
-        IOutboxWriter outbox)
+        IOutboxWriter outbox,
+        IApprovalWorkflowService approvals)
     {
         _db = db;
         _company = company;
         _glPosting = glPosting;
         _outbox = outbox;
+        _approvals = approvals;
     }
 
-    public async Task<IReadOnlyList<PurchaseInvoiceDto>> GetPurchaseInvoicesAsync(CancellationToken ct = default)
+    public async Task<PagedResult<PurchaseInvoiceDto>> GetPurchaseInvoicesAsync(QuerySpec? query = null, CancellationToken ct = default)
     {
         EnsureCompanyOrThrow();
+        query ??= new QuerySpec();
 
-        var items = await _db.PurchaseInvoices
-            .AsNoTracking()
+        var baseQ = _db.PurchaseInvoices.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            baseQ = baseQ.Where(i => i.InvoiceNumber.Contains(s));
+        }
+
+        var total = await baseQ.CountAsync(ct);
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize <= 0 ? QueryLimits.DefaultPageSize : query.PageSize, 1, QueryLimits.MaxPageSize);
+
+        var items = await baseQ
             .Include(i => i.Lines)
             .OrderByDescending(i => i.InvoiceDate)
             .ThenByDescending(i => i.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            
             .ToListAsync(ct);
 
-        return items.Select(MapInvoice).ToList();
+        return new PagedResult<PurchaseInvoiceDto>
+        {
+            Items = items.Select(MapInvoice).ToList(),
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<Result<PurchaseInvoiceDto>> CreatePurchaseInvoiceAsync(
@@ -197,12 +221,21 @@ public sealed class EnterprisePurchaseService : IEnterprisePurchaseService
         if (!invoice.ThreeWayMatched)
             return Result<PurchaseInvoiceDto>.Failure("Invoice must pass three-way match before posting.");
 
+        var gate = await _approvals.EnsureApprovedOrQueueAsync(
+            "PurchaseInvoice", invoice.Id, invoice.InvoiceNumber, invoice.GrandTotal, ct);
+        if (!gate.Succeeded)
+            return Result<PurchaseInvoiceDto>.Failure(gate.Error ?? "Approval required.");
+
         var debitKey = invoice.GoodsReceiptNoteId.HasValue ? "GrnClearing" : "Inventory";
+        var exTax = invoice.GrandTotal - invoice.TaxAmount;
+        if (exTax < 0) exTax = 0;
         var glLines = new List<GlPostingLineRequest>
         {
-            new(debitKey, invoice.GrandTotal, true, $"PI {invoice.InvoiceNumber} {debitKey}"),
+            new(debitKey, exTax > 0 ? exTax : invoice.GrandTotal, true, $"PI {invoice.InvoiceNumber} {debitKey}"),
             new("Payable", invoice.GrandTotal, false, $"PI {invoice.InvoiceNumber} AP")
         };
+        if (invoice.TaxAmount > 0)
+            glLines.Insert(1, new("Tax", invoice.TaxAmount, true, $"PI {invoice.InvoiceNumber} Tax"));
 
         var journalResult = await _glPosting.PostDocumentAsync(
             "PurchaseInvoice",

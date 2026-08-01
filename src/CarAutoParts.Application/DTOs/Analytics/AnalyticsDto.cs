@@ -6,7 +6,12 @@ public record AnalyticsDto(
     IReadOnlyList<SlowMovingProductDto> SlowMovingProducts,
     IReadOnlyList<AbcAnalysisItemDto> AbcAnalysis,
     decimal TotalInventoryValue,
-    decimal TurnoverRatio);
+    decimal TurnoverRatio,
+    IReadOnlyList<DeadStockItemDto> DeadStock,
+    IReadOnlyList<FastMoverItemDto> FastMovers,
+    decimal GrossMarginAmount,
+    decimal GrossMarginPercent,
+    int? BranchId);
 
 /// <summary>Top-selling product analytics row.</summary>
 public record TopProductAnalyticsDto(
@@ -33,3 +38,21 @@ public record AbcAnalysisItemDto(
     decimal AnnualUsageValue,
     decimal CumulativePercentage,
     char AbcClass);
+
+/// <summary>Dead stock: on-hand with no/aged sales.</summary>
+public record DeadStockItemDto(
+    int ProductId,
+    string ProductName,
+    string Sku,
+    decimal QuantityOnHand,
+    decimal StockValue,
+    int DaysSinceLastSale);
+
+/// <summary>Fast mover by period velocity.</summary>
+public record FastMoverItemDto(
+    int ProductId,
+    string ProductName,
+    string Sku,
+    decimal QuantitySold,
+    decimal Revenue,
+    decimal Profit);

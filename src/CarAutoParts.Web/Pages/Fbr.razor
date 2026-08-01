@@ -3,7 +3,28 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="FBR Invoicing" Subtitle="POST /api/fbr/invoices + submission history" />
+<PageHeader Title="FBR Invoicing" Subtitle="Outbox history · success rate · retry failed posts" />
+
+@if (_metrics is not null)
+{
+    <div class="cap-card mb-3">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+            <div>
+                <div class="small text-secondary">Success rate</div>
+                <div class="fs-4 fw-semibold">@_metrics.SuccessRatePercent.ToString("0.#")%</div>
+            </div>
+            <div class="small">
+                Posted @_metrics.SuccessCount · Stub @_metrics.StubCount · Failed @_metrics.FailedCount · Pending @_metrics.PendingCount
+                @if (_metrics.NeedsRetryCount > 0)
+                {
+                    <span class="badge bg-warning text-dark ms-1">@_metrics.NeedsRetryCount need retry</span>
+                }
+            </div>
+            <button class="btn btn-sm btn-outline-light ms-auto" @onclick="LoadAsync" disabled="@_historyBusy">Refresh</button>
+        </div>
+        <p class="small text-secondary mb-0 mt-2">Sale is never rolled back on FBR failure — retry from this page or wait for the outbox processor. See docs/FBR-PRODUCTION.md.</p>
+    </div>
+}
 
 <div class="cap-card mb-3">
     <p class="text-secondary">Posts a minimal invoice payload to the FBR service (sandbox/stub when token empty).</p>
@@ -27,17 +48,17 @@
         <table class="table table-cap table-striped mb-0">
             <thead><tr><th>Invoice</th><th>FBR #</th><th>Status</th><th>Submitted</th><th>Error</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
-            @foreach (var s in _submissions)
+            @foreach (var s in _submissions.Items)
             {
                 <tr>
                     <td>@(s.InvoiceNumber ?? s.SalesInvoiceId.ToString())</td>
                     <td class="mono">@(s.FbrInvoiceNumber ?? "—")</td>
-                    <td>@s.Status</td>
+                    <td>@StatusLabel(s.Status)</td>
                     <td>@s.SubmittedAt.ToLocalTime().ToString("g")</td>
                     <td class="small text-secondary">@(s.ErrorMessage ?? "—")</td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
-                            @if (s.Status is 2)
+                            @if (s.Status is 0 or 2)
                             {
                                 <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => RetryAsync(s.SalesInvoiceId)">Retry</button>
                             }
@@ -47,6 +68,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_submissions.TotalCount" Disabled="_historyBusy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -55,20 +78,37 @@
     private string _scenario = "SN001";
     private bool _busy;
     private string? _result;
-    private List<FbrSubmissionDto>? _submissions;
+    private PagedResult<FbrSubmissionDto>? _submissions;
+    private FbrMetricsDto? _metrics;
     private bool _historyBusy = true;
     private string? _historyError;
+    private int _page = 1;
+    private int _pageSize = 10;
 
-    protected override async Task OnInitializedAsync() => await LoadHistoryAsync();
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private async Task LoadHistoryAsync()
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "Pending",
+        1 => "Success",
+        2 => "Failed",
+        3 => "Stub",
+        _ => status.ToString()
+    };
+
+    private async Task LoadAsync()
     {
         _historyBusy = true;
-        var (data, error, _) = await Api.GetFbrSubmissionsAsync();
-        _submissions = data;
-        _historyError = error;
+        var hist = await Api.GetFbrSubmissionsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
+        var metrics = await Api.GetFbrMetricsAsync();
+        _submissions = hist.Data;
+        _metrics = metrics.Data;
+        _historyError = hist.Error ?? metrics.Error;
         _historyBusy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task PostAsync()
     {
@@ -95,13 +135,13 @@
         _result = error ?? System.Text.Json.JsonSerializer.Serialize(data);
         if (error is null) Toast.ShowSuccess("FBR call completed");
         else Toast.ShowError(error);
-        await LoadHistoryAsync();
+        await LoadAsync();
     }
 
     private async Task RetryAsync(int invoiceId)
     {
         var (ok, error, _) = await Api.RetryFbrAsync(invoiceId);
         if (!ok) Toast.ShowError(error ?? "Retry failed");
-        else { Toast.ShowSuccess("Retry enqueued"); await LoadHistoryAsync(); }
+        else { Toast.ShowSuccess("Retry enqueued"); await LoadAsync(); }
     }
 }

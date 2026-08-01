@@ -56,6 +56,12 @@ public class SalesInvoice : BaseEntity
     public decimal ChangeDue { get; set; }
     public int? CashierShiftId { get; set; }
     public CashierShift? CashierShift { get; set; }
+    /// <summary>When set, invoice is voided (void-not-delete).</summary>
+    public bool IsVoided { get; set; }
+    public DateTime? VoidedAt { get; set; }
+    public string? VoidedBy { get; set; }
+    public string? VoidReason { get; set; }
+    public int? VoidJournalEntryId { get; set; }
     public ICollection<SalesInvoiceLine> Lines { get; set; } = new List<SalesInvoiceLine>();
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
     public FbrSubmission? FbrSubmission { get; set; }
@@ -74,6 +80,8 @@ public class SalesInvoiceLine : BaseEntity
     public decimal TaxRate { get; set; }
     public decimal TaxAmount { get; set; }
     public decimal LineTotal { get; set; }
+    /// <summary>Unit inventory cost at issue (avg/FIFO); used for margin.</summary>
+    public decimal UnitCost { get; set; }
     public string? HsCode { get; set; }
     public string? UnitOfMeasure { get; set; }
 }
@@ -103,6 +111,8 @@ public class FbrSubmission : BaseEntity
 public class SalesReturn : BaseEntity
 {
     public string ReturnNumber { get; set; } = string.Empty;
+    /// <summary>Formal credit note number (CN-…).</summary>
+    public string? CreditNoteNumber { get; set; }
     public int? SalesInvoiceId { get; set; }
     public SalesInvoice? SalesInvoice { get; set; }
     public int? CustomerId { get; set; }
@@ -111,9 +121,14 @@ public class SalesReturn : BaseEntity
     public ReturnType ReturnType { get; set; }
     public DateTime ReturnDate { get; set; } = DateTime.UtcNow;
     public decimal GrandTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal AppliedAmount { get; set; }
+    /// <summary>When false, GL-only credit with no stock restock.</summary>
+    public bool StockAffected { get; set; } = true;
     public string? Notes { get; set; }
     public string ReasonCode { get; set; } = string.Empty;
     public ICollection<SalesReturnLine> Lines { get; set; } = new List<SalesReturnLine>();
+    public ICollection<CreditNoteApplication> Applications { get; set; } = new List<CreditNoteApplication>();
 }
 
 public class SalesReturnLine : BaseEntity
@@ -124,6 +139,8 @@ public class SalesReturnLine : BaseEntity
     public Product Product { get; set; } = null!;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal TaxRate { get; set; }
+    public decimal TaxAmount { get; set; }
     public decimal LineTotal { get; set; }
 }
 
@@ -162,12 +179,45 @@ public class CashierShift : BaseEntity
     public int UserId { get; set; }
     public string UserName { get; set; } = string.Empty;
     public int? BranchId { get; set; }
+    public int? TillId { get; set; }
+    public Till? Till { get; set; }
     public int? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }
     public CashierShiftStatus Status { get; set; } = CashierShiftStatus.Open;
     public decimal OpeningFloat { get; set; }
     public decimal ClosingFloat { get; set; }
+    /// <summary>Cash declared by cashier at close (may differ from ClosingFloat system expected).</summary>
+    public decimal DeclaredClosingCash { get; set; }
+    public decimal ExpectedCash { get; set; }
+    public decimal CashVariance { get; set; }
+    public int? VarianceJournalEntryId { get; set; }
     public DateTime OpenedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ClosedAt { get; set; }
     public string? Notes { get; set; }
+    public ICollection<SafeDrop> SafeDrops { get; set; } = new List<SafeDrop>();
+}
+
+/// <summary>POS cash drawer / till per branch (Phase 10).</summary>
+public class Till : CompanyEntity
+{
+    public int BranchId { get; set; }
+    public Branch Branch { get; set; } = null!;
+    public int? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+}
+
+/// <summary>Cash lifted from till to safe during an open shift.</summary>
+public class SafeDrop : BaseEntity
+{
+    public int CashierShiftId { get; set; }
+    public CashierShift CashierShift { get; set; } = null!;
+    public int TillId { get; set; }
+    public Till Till { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public DateTime DroppedAt { get; set; } = DateTime.UtcNow;
+    public string? Notes { get; set; }
+    public string? CreatedByUserName { get; set; }
 }

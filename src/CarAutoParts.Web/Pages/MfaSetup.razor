@@ -1,0 +1,76 @@
+@page "/mfa-setup"
+@attribute [Authorize]
+@inject AuthApiService Auth
+@inject IToastService Toast
+@inject NavigationManager Nav
+@inject JwtAuthStateProvider AuthState
+
+<PageHeader Title="MFA setup" Subtitle="Enroll authenticator for privileged access (recommended for admin/finance)" />
+
+@if (_enroll is not null)
+{
+    <div class="cap-card mb-3">
+        <p>Scan this URI in your authenticator app (or enter the secret manually):</p>
+        <code class="d-block mb-2" style="word-break:break-all">@_enroll.OtpAuthUri</code>
+        <p class="small">Secret: <strong>@_enroll.Secret</strong></p>
+        <p class="small">Save backup codes:</p>
+        <ul>@foreach (var c in _enroll.BackupCodes) { <li><code>@c</code></li> }</ul>
+        <div class="row g-2 align-items-end mt-3">
+            <div class="col-md-4">
+                <label class="form-label">Confirm code</label>
+                <input class="form-control" @bind="_code" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-cap w-100" @onclick="ConfirmAsync">Confirm</button>
+            </div>
+            <div class="col-md-3">
+                <button type="button" class="btn btn-cap-outline w-100" @onclick="SkipAsync">Skip for now</button>
+            </div>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+    <button type="button" class="btn btn-cap-outline mt-2" @onclick="SkipAsync">Continue to app</button>
+}
+else
+{
+    <div class="cap-card"><p class="mb-2">Preparing MFA enrollment…</p>
+    <button type="button" class="btn btn-cap-outline" @onclick="SkipAsync">Skip for now</button></div>
+}
+
+@code {
+    private MfaEnrollDto? _enroll;
+    private string _code = "";
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Auth.BeginMfaEnrollAsync();
+        _enroll = data;
+        _error = error;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        var (ok, error, _) = await Auth.ConfirmMfaEnrollAsync(_code);
+        if (!ok) { Toast.ShowError(error ?? "Confirm failed"); return; }
+        Toast.ShowSuccess("MFA enabled");
+        await GoHomeAsync();
+    }
+
+    private async Task SkipAsync() => await GoHomeAsync();
+
+    private async Task GoHomeAsync()
+    {
+        var user = await AuthState.GetUserAsync();
+        var perms = user?.Permissions ?? [];
+        var toPos = perms.Any(p => p.Equals("pos.checkout", StringComparison.OrdinalIgnoreCase))
+            && !perms.Any(p =>
+                p.Equals("users.manage", StringComparison.OrdinalIgnoreCase)
+                || p.Equals("finance.manage", StringComparison.OrdinalIgnoreCase)
+                || p.Equals("platform.manage", StringComparison.OrdinalIgnoreCase));
+        Nav.NavigateTo(toPos ? "/pos" : "/", true);
+    }
+}

@@ -179,6 +179,7 @@ public partial class ProductsViewModel : ViewModelBase
             EditMinimumStock,
             null,
             null,
+            null,
             18m,
             EditIsActive,
             false,

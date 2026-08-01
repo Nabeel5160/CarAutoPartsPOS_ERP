@@ -28,13 +28,18 @@ public sealed class LoginUserDto
     public List<string> Roles { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
     public bool MustChangePassword { get; set; }
+    public bool MfaEnabled { get; set; }
+    public bool MustEnrollMfa { get; set; }
 }
 
 public sealed class ApiLoginResponse
 {
-    public string AccessToken { get; set; } = string.Empty;
-    public DateTime ExpiresAt { get; set; }
-    public LoginUserDto User { get; set; } = new();
+    public string? AccessToken { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public LoginUserDto? User { get; set; }
+    public bool MfaRequired { get; set; }
+    public string? MfaTicket { get; set; }
+    public bool MustEnrollMfa { get; set; }
 }
 
 public sealed class MeDto
@@ -44,6 +49,11 @@ public sealed class MeDto
     public string DisplayName { get; set; } = string.Empty;
     public string? Email { get; set; }
     public bool MustChangePassword { get; set; }
+    public bool MfaEnabled { get; set; }
+    public bool MustEnroll { get; set; }
+    public int? CompanyId { get; set; }
+    public int? BranchId { get; set; }
+    public List<int> AllowedBranchIds { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
     public List<string> Roles { get; set; } = [];
 }
@@ -53,6 +63,9 @@ public sealed class QuerySpec
     public string? Search { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 50;
+    public string? FitmentMake { get; set; }
+    public string? FitmentModel { get; set; }
+    public int? FitmentYear { get; set; }
 }
 
 public static class Permissions
@@ -96,6 +109,10 @@ public static class Permissions
     public const string UsersView = "users.view";
     public const string UsersManage = "users.manage";
     public const string AuditView = "audit.view";
+    public const string ApprovalsView = "approvals.view";
+    public const string ApprovalsDecide = "approvals.decide";
+    public const string ApprovalsManage = "approvals.manage";
+    public const string FinanceVoid = "finance.void";
     public const string SettingsView = "settings.view";
     public const string SettingsManage = "settings.manage";
     public const string BackupView = "backup.view";
@@ -111,5 +128,7 @@ public static class Permissions
     public const string QuotationsManage = "quotations.manage";
     public const string DeliveriesManage = "deliveries.manage";
     public const string PriceListsManage = "pricelists.manage";
+    public const string SalesPriceOverride = "sales.price.override";
+    public const string PosPriceOverride = "pos.price.override";
     public const string KitsManage = "kits.manage";
 }

@@ -2,74 +2,179 @@
 @attribute [Authorize]
 @inject CapApiService Api
 @inject IToastService Toast
+@inject NavigationManager Nav
+@inject PermissionService Perms
 
-<PageHeader Title="Quotations" Subtitle="Create quotes and convert to sales orders" />
+<PageHeader Title="Quotations" Subtitle="Quote → Sales Order → Delivery → Invoice" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_items is not null)
 {
     <div class="cap-card table-responsive mb-3">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Number</th><th>Customer</th><th>Status</th><th>Date</th><th>Total</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Customer</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Total</th>
+                    <th>Chain</th>
+                    <th class="cap-col-actions">Actions</th>
+                </tr>
+            </thead>
             <tbody>
-            @foreach (var q in _items)
+            @foreach (var q in _items.Items)
             {
                 <tr>
                     <td class="mono">@q.QuotationNumber</td>
                     <td>@(q.CustomerId?.ToString() ?? "—")</td>
-                    <td>@q.Status</td>
+                    <td>@QuoteStatus(q.Status)</td>
                     <td>@q.QuotationDate.ToLocalTime().ToString("d")</td>
                     <td>@q.GrandTotal.ToString("N2")</td>
+                    <td class="small">
+                        @if (!string.IsNullOrEmpty(q.ConvertedOrderNumber))
+                        {
+                            <a href="@($"sales-orders?highlight={q.ConvertedSalesOrderId}")">@q.ConvertedOrderNumber</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
-                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ConvertAsync(q.Id)">Convert to SO</button>
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => ToggleLines(q.Id)">Lines</button>
+                            @if (q.Status is 0 or 1)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ConvertAsync(q.Id)">Convert to SO</button>
+                            }
+                            else if (q.ConvertedSalesOrderId is int soId)
+                            {
+                                <button type="button" class="btn btn-sm btn-cap" @onclick="() => OpenSalesOrder(soId)">Open SO</button>
+                            }
                         </div>
                     </td>
                 </tr>
+                @if (_expandedId == q.Id)
+                {
+                    <tr>
+                        <td colspan="7" class="small bg-transparent">
+                            @foreach (var l in q.Lines)
+                            {
+                                <div>
+                                    Product @l.ProductId · qty @l.Quantity · @l.UnitPrice.ToString("N2")
+                                    = @l.LineTotal.ToString("N2")
+                                    <span class="text-muted">
+                                        (@(l.PriceSource ?? "—")@(string.IsNullOrEmpty(l.PriceListName) ? "" : $" · {l.PriceListName}"))
+                                    </span>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
 @if (_convert is not null)
 {
     <div class="cap-card mb-3 alert-cap p-3 rounded">
-        Converted to sales order <strong>@_convert.OrderNumber</strong> (Id @_convert.SalesOrderId)
+        @_convert.QuotationNumber → sales order
+        <strong><a href="@($"sales-orders?highlight={_convert.SalesOrderId}")">@_convert.OrderNumber</a></strong>
     </div>
 }
 
 <div class="cap-card mb-3">
     <h5>New quotation</h5>
-    <div class="row g-2">
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="CustomerId (opt)" @bind="_customerId" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit price" @bind="_line.UnitPrice" /></div>
-        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Customer Id</label>
+            <input type="number" class="form-control" placeholder="CustomerId" @bind="_customerId" @bind:event="oninput" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Product Id</label>
+            <input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" @bind:event="oninput" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Qty</label>
+            <input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Unit price @(_priceHint)</label>
+            <input type="number" class="form-control" placeholder="0 = list/catalog" @bind="_line.UnitPrice" />
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-light w-100" @onclick="ResolvePriceAsync">Resolve price</button>
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-cap w-100" @onclick="CreateAsync" disabled="@(!_canManage)">Create</button>
+        </div>
     </div>
+    <p class="small text-muted mt-2 mb-0">Leave unit price 0 to use price list / catalog. Overrides need <code>sales.price.override</code>.</p>
 </div>
 
 @code {
-    private List<SalesQuotationDto>? _items;
+    private PagedResult<SalesQuotationDto>? _items;
     private ConvertQuotationResultDto? _convert;
     private CreateQuotationRequest _create = new() { QuotationDate = DateTime.UtcNow };
     private CreateQuotationLineRequest _line = new() { Quantity = 1 };
     private int? _customerId;
+    private int? _expandedId;
     private bool _busy = true;
+    private bool _canManage;
     private string? _error;
+    private string _priceHint = "";
+    private int _page = 1;
+    private int _pageSize = 10;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync(Permissions.QuotationsManage);
+        await LoadAsync();
+    }
+
+    private static string QuoteStatus(int s) => s switch
+    {
+        0 => "Draft",
+        1 => "Sent",
+        2 => "Accepted",
+        3 => "Expired",
+        4 => "Cancelled",
+        _ => s.ToString()
+    };
+
+    private void ToggleLines(int id) => _expandedId = _expandedId == id ? null : id;
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetQuotationsAsync();
+        var (data, error, _) = await Api.GetQuotationsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
 
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
+
+    private async Task ResolvePriceAsync()
+    {
+        if (_line.ProductId <= 0) { Toast.ShowError("Enter ProductId"); return; }
+        var (data, error, _) = await Api.LookupPriceAsync(_line.ProductId, _line.Quantity <= 0 ? 1 : _line.Quantity, _customerId);
+        if (error is not null) { Toast.ShowError(error); return; }
+        if (data is null) return;
+        _line.UnitPrice = data.UnitPrice;
+        _priceHint = data.PriceListName is null ? "(catalog)" : $"({data.PriceListName})";
+    }
+
+    private void OpenSalesOrder(int soId) => Nav.NavigateTo($"sales-orders?highlight={soId}");
+
     private async Task CreateAsync()
     {
+        if (!_canManage) { Toast.ShowError("Missing quotations.manage permission"); return; }
         _create.CustomerId = _customerId;
         _create.Lines = [_line];
         var (_, error, _) = await Api.CreateQuotationAsync(_create);
@@ -79,8 +184,14 @@
 
     private async Task ConvertAsync(int id)
     {
+        if (!_canManage) { Toast.ShowError("Missing quotations.manage permission"); return; }
         var (data, error, _) = await Api.ConvertQuotationAsync(id);
         if (error is not null) Toast.ShowError(error);
-        else { _convert = data; Toast.ShowSuccess("Converted to sales order"); await LoadAsync(); }
+        else
+        {
+            _convert = data;
+            Toast.ShowSuccess($"Converted to {data?.OrderNumber}");
+            await LoadAsync();
+        }
     }
 }

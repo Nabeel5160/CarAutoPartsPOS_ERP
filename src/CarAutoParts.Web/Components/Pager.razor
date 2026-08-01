@@ -1,0 +1,106 @@
+@*
+  Shared list pager. Wire under any grid that uses PagedResult / QuerySpec.
+  Conventions: page sizes 10/25/50/100; default 25; reset to page 1 on search/filter;
+  hide when TotalCount is 0.
+*@
+@if (TotalCount > 0)
+{
+    <div class="cap-pager @(Disabled ? "cap-pager-disabled" : null)" aria-label="Pagination">
+        <div class="cap-pager-nav">
+            <button type="button" class="btn btn-sm btn-cap-outline" disabled="@PrevDisabled"
+                    title="Previous page" @onclick="GoPrevAsync" @onclick:stopPropagation="true">Previous</button>
+            @foreach (var p in PageNumbers)
+            {
+                <button type="button" class="btn btn-sm @(p == Page ? "btn-cap" : "btn-cap-outline")"
+                        disabled="@Disabled" @onclick="() => GoToAsync(p)" @onclick:stopPropagation="true">@p</button>
+            }
+            <button type="button" class="btn btn-sm btn-cap-outline" disabled="@NextDisabled"
+                    title="Next page" @onclick="GoNextAsync" @onclick:stopPropagation="true">Next</button>
+            <span class="cap-pager-meta">
+                Page @Page of @TotalPages · @TotalCount items
+                <span class="cap-pager-range">· Showing @FromItem–@ToItem</span>
+            </span>
+        </div>
+        <div class="cap-pager-size">
+            <label class="form-label mb-0 small text-secondary" for="@_sizeId">Per page</label>
+            <select id="@_sizeId" class="form-select form-select-sm" disabled="@Disabled"
+                    value="@PageSize" @onchange="OnSizeChangedAsync">
+                @foreach (var size in EffectivePageSizes)
+                {
+                    <option value="@size">@size</option>
+                }
+            </select>
+        </div>
+        @if (TotalPages <= 1)
+        {
+            <div class="cap-pager-hint small text-secondary w-100">
+                All items fit on this page — choose a smaller “Per page” (e.g. 10) to use Next/Previous.
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly int[] DefaultSizes = [10, 25, 50, 100];
+    private readonly string _sizeId = $"cap-pager-size-{Guid.NewGuid():N}";
+
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public int[]? PageSizeOptions { get; set; }
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    private int[] EffectivePageSizes => PageSizeOptions is { Length: > 0 } ? PageSizeOptions : DefaultSizes;
+
+    private int TotalPages => PageSize > 0 ? Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize)) : 1;
+    private int FromItem => TotalCount == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+    private int ToItem => Math.Min(Page * PageSize, TotalCount);
+    private bool PrevDisabled => Disabled || Page <= 1;
+    private bool NextDisabled => Disabled || Page >= TotalPages;
+
+    private IEnumerable<int> PageNumbers
+    {
+        get
+        {
+            // Show a sliding window of up to 5 page buttons around current.
+            var total = TotalPages;
+            if (total <= 5) return Enumerable.Range(1, total);
+            var start = Math.Max(1, Page - 2);
+            var end = Math.Min(total, start + 4);
+            start = Math.Max(1, end - 4);
+            return Enumerable.Range(start, end - start + 1);
+        }
+    }
+
+    private async Task GoPrevAsync()
+    {
+        if (PrevDisabled) return;
+        await GoToAsync(Page - 1);
+    }
+
+    private async Task GoNextAsync()
+    {
+        if (NextDisabled) return;
+        await GoToAsync(Page + 1);
+    }
+
+    private async Task GoToAsync(int page)
+    {
+        if (Disabled) return;
+        page = Math.Clamp(page, 1, TotalPages);
+        if (page == Page) return;
+        if (!PageChanged.HasDelegate) return;
+        await PageChanged.InvokeAsync(page);
+    }
+
+    private async Task OnSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (Disabled) return;
+        if (!int.TryParse(e.Value?.ToString(), out var size) || size <= 0) return;
+        size = Math.Clamp(size, 1, 500);
+        if (!PageSizeChanged.HasDelegate) return;
+        await PageSizeChanged.InvokeAsync(size);
+    }
+}

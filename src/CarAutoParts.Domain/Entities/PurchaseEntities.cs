@@ -50,11 +50,16 @@ public class PurchaseOrderAttachment : BaseEntity
 public class PurchaseReturn : BaseEntity
 {
     public string ReturnNumber { get; set; } = string.Empty;
+    /// <summary>Formal supplier credit note number (SCN-…).</summary>
+    public string? CreditNoteNumber { get; set; }
     public int SupplierId { get; set; }
     public Supplier Supplier { get; set; } = null!;
     public ReturnStatus Status { get; set; } = ReturnStatus.Draft;
     public DateTime ReturnDate { get; set; } = DateTime.UtcNow;
     public decimal GrandTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal AppliedAmount { get; set; }
+    public bool StockAffected { get; set; } = true;
     public string? Notes { get; set; }
     public string ReasonCode { get; set; } = string.Empty;
     public int? WarehouseId { get; set; }
@@ -62,6 +67,7 @@ public class PurchaseReturn : BaseEntity
     public int? PurchaseOrderId { get; set; }
     public PurchaseOrder? PurchaseOrder { get; set; }
     public ICollection<PurchaseReturnLine> Lines { get; set; } = new List<PurchaseReturnLine>();
+    public ICollection<PurchaseCreditNoteApplication> Applications { get; set; } = new List<PurchaseCreditNoteApplication>();
 }
 
 public class PurchaseReturnLine : BaseEntity
@@ -72,6 +78,8 @@ public class PurchaseReturnLine : BaseEntity
     public Product Product { get; set; } = null!;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal TaxRate { get; set; }
+    public decimal TaxAmount { get; set; }
     public decimal LineTotal { get; set; }
 }
 

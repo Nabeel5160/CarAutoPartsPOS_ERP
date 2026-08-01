@@ -1,5 +1,7 @@
 using CarAutoParts.Api.Contracts;
+using CarAutoParts.Api.Filters;
 using CarAutoParts.Application.Common;
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +11,7 @@ namespace CarAutoParts.Api.Controllers;
 
 [Authorize]
 [Route("api/serial-numbers")]
+[RequireFeature(ConfigKeys.ModInvSerials)]
 public class SerialNumbersController : ApiControllerBase
 {
     private readonly ISerialNumberService _serials;

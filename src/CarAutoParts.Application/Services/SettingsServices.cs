@@ -1,8 +1,10 @@
 using AutoMapper;
 using CarAutoParts.Application.Common;
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.DTOs.Settings;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Domain.Entities;
+using CarAutoParts.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarAutoParts.Application.Services;
@@ -58,6 +60,12 @@ public class SettingsService : ISettingsService
         entity.ThreeWayQtyTolerancePercent = dto.ThreeWayQtyTolerancePercent;
         entity.ThreeWayPriceTolerancePercent = dto.ThreeWayPriceTolerancePercent;
         entity.AllowNegativeStock = dto.AllowNegativeStock;
+        entity.DefaultValuationMethod = Enum.TryParse<ValuationMethod>(dto.DefaultValuationMethod, true, out var vm)
+            ? vm
+            : ValuationMethod.Average;
+        entity.OpeningBalanceDate = dto.OpeningBalanceDate?.Date;
+        entity.VerticalKey = VerticalProfiles.Normalize(dto.VerticalKey);
+        entity.LogoUrl = dto.LogoUrl;
         entity.UpdatedAt = DateTime.UtcNow;
 
         _settings.Update(entity);

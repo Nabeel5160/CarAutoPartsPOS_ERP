@@ -42,6 +42,8 @@ public class GoodsReceiptLineConfiguration : IEntityTypeConfiguration<GoodsRecei
         builder.Property(x => x.SerialNumbersJson).HasMaxLength(4000);
         builder.HasOne(x => x.GoodsReceiptNote).WithMany(g => g.Lines).HasForeignKey(x => x.GoodsReceiptNoteId);
         builder.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
+        builder.HasOne(x => x.WarehouseLocation).WithMany().HasForeignKey(x => x.WarehouseLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.RowVersion).IsRowVersion();
     }
 }
@@ -97,6 +99,8 @@ public class CycleCountConfiguration : IEntityTypeConfiguration<CycleCount>
         builder.Property(x => x.CountNumber).HasMaxLength(40);
         builder.Property(x => x.Notes).HasMaxLength(1000);
         builder.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId);
+        builder.HasOne(x => x.WarehouseLocation).WithMany().HasForeignKey(x => x.WarehouseLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.RowVersion).IsRowVersion();
     }
 }
@@ -110,6 +114,8 @@ public class CycleCountLineConfiguration : IEntityTypeConfiguration<CycleCountLi
         builder.Ignore(x => x.Variance);
         builder.HasOne(x => x.CycleCount).WithMany(c => c.Lines).HasForeignKey(x => x.CycleCountId);
         builder.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
+        builder.HasOne(x => x.WarehouseLocation).WithMany().HasForeignKey(x => x.WarehouseLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.RowVersion).IsRowVersion();
     }
 }
@@ -160,6 +166,8 @@ public class DeliveryNoteLineConfiguration : IEntityTypeConfiguration<DeliveryNo
         builder.Property(x => x.QuantityShipped).HasPrecision(18, 3);
         builder.HasOne(x => x.DeliveryNote).WithMany(d => d.Lines).HasForeignKey(x => x.DeliveryNoteId);
         builder.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
+        builder.HasOne(x => x.FromLocation).WithMany().HasForeignKey(x => x.FromLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.RowVersion).IsRowVersion();
     }
 }

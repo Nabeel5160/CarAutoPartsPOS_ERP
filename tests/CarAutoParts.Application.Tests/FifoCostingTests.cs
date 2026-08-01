@@ -46,16 +46,7 @@ public class FifoCostingTests
         await db.SaveChangesAsync();
 
         var mapper = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>()).CreateMapper();
-        var service = new InventoryService(
-            new Repository<InventoryItem>(db),
-            new Repository<StockMovement>(db),
-            new Repository<StockBatch>(db),
-            new Repository<Product>(db),
-            new Repository<Warehouse>(db),
-            new Repository<CompanySettings>(db),
-            new UnitOfWork(db),
-            mapper,
-            new StockAdjustmentValidator());
+        var service = TestInventoryFactory.Create(db, mapper);
 
         await service.ReceiveStockAsync(product.Id, 1, 10, 50m, "BATCH-A");
         await service.ReceiveStockAsync(product.Id, 1, 10, 60m, "BATCH-B");

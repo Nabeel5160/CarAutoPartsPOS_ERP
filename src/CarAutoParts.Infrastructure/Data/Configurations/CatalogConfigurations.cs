@@ -11,6 +11,9 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.ToTable("Products");
         builder.HasIndex(p => new { p.CompanyId, p.Sku }).IsUnique();
         builder.HasIndex(p => new { p.CompanyId, p.Barcode }).HasFilter("[Barcode] IS NOT NULL");
+        // Phase 12: OEM / part equality hot path for POS barcode-scanner latency budget
+        builder.HasIndex(p => new { p.CompanyId, p.OemNumber }).HasFilter("[OemNumber] IS NOT NULL");
+        builder.HasIndex(p => new { p.CompanyId, p.PartNumber }).HasFilter("[PartNumber] IS NOT NULL");
         builder.HasIndex(p => p.Name);
 
         builder.Property(p => p.Name).HasMaxLength(200).IsRequired();
@@ -65,6 +68,19 @@ public class BrandConfiguration : IEntityTypeConfiguration<Brand>
     }
 }
 
+public class WarehouseLocationConfiguration : IEntityTypeConfiguration<WarehouseLocation>
+{
+    public void Configure(EntityTypeBuilder<WarehouseLocation> builder)
+    {
+        builder.ToTable("WarehouseLocations");
+        builder.HasIndex(x => new { x.WarehouseId, x.Code }).IsUnique();
+        builder.Property(x => x.Code).HasMaxLength(40).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(100).IsRequired();
+        builder.HasOne(x => x.Warehouse).WithMany(w => w.Locations).HasForeignKey(x => x.WarehouseId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class WarehouseConfiguration : IEntityTypeConfiguration<Warehouse>
 {
     public void Configure(EntityTypeBuilder<Warehouse> builder)
@@ -105,5 +121,8 @@ public class ProductVehicleCompatibilityConfiguration : IEntityTypeConfiguration
             .WithMany(p => p.VehicleCompatibilities)
             .HasForeignKey(v => v.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // Phase 19: fitment make/model filter + options
+        builder.HasIndex(v => new { v.Make, v.Model });
     }
 }

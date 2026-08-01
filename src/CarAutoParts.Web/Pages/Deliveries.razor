@@ -2,28 +2,62 @@
 @attribute [Authorize]
 @inject CapApiService Api
 @inject IToastService Toast
+@inject NavigationManager Nav
+@inject PermissionService Perms
 
-<PageHeader Title="Deliveries" Subtitle="Create delivery notes and ship" />
+<PageHeader Title="Deliveries" Subtitle="SO → Delivery (ship) → Invoice" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_items is not null)
 {
     <div class="cap-card table-responsive mb-3">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Number</th><th>SO</th><th>Warehouse</th><th>Status</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Sales order</th>
+                    <th>Warehouse</th>
+                    <th>Status</th>
+                    <th>Invoice</th>
+                    <th class="cap-col-actions">Actions</th>
+                </tr>
+            </thead>
             <tbody>
-            @foreach (var d in _items)
+            @foreach (var d in _items.Items)
             {
                 <tr>
                     <td class="mono">@d.DeliveryNumber</td>
-                    <td>@(d.SalesOrderId?.ToString() ?? "—")</td>
+                    <td>
+                        @if (d.SalesOrderId is int soId)
+                        {
+                            <a href="@($"sales-orders?highlight={soId}")">@(d.SalesOrderNumber ?? soId.ToString())</a>
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
                     <td>@d.WarehouseId</td>
-                    <td>@d.Status</td>
+                    <td>@DnStatus(d.Status)</td>
+                    <td class="small">
+                        @if (!string.IsNullOrEmpty(d.InvoiceNumber))
+                        {
+                            <a href="@($"invoices?search={Uri.EscapeDataString(d.InvoiceNumber)}")">@d.InvoiceNumber</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
-                            @if (d.Status == 0)
+                            @if (d.Status == 0 && _canManage)
                             {
                                 <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => ShipAsync(d.Id)">Ship</button>
+                            }
+                            @if (d.Status is 1 or 2 && d.InvoiceId is null && _canInvoice)
+                            {
+                                <button type="button" class="btn btn-sm btn-cap" @onclick="() => InvoiceAsync(d.Id)">Create invoice</button>
                             }
                         </div>
                     </td>
@@ -31,37 +65,66 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
 <div class="cap-card mb-3">
-    <h5>New delivery</h5>
+    <h5>New delivery (manual)</h5>
     <div class="row g-2">
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="SalesOrderId (opt)" @bind="_soId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="SalesOrderId" @bind="_soId" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty ordered" @bind="_line.QuantityOrdered" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty shipped" @bind="_line.QuantityShipped" /></div>
-        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync" disabled="@(!_canManage)">Create</button></div>
     </div>
+    <p class="small text-muted mt-2 mb-0">Prefer <strong>Create delivery</strong> on Sales Orders to copy lines from the SO.</p>
 </div>
 
 @code {
-    private List<DeliveryNoteDto>? _items;
-    private CreateDeliveryNoteRequest _create = new() { DeliveryDate = DateTime.UtcNow };
+    private PagedResult<DeliveryNoteDto>? _items;
+    private CreateDeliveryNoteRequest _create = new() { DeliveryDate = DateTime.UtcNow, WarehouseId = 1 };
     private CreateDeliveryNoteLineRequest _line = new() { QuantityOrdered = 1, QuantityShipped = 1 };
     private int? _soId;
     private bool _busy = true;
     private string? _error;
+    private bool _canManage;
+    private bool _canInvoice;
+    private int _page = 1;
+    private int _pageSize = 10;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    [SupplyParameterFromQuery(Name = "soId")]
+    public int? SoIdFilter { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync(Permissions.DeliveriesManage);
+        _canInvoice = await Perms.HasAsync(Permissions.SalesView);
+        if (SoIdFilter is int so) _soId = so;
+        await LoadAsync();
+    }
+
+    private static string DnStatus(int s) => s switch
+    {
+        0 => "Draft",
+        1 => "Shipped",
+        2 => "Delivered",
+        3 => "Cancelled",
+        _ => s.ToString()
+    };
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetDeliveriesAsync();
+        var (data, error, _) = await Api.GetDeliveriesAsync(
+            new QuerySpec { Page = _page, PageSize = _pageSize }, SoIdFilter);
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task CreateAsync()
     {
@@ -77,5 +140,19 @@
         var (_, error, _) = await Api.ShipDeliveryAsync(id);
         if (error is not null) Toast.ShowError(error);
         else { Toast.ShowSuccess("Shipped"); await LoadAsync(); }
+    }
+
+    private async Task InvoiceAsync(int id)
+    {
+        var (data, error, _) = await Api.CreateInvoiceFromDeliveryAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else
+        {
+            Toast.ShowSuccess($"Invoice {data?.InvoiceNumber} created");
+            if (!string.IsNullOrEmpty(data?.InvoiceNumber))
+                Nav.NavigateTo($"invoices?search={Uri.EscapeDataString(data.InvoiceNumber)}");
+            else
+                await LoadAsync();
+        }
     }
 }

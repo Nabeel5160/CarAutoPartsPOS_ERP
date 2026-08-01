@@ -10,14 +10,34 @@ public sealed class CapApiService
     public CapApiService(ApiClient api) => _api = api;
 
     // Dashboard / Analytics
-    public Task<(DashboardDto? Data, string? Error, int Status)> GetDashboardAsync() =>
-        _api.GetAsync<DashboardDto>("/api/dashboard");
+    public Task<(DashboardDto? Data, string? Error, int Status)> GetDashboardAsync(int? branchId = null) =>
+        _api.GetAsync<DashboardDto>(branchId is int b ? $"/api/dashboard?branchId={b}" : "/api/dashboard");
 
-    public Task<(AnalyticsDto? Data, string? Error, int Status)> GetAnalyticsAsync(DateTime? from = null, DateTime? to = null)
+    public Task<(DashboardTimelineDto? Data, string? Error, int Status)> GetDashboardTimelineAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        string grain = "day",
+        string groupBy = "category",
+        int? branchId = null)
+    {
+        var q = $"?grain={Uri.EscapeDataString(grain)}&groupBy={Uri.EscapeDataString(groupBy)}";
+        if (from is DateTime f) q += $"&from={f:yyyy-MM-dd}";
+        if (to is DateTime t) q += $"&to={t:yyyy-MM-dd}";
+        if (branchId is int b) q += $"&branchId={b}";
+        return _api.GetAsync<DashboardTimelineDto>("/api/dashboard/timeline" + q);
+    }
+
+    public Task<(AnalyticsDto? Data, string? Error, int Status)> GetAnalyticsAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        int? branchId = null,
+        int deadStockDays = 90)
     {
         var q = "?";
         if (from.HasValue) q += $"from={from:yyyy-MM-dd}&";
         if (to.HasValue) q += $"to={to:yyyy-MM-dd}&";
+        if (branchId.HasValue) q += $"branchId={branchId}&";
+        q += $"deadStockDays={deadStockDays}&";
         return _api.GetAsync<AnalyticsDto>("/api/analytics" + q.TrimEnd('&', '?'));
     }
 
@@ -45,6 +65,14 @@ public sealed class CapApiService
         return (data, error);
     }
 
+    public async Task<(OemFitmentImportResultDto? Data, string? Error)> ImportOemFitmentCsvAsync(Stream file, string fileName)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(file), "file", fileName);
+        var (data, error, _) = await _api.PostMultipartAsync<OemFitmentImportResultDto>("/api/products/import-oem-fitment", content);
+        return (data, error);
+    }
+
     public Task<(byte[]? Bytes, string? Error)> ExportProductsAsync() =>
         _api.GetBytesAsync("/api/products/export");
 
@@ -64,6 +92,9 @@ public sealed class CapApiService
     public Task<(List<BrandDto>? Data, string? Error, int Status)> GetBrandsAsync() =>
         _api.GetAsync<List<BrandDto>>("/api/brands");
 
+    public Task<(PagedResult<BrandDto>? Data, string? Error, int Status)> GetBrandsPagedAsync(QuerySpec q) =>
+        _api.GetAsync<PagedResult<BrandDto>>($"/api/brands{ApiClient.ToQuery(q)}");
+
     public Task<(BrandDto? Data, string? Error, int Status)> CreateBrandAsync(BrandDto dto) =>
         _api.PostAsync<BrandDto>("/api/brands", dto);
 
@@ -76,6 +107,9 @@ public sealed class CapApiService
     public Task<(List<WarehouseDto>? Data, string? Error, int Status)> GetWarehousesAsync() =>
         _api.GetAsync<List<WarehouseDto>>("/api/warehouses");
 
+    public Task<(PagedResult<WarehouseDto>? Data, string? Error, int Status)> GetWarehousesPagedAsync(QuerySpec q) =>
+        _api.GetAsync<PagedResult<WarehouseDto>>($"/api/warehouses{ApiClient.ToQuery(q)}");
+
     public Task<(WarehouseDto? Data, string? Error, int Status)> CreateWarehouseAsync(WarehouseDto dto) =>
         _api.PostAsync<WarehouseDto>("/api/warehouses", dto);
 
@@ -85,12 +119,28 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> DeleteWarehouseAsync(int id) =>
         _api.DeleteAsync($"/api/warehouses/{id}");
 
-    // Inventory
-    public Task<(PagedResult<InventoryItemDto>? Data, string? Error, int Status)> GetInventoryAsync(int page = 1, string? search = null) =>
-        _api.GetAsync<PagedResult<InventoryItemDto>>($"/api/inventory?page={page}&pageSize=50&search={Uri.EscapeDataString(search ?? "")}");
+    public Task<(List<WarehouseLocationDto>? Data, string? Error, int Status)> GetWarehouseLocationsAsync(int warehouseId) =>
+        _api.GetAsync<List<WarehouseLocationDto>>($"/api/warehouses/{warehouseId}/locations");
 
-    public Task<(PagedResult<StockMovementDto>? Data, string? Error, int Status)> GetMovementsAsync(int page = 1) =>
-        _api.GetAsync<PagedResult<StockMovementDto>>($"/api/inventory/movements?page={page}&pageSize=50");
+    public Task<(WarehouseLocationDto? Data, string? Error, int Status)> CreateWarehouseLocationAsync(int warehouseId, UpsertWarehouseLocationDto dto) =>
+        _api.PostAsync<WarehouseLocationDto>($"/api/warehouses/{warehouseId}/locations", dto);
+
+    public Task<(WarehouseLocationDto? Data, string? Error, int Status)> UpdateWarehouseLocationAsync(int warehouseId, int locationId, UpsertWarehouseLocationDto dto) =>
+        _api.PutAsync<WarehouseLocationDto>($"/api/warehouses/{warehouseId}/locations/{locationId}", dto);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteWarehouseLocationAsync(int warehouseId, int locationId) =>
+        _api.DeleteAsync($"/api/warehouses/{warehouseId}/locations/{locationId}");
+
+    public Task<(List<InventoryLocationBalanceDto>? Data, string? Error, int Status)> GetLocationBalancesAsync(int warehouseId, int? locationId = null) =>
+        _api.GetAsync<List<InventoryLocationBalanceDto>>(
+            $"/api/warehouses/{warehouseId}/locations/balances{(locationId is int id ? $"?locationId={id}" : "")}");
+
+    // Inventory
+    public Task<(PagedResult<InventoryItemDto>? Data, string? Error, int Status)> GetInventoryAsync(int page = 1, string? search = null, int pageSize = 50) =>
+        _api.GetAsync<PagedResult<InventoryItemDto>>($"/api/inventory?page={page}&pageSize={pageSize}&search={Uri.EscapeDataString(search ?? "")}");
+
+    public Task<(PagedResult<StockMovementDto>? Data, string? Error, int Status)> GetMovementsAsync(int page = 1, int pageSize = 50) =>
+        _api.GetAsync<PagedResult<StockMovementDto>>($"/api/inventory/movements?page={page}&pageSize={pageSize}");
 
     public Task<(bool Ok, string? Error, int Status)> AdjustStockAsync(StockAdjustmentDto dto) =>
         _api.PostAsync("/api/inventory/adjust", dto);
@@ -110,8 +160,15 @@ public sealed class CapApiService
     public Task<(List<LowStockAlertDto>? Data, string? Error, int Status)> GetOverstockAsync() =>
         _api.GetAsync<List<LowStockAlertDto>>("/api/inventory/alerts/overstock");
 
-    public Task<(InventoryValueResponse? Data, string? Error, int Status)> GetInventoryValueAsync() =>
-        _api.GetAsync<InventoryValueResponse>("/api/inventory/value");
+    public Task<(InventoryValueResponse? Data, string? Error, int Status)> GetInventoryValueAsync(
+        string? method = null, int? warehouseId = null, int? branchId = null)
+    {
+        var q = "?";
+        if (!string.IsNullOrWhiteSpace(method)) q += $"method={Uri.EscapeDataString(method)}&";
+        if (warehouseId.HasValue) q += $"warehouseId={warehouseId}&";
+        if (branchId.HasValue) q += $"branchId={branchId}&";
+        return _api.GetAsync<InventoryValueResponse>("/api/inventory/value" + q.TrimEnd('&', '?'));
+    }
 
     // Serials
     public Task<(PagedResult<SerialNumberDto>? Data, string? Error, int Status)> GetSerialsAsync(QuerySpec q) =>
@@ -191,10 +248,38 @@ public sealed class CapApiService
     public Task<(PagedResult<SalesOrderListDto>? Data, string? Error, int Status)> GetSalesOrdersAsync(QuerySpec q) =>
         _api.GetAsync<PagedResult<SalesOrderListDto>>($"/api/sales/orders{ApiClient.ToQuery(q)}");
 
-    public Task<(List<PosProductDto>? Data, string? Error, int Status)> GetPosProductsAsync(string? search = null) =>
-        _api.GetAsync<List<PosProductDto>>($"/api/pos/products?search={Uri.EscapeDataString(search ?? "")}");
+    public Task<(List<PosProductDto>? Data, string? Error, int Status)> GetPosProductsAsync(
+        string? search = null,
+        string? make = null,
+        string? model = null,
+        int? year = null,
+        CancellationToken ct = default)
+    {
+        var q = $"search={Uri.EscapeDataString(search ?? "")}";
+        if (!string.IsNullOrWhiteSpace(make)) q += $"&make={Uri.EscapeDataString(make)}";
+        if (!string.IsNullOrWhiteSpace(model)) q += $"&model={Uri.EscapeDataString(model)}";
+        if (year is int y) q += $"&year={y}";
+        return _api.GetAsync<List<PosProductDto>>($"/api/pos/products?{q}", ct);
+    }
+
+    public Task<(FitmentOptionsDto? Data, string? Error, int Status)> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default) =>
+        _api.GetAsync<FitmentOptionsDto>(
+            string.IsNullOrWhiteSpace(make)
+                ? "/api/products/fitment-options"
+                : $"/api/products/fitment-options?make={Uri.EscapeDataString(make)}",
+            ct);
+
+    public Task<(FitmentOptionsDto? Data, string? Error, int Status)> GetPosFitmentOptionsAsync(string? make = null, CancellationToken ct = default) =>
+        _api.GetAsync<FitmentOptionsDto>(
+            string.IsNullOrWhiteSpace(make)
+                ? "/api/pos/fitment-options"
+                : $"/api/pos/fitment-options?make={Uri.EscapeDataString(make)}",
+            ct);
 
     public Task<(PosCheckoutResultDto? Data, string? Error, int Status)> CheckoutAsync(PosCheckoutDto dto) =>
+        _api.PostAsync<PosCheckoutResultDto>("/api/pos/checkout", dto);
+
+    public Task<(PosCheckoutResultDto? Data, string? Error, int Status)> CheckoutRawAsync(object dto) =>
         _api.PostAsync<PosCheckoutResultDto>("/api/pos/checkout", dto);
 
     public Task<(string? Data, string? Error, int Status)> GetReceiptHtmlAsync(int invoiceId) =>
@@ -215,14 +300,42 @@ public sealed class CapApiService
     public Task<(CashierShiftDto? Data, string? Error, int Status)> GetOpenShiftAsync() =>
         _api.GetAsync<CashierShiftDto>("/api/pos/shifts/current");
 
-    public Task<(CashierShiftDto? Data, string? Error, int Status)> OpenShiftAsync(decimal openingFloat, int? warehouseId = null) =>
-        _api.PostAsync<CashierShiftDto>("/api/pos/shifts/open", new { OpeningFloat = openingFloat, WarehouseId = warehouseId });
+    public Task<(CashierShiftDto? Data, string? Error, int Status)> OpenShiftAsync(
+        decimal openingFloat, int? warehouseId = null, int? tillId = null) =>
+        _api.PostAsync<CashierShiftDto>("/api/pos/shifts/open", new
+        {
+            OpeningFloat = openingFloat,
+            WarehouseId = warehouseId,
+            TillId = tillId
+        });
 
-    public Task<(CashierShiftDto? Data, string? Error, int Status)> CloseShiftAsync(int id, decimal closingFloat) =>
-        _api.PostAsync<CashierShiftDto>($"/api/pos/shifts/{id}/close", new { ClosingFloat = closingFloat });
+    public Task<(CashierShiftDto? Data, string? Error, int Status)> CloseShiftAsync(
+        int id, decimal closingFloat, decimal? declaredClosingCash = null) =>
+        _api.PostAsync<CashierShiftDto>($"/api/pos/shifts/{id}/close", new
+        {
+            ClosingFloat = closingFloat,
+            DeclaredClosingCash = declaredClosingCash ?? closingFloat
+        });
 
     public Task<(ShiftZReportDto? Data, string? Error, int Status)> GetZReportAsync(int shiftId) =>
         _api.GetAsync<ShiftZReportDto>($"/api/pos/shifts/{shiftId}/z-report");
+
+    public Task<(ShiftZReportDto? Data, string? Error, int Status)> GetXReportAsync(int? shiftId = null) =>
+        _api.GetAsync<ShiftZReportDto>(shiftId is int id
+            ? $"/api/pos/shifts/{id}/x-report"
+            : "/api/pos/shifts/x-report");
+
+    public Task<(List<TillDto>? Data, string? Error, int Status)> GetTillsAsync(int? branchId = null) =>
+        _api.GetAsync<List<TillDto>>($"/api/pos/tills{(branchId is null ? "" : $"?branchId={branchId}")}");
+
+    public Task<(TillDto? Data, string? Error, int Status)> UpsertTillAsync(object body) =>
+        _api.PostAsync<TillDto>("/api/pos/tills", body);
+
+    public Task<(SafeDropDto? Data, string? Error, int Status)> RecordSafeDropAsync(int shiftId, decimal amount, string? notes = null) =>
+        _api.PostAsync<SafeDropDto>($"/api/pos/shifts/{shiftId}/safe-drops", new { Amount = amount, Notes = notes });
+
+    public Task<(List<SafeDropDto>? Data, string? Error, int Status)> ListSafeDropsAsync(int shiftId) =>
+        _api.GetAsync<List<SafeDropDto>>($"/api/pos/shifts/{shiftId}/safe-drops");
 
     public Task<(PagedResult<SalesReturnDto>? Data, string? Error, int Status)> GetSalesReturnsAsync(QuerySpec q) =>
         _api.GetAsync<PagedResult<SalesReturnDto>>($"/api/returns/sales{ApiClient.ToQuery(q)}");
@@ -245,6 +358,9 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> ApproveTransferAsync(int id) =>
         _api.PostAsync($"/api/transfers/{id}/approve", new { });
 
+    public Task<(TransferDetailDto? Data, string? Error, int Status)> ConfirmTransferPickAsync(int id, ConfirmTransferPickRequest? request = null) =>
+        _api.PostAsync<TransferDetailDto>($"/api/transfers/{id}/confirm-pick", request ?? new ConfirmTransferPickRequest());
+
     public Task<(bool Ok, string? Error, int Status)> ShipTransferAsync(int id) =>
         _api.PostAsync($"/api/transfers/{id}/ship", new { });
 
@@ -255,8 +371,22 @@ public sealed class CapApiService
     public Task<(byte[]? Bytes, string? Error)> ExportReportAsync(string kind, string query) =>
         _api.GetBytesAsync($"/api/reports/{kind}{query}");
 
-    public Task<(List<NotificationDto>? Data, string? Error, int Status)> GetNotificationsAsync(bool unreadOnly = false) =>
-        _api.GetAsync<List<NotificationDto>>($"/api/notifications?unreadOnly={unreadOnly}");
+    public Task<(T? Data, string? Error, int Status)> GetReportJsonAsync<T>(string kind, string query) =>
+        _api.GetAsync<T>($"/api/reports/{kind}{query}");
+
+    public Task<(List<ClosedShiftListItemDto>? Data, string? Error, int Status)> GetClosedShiftsAsync(
+        DateTime from, DateTime to, int? tillId = null, int? branchId = null)
+    {
+        var q = $"?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+        if (tillId is int t) q += $"&tillId={t}";
+        if (branchId is int b) q += $"&branchId={b}";
+        return _api.GetAsync<List<ClosedShiftListItemDto>>($"/api/reports/z-shifts{q}");
+    }
+
+    public Task<(PagedResult<NotificationDto>? Data, string? Error, int Status)> GetNotificationsAsync(
+        QuerySpec q,
+        bool unreadOnly = false) =>
+        _api.GetAsync<PagedResult<NotificationDto>>($"/api/notifications{ApiClient.ToQuery(q)}&unreadOnly={unreadOnly}");
 
     public Task<(UnreadCountResponse? Data, string? Error, int Status)> GetUnreadCountAsync() =>
         _api.GetAsync<UnreadCountResponse>("/api/notifications/unread-count");
@@ -270,6 +400,9 @@ public sealed class CapApiService
     public Task<(List<UserDto>? Data, string? Error, int Status)> GetUsersAsync() =>
         _api.GetAsync<List<UserDto>>("/api/users");
 
+    public Task<(PagedResult<UserDto>? Data, string? Error, int Status)> GetUsersPagedAsync(QuerySpec q) =>
+        _api.GetAsync<PagedResult<UserDto>>($"/api/users{ApiClient.ToQuery(q)}");
+
     public Task<(UserDto? Data, string? Error, int Status)> CreateUserAsync(UserCreateDto dto) =>
         _api.PostAsync<UserDto>("/api/users", dto);
 
@@ -282,11 +415,47 @@ public sealed class CapApiService
     public Task<(List<RoleDto>? Data, string? Error, int Status)> GetRolesAsync() =>
         _api.GetAsync<List<RoleDto>>("/api/roles");
 
-    public Task<(PagedResult<AuditLogDto>? Data, string? Error, int Status)> GetAuditLogsAsync(QuerySpec q) =>
-        _api.GetAsync<PagedResult<AuditLogDto>>($"/api/audit-logs{ApiClient.ToQuery(q)}");
+    public Task<(PagedResult<AuditLogDto>? Data, string? Error, int Status)> GetAuditLogsAsync(
+        QuerySpec q,
+        string? action = null,
+        string? entityType = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null)
+    {
+        var qs = ApiClient.ToQuery(q);
+        if (!string.IsNullOrWhiteSpace(action)) qs += $"&action={Uri.EscapeDataString(action)}";
+        if (!string.IsNullOrWhiteSpace(entityType)) qs += $"&entityType={Uri.EscapeDataString(entityType)}";
+        if (fromDate.HasValue) qs += $"&fromDate={fromDate:yyyy-MM-dd}";
+        if (toDate.HasValue) qs += $"&toDate={toDate:yyyy-MM-dd}";
+        return _api.GetAsync<PagedResult<AuditLogDto>>($"/api/audit-logs{qs}");
+    }
+
+    public Task<(List<ApprovalRequestWebDto>? Data, string? Error, int Status)> GetPendingApprovalsAsync() =>
+        _api.GetAsync<List<ApprovalRequestWebDto>>("/api/approvals/pending");
+
+    public Task<(List<ApprovalPolicyWebDto>? Data, string? Error, int Status)> GetApprovalPoliciesAsync() =>
+        _api.GetAsync<List<ApprovalPolicyWebDto>>("/api/approvals/policies");
+
+    public Task<(bool Ok, string? Error, int Status)> DecideApprovalAsync(int id, bool approve, string? notes) =>
+        _api.PostAsync($"/api/approvals/pending/{id}/decide", new { Approve = approve, Notes = notes });
+
+    public Task<(bool Ok, string? Error, int Status)> VoidJournalAsync(int id, string? reason) =>
+        _api.PostAsync($"/api/approvals/void/journals/{id}", new { Reason = reason });
+
+    public Task<(bool Ok, string? Error, int Status)> VoidSalesInvoiceAsync(int id, string? reason) =>
+        _api.PostAsync($"/api/approvals/void/sales-invoices/{id}", new { Reason = reason });
+
+    public Task<(bool Ok, string? Error, int Status)> VoidPurchaseInvoiceAsync(int id, string? reason) =>
+        _api.PostAsync($"/api/approvals/void/purchase-invoices/{id}", new { Reason = reason });
 
     public Task<(CompanySettingsDto? Data, string? Error, int Status)> GetSettingsAsync() =>
         _api.GetAsync<CompanySettingsDto>("/api/settings");
+
+    public Task<(OnboardingStatusDto? Data, string? Error, int Status)> GetOnboardingStatusAsync() =>
+        _api.GetAsync<OnboardingStatusDto>("/api/onboarding/status");
+
+    public Task<(bool Ok, string? Error, int Status)> CompleteOnboardingAsync(object body) =>
+        _api.PostAsync("/api/onboarding/complete", body);
 
     public Task<(bool Ok, string? Error, int Status)> UpdateSettingsAsync(CompanySettingsDto dto) =>
         _api.PutAsync("/api/settings", dto);
@@ -327,11 +496,44 @@ public sealed class CapApiService
     public Task<(List<AccountingPeriodDto>? Data, string? Error, int Status)> GetPeriodsAsync() =>
         _api.GetAsync<List<AccountingPeriodDto>>("/api/v1/finance/periods");
 
-    public Task<(bool Ok, string? Error, int Status)> ClosePeriodAsync(int id) =>
-        _api.PostAsync($"/api/v1/finance/periods/{id}/close", null);
+    public Task<(PeriodCloseChecklistDto? Data, string? Error, int Status)> GetPeriodCloseChecklistAsync(int id) =>
+        _api.GetAsync<PeriodCloseChecklistDto>($"/api/v1/finance/periods/{id}/close-checklist");
+
+    public Task<(bool Ok, string? Error, int Status)> ClosePeriodAsync(int id, bool force = false) =>
+        _api.PostAsync($"/api/v1/finance/periods/{id}/close?force={force}", null);
 
     public Task<(bool Ok, string? Error, int Status)> ReopenPeriodAsync(int id) =>
         _api.PostAsync($"/api/v1/finance/periods/{id}/reopen", null);
+
+    public Task<(OpeningBalanceBatchDto? Data, string? Error, int Status)> PostOpeningBalancesAsync(object body) =>
+        _api.PostAsync<OpeningBalanceBatchDto>("/api/v1/finance/opening-balances", body);
+
+    public Task<(List<OpeningBalanceBatchDto>? Data, string? Error, int Status)> GetOpeningBalancesAsync() =>
+        _api.GetAsync<List<OpeningBalanceBatchDto>>("/api/v1/finance/opening-balances");
+
+    public Task<(List<BankStatementDto>? Data, string? Error, int Status)> GetBankStatementsAsync() =>
+        _api.GetAsync<List<BankStatementDto>>("/api/v1/finance/bank-statements");
+
+    public Task<(BankStatementDto? Data, string? Error, int Status)> CreateBankStatementAsync(object body) =>
+        _api.PostAsync<BankStatementDto>("/api/v1/finance/bank-statements", body);
+
+    public Task<(BankStatementDto? Data, string? Error, int Status)> AddBankStatementLineAsync(int id, object body) =>
+        _api.PostAsync<BankStatementDto>($"/api/v1/finance/bank-statements/{id}/lines", body);
+
+    public Task<(bool Ok, string? Error, int Status)> MatchBankLineAsync(int lineId, int journalLineId) =>
+        _api.PostAsync($"/api/v1/finance/bank-statements/lines/{lineId}/match?journalLineId={journalLineId}", null);
+
+    public Task<(BankReconReportDto? Data, string? Error, int Status)> GetBankReconReportAsync(int id) =>
+        _api.GetAsync<BankReconReportDto>($"/api/v1/finance/bank-statements/{id}/report");
+
+    public Task<(List<UnclearedBankGlLineDto>? Data, string? Error, int Status)> GetUnclearedBankGlAsync() =>
+        _api.GetAsync<List<UnclearedBankGlLineDto>>("/api/v1/finance/bank-statements/uncleared-gl");
+
+    public Task<(bool Ok, string? Error, int Status)> ApplySalesCreditAsync(int returnId, object body) =>
+        _api.PostAsync($"/api/returns/sales/{returnId}/apply", body);
+
+    public Task<(bool Ok, string? Error, int Status)> ApplyPurchaseCreditAsync(int returnId, object body) =>
+        _api.PostAsync($"/api/returns/purchases/{returnId}/apply", body);
 
     public Task<(PagedResult<JournalDto>? Data, string? Error, int Status)> GetJournalsAsync(int page = 1, int pageSize = 50) =>
         _api.GetAsync<PagedResult<JournalDto>>($"/api/v1/finance/journals?page={page}&pageSize={pageSize}");
@@ -342,11 +544,21 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> PostJournalAsync(int id) =>
         _api.PostAsync($"/api/v1/finance/journals/{id}/post", null);
 
-    public Task<(TrialBalanceReportDto? Data, string? Error, int Status)> GetTrialBalanceAsync(DateTime? asOf = null) =>
-        _api.GetAsync<TrialBalanceReportDto>($"/api/v1/enterprise/reports/trial-balance{(asOf is null ? "" : $"?asOf={asOf:yyyy-MM-dd}")}");
+    public Task<(TrialBalanceReportDto? Data, string? Error, int Status)> GetTrialBalanceAsync(DateTime? asOf = null, int? branchId = null)
+    {
+        var qs = new List<string>();
+        if (asOf is not null) qs.Add($"asOf={asOf:yyyy-MM-dd}");
+        if (branchId is not null) qs.Add($"branchId={branchId}");
+        var q = qs.Count == 0 ? "" : "?" + string.Join("&", qs);
+        return _api.GetAsync<TrialBalanceReportDto>($"/api/v1/enterprise/reports/trial-balance{q}");
+    }
 
-    public Task<(ProfitAndLossReportDto? Data, string? Error, int Status)> GetProfitLossAsync(DateTime from, DateTime to) =>
-        _api.GetAsync<ProfitAndLossReportDto>($"/api/v1/enterprise/reports/profit-loss?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+    public Task<(ProfitAndLossReportDto? Data, string? Error, int Status)> GetProfitLossAsync(DateTime from, DateTime to, int? branchId = null)
+    {
+        var q = $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+        if (branchId is not null) q += $"&branchId={branchId}";
+        return _api.GetAsync<ProfitAndLossReportDto>($"/api/v1/enterprise/reports/profit-loss?{q}");
+    }
 
     public Task<(BalanceSheetReportDto? Data, string? Error, int Status)> GetBalanceSheetAsync(DateTime? asOf = null) =>
         _api.GetAsync<BalanceSheetReportDto>($"/api/v1/enterprise/reports/balance-sheet{(asOf is null ? "" : $"?asOf={asOf:yyyy-MM-dd}")}");
@@ -357,8 +569,8 @@ public sealed class CapApiService
     // Enterprise — inventory / P2P / O2C
     private const string Ent = "/api/v1/enterprise";
 
-    public Task<(List<GoodsReceiptNoteDto>? Data, string? Error, int Status)> GetGrnsAsync() =>
-        _api.GetAsync<List<GoodsReceiptNoteDto>>($"{Ent}/grn");
+    public Task<(PagedResult<GoodsReceiptNoteDto>? Data, string? Error, int Status)> GetGrnsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<GoodsReceiptNoteDto>>($"{Ent}/grn{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(GoodsReceiptNoteDto? Data, string? Error, int Status)> CreateGrnAsync(CreateGrnRequest dto) =>
         _api.PostAsync<GoodsReceiptNoteDto>($"{Ent}/grn", dto);
@@ -369,8 +581,8 @@ public sealed class CapApiService
     public Task<(GoodsReceiptNoteDto? Data, string? Error, int Status)> ReleaseQcAsync(int id) =>
         _api.PostAsync<GoodsReceiptNoteDto>($"{Ent}/grn/{id}/release-qc", null);
 
-    public Task<(List<PurchaseRequisitionDto>? Data, string? Error, int Status)> GetRequisitionsAsync() =>
-        _api.GetAsync<List<PurchaseRequisitionDto>>("/api/v1/purchase-requisitions");
+    public Task<(PagedResult<PurchaseRequisitionDto>? Data, string? Error, int Status)> GetRequisitionsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<PurchaseRequisitionDto>>($"/api/v1/purchase-requisitions{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(PurchaseRequisitionDto? Data, string? Error, int Status)> CreateRequisitionAsync(PurchaseRequisitionCreateDto dto) =>
         _api.PostAsync<PurchaseRequisitionDto>("/api/v1/purchase-requisitions", dto);
@@ -393,8 +605,8 @@ public sealed class CapApiService
     public Task<(PurchaseRequisitionDto? Data, string? Error, int Status)> CreateReorderPrAsync(CreateReorderPrRequest dto) =>
         _api.PostAsync<PurchaseRequisitionDto>("/api/v1/reorder/create-pr", dto);
 
-    public Task<(List<PurchaseInvoiceDto>? Data, string? Error, int Status)> GetApInvoicesAsync() =>
-        _api.GetAsync<List<PurchaseInvoiceDto>>($"{Ent}/ap-invoices");
+    public Task<(PagedResult<PurchaseInvoiceDto>? Data, string? Error, int Status)> GetApInvoicesAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<PurchaseInvoiceDto>>($"{Ent}/ap-invoices{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(PurchaseInvoiceDto? Data, string? Error, int Status)> CreateApInvoiceAsync(CreatePurchaseInvoiceRequest dto) =>
         _api.PostAsync<PurchaseInvoiceDto>($"{Ent}/ap-invoices", dto);
@@ -405,8 +617,8 @@ public sealed class CapApiService
     public Task<(PurchaseInvoiceDto? Data, string? Error, int Status)> PostApInvoiceAsync(int id) =>
         _api.PostAsync<PurchaseInvoiceDto>($"{Ent}/ap-invoices/{id}/post", null);
 
-    public Task<(List<SalesQuotationDto>? Data, string? Error, int Status)> GetQuotationsAsync() =>
-        _api.GetAsync<List<SalesQuotationDto>>($"{Ent}/quotations");
+    public Task<(PagedResult<SalesQuotationDto>? Data, string? Error, int Status)> GetQuotationsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<SalesQuotationDto>>($"{Ent}/quotations{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(SalesQuotationDto? Data, string? Error, int Status)> CreateQuotationAsync(CreateQuotationRequest dto) =>
         _api.PostAsync<SalesQuotationDto>($"{Ent}/quotations", dto);
@@ -414,14 +626,42 @@ public sealed class CapApiService
     public Task<(ConvertQuotationResultDto? Data, string? Error, int Status)> ConvertQuotationAsync(int id) =>
         _api.PostAsync<ConvertQuotationResultDto>($"{Ent}/quotations/{id}/convert", null);
 
-    public Task<(List<DeliveryNoteDto>? Data, string? Error, int Status)> GetDeliveriesAsync() =>
-        _api.GetAsync<List<DeliveryNoteDto>>($"{Ent}/deliveries");
+    public Task<(PagedResult<WholesaleSalesOrderDto>? Data, string? Error, int Status)> GetWholesaleSalesOrdersAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<WholesaleSalesOrderDto>>($"{Ent}/sales-orders{ApiClient.ToQuery(q ?? new QuerySpec())}");
+
+    public Task<(DeliveryNoteDto? Data, string? Error, int Status)> CreateDeliveryFromSalesOrderAsync(int salesOrderId, CreateDeliveryFromSalesOrderRequest dto) =>
+        _api.PostAsync<DeliveryNoteDto>($"{Ent}/sales-orders/{salesOrderId}/create-delivery", dto);
+
+    public Task<(WholesaleInvoiceResultDto? Data, string? Error, int Status)> CreateInvoiceFromSalesOrderAsync(int salesOrderId, int? warehouseId = null) =>
+        _api.PostAsync<WholesaleInvoiceResultDto>(
+            $"{Ent}/sales-orders/{salesOrderId}/create-invoice{(warehouseId is int w ? $"?warehouseId={w}" : "")}", null);
+
+    public Task<(PagedResult<DeliveryNoteDto>? Data, string? Error, int Status)> GetDeliveriesAsync(QuerySpec? q = null, int? salesOrderId = null)
+    {
+        var qs = ApiClient.ToQuery(q ?? new QuerySpec());
+        if (salesOrderId is int so)
+            qs += $"&salesOrderId={so}";
+        return _api.GetAsync<PagedResult<DeliveryNoteDto>>($"{Ent}/deliveries{qs}");
+    }
 
     public Task<(DeliveryNoteDto? Data, string? Error, int Status)> CreateDeliveryAsync(CreateDeliveryNoteRequest dto) =>
         _api.PostAsync<DeliveryNoteDto>($"{Ent}/deliveries", dto);
 
+    public Task<(DeliveryNoteDto? Data, string? Error, int Status)> ConfirmDeliveryPickAsync(int id, object? request = null) =>
+        _api.PostAsync<DeliveryNoteDto>($"{Ent}/deliveries/{id}/confirm-pick", request);
+
     public Task<(DeliveryNoteDto? Data, string? Error, int Status)> ShipDeliveryAsync(int id) =>
         _api.PostAsync<DeliveryNoteDto>($"{Ent}/deliveries/{id}/ship", null);
+
+    public Task<(WholesaleInvoiceResultDto? Data, string? Error, int Status)> CreateInvoiceFromDeliveryAsync(int deliveryId) =>
+        _api.PostAsync<WholesaleInvoiceResultDto>($"{Ent}/deliveries/{deliveryId}/create-invoice", null);
+
+    public Task<(PriceLookupResultDto? Data, string? Error, int Status)> LookupPriceAsync(int productId, decimal quantity = 1, int? customerId = null) =>
+        _api.GetAsync<PriceLookupResultDto>(
+            $"{Ent}/price?productId={productId}&quantity={quantity}{(customerId is int c ? $"&customerId={c}" : "")}");
+
+    public Task<(CreditCheckResultDto? Data, string? Error, int Status)> CreditCheckAsync(int customerId, decimal additionalAmount = 0) =>
+        _api.GetAsync<CreditCheckResultDto>($"{Ent}/credit-check/{customerId}?additionalAmount={additionalAmount}");
 
     public Task<(List<AccountMappingDto>? Data, string? Error, int Status)> GetAccountMappingsAsync() =>
         _api.GetAsync<List<AccountMappingDto>>($"{Ent}/account-mappings");
@@ -453,14 +693,14 @@ public sealed class CapApiService
     public Task<(CycleCountDto? Data, string? Error, int Status)> CompleteCycleCountAsync(int id) =>
         _api.PostAsync<CycleCountDto>($"{Ent}/cycle-counts/{id}/complete", null);
 
-    public Task<(List<ProductKitDto>? Data, string? Error, int Status)> GetKitsAsync() =>
-        _api.GetAsync<List<ProductKitDto>>($"{Ent}/kits");
+    public Task<(PagedResult<ProductKitDto>? Data, string? Error, int Status)> GetKitsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<ProductKitDto>>($"{Ent}/kits{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(ProductKitDto? Data, string? Error, int Status)> UpsertKitAsync(UpsertKitRequest dto) =>
         _api.PostAsync<ProductKitDto>($"{Ent}/kits", dto);
 
-    public Task<(List<PriceListDto>? Data, string? Error, int Status)> GetPriceListsAsync() =>
-        _api.GetAsync<List<PriceListDto>>($"{Ent}/price-lists");
+    public Task<(PagedResult<PriceListDto>? Data, string? Error, int Status)> GetPriceListsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<PriceListDto>>($"{Ent}/price-lists{ApiClient.ToQuery(q ?? new QuerySpec())}");
 
     public Task<(PriceListDto? Data, string? Error, int Status)> CreatePriceListAsync(CreatePriceListRequest dto) =>
         _api.PostAsync<PriceListDto>($"{Ent}/price-lists", dto);
@@ -468,8 +708,11 @@ public sealed class CapApiService
     public Task<(PriceListDto? Data, string? Error, int Status)> UpdatePriceListItemsAsync(int id, UpdatePriceListItemsRequest dto) =>
         _api.PutAsync<PriceListDto>($"{Ent}/price-lists/{id}/items", dto);
 
-    public Task<(List<FbrSubmissionDto>? Data, string? Error, int Status)> GetFbrSubmissionsAsync() =>
-        _api.GetAsync<List<FbrSubmissionDto>>($"{Ent}/fbr/submissions");
+    public Task<(PagedResult<FbrSubmissionDto>? Data, string? Error, int Status)> GetFbrSubmissionsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<FbrSubmissionDto>>($"{Ent}/fbr/submissions{ApiClient.ToQuery(q ?? new QuerySpec())}");
+
+    public Task<(FbrMetricsDto? Data, string? Error, int Status)> GetFbrMetricsAsync() =>
+        _api.GetAsync<FbrMetricsDto>($"{Ent}/fbr/metrics");
 
     public Task<(PartnerAgingReportDto? Data, string? Error, int Status)> GetCustomerAgingAsync(DateTime? asOf = null) =>
         _api.GetAsync<PartnerAgingReportDto>($"{Ent}/aging/customers{(asOf is null ? "" : $"?asOf={asOf:yyyy-MM-dd}")}");

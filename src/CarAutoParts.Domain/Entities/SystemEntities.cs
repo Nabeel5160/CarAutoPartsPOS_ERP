@@ -25,6 +25,13 @@ public class InventoryTransferLine : BaseEntity
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
     public decimal Quantity { get; set; }
+    /// <summary>Unit cost captured at ship (average/FIFO issue cost).</summary>
+    public decimal ShippedUnitCost { get; set; }
+    public int? FromLocationId { get; set; }
+    public WarehouseLocation? FromLocation { get; set; }
+    public int? ToLocationId { get; set; }
+    public WarehouseLocation? ToLocation { get; set; }
+    public bool IsPicked { get; set; }
 }
 
 public class AppUser : BaseEntity
@@ -39,7 +46,16 @@ public class AppUser : BaseEntity
     public DateTime? LockoutEndUtc { get; set; }
     /// <summary>When true, client must change password before using the app.</summary>
     public bool MustChangePassword { get; set; }
+    /// <summary>TOTP enrolled and required at login.</summary>
+    public bool MfaEnabled { get; set; }
+    /// <summary>Company policy: privileged user must enroll MFA.</summary>
+    public bool MfaEnforced { get; set; }
+    /// <summary>Base32 TOTP secret (protect at rest in production).</summary>
+    public string? MfaSecret { get; set; }
+    /// <summary>JSON array of BCrypt-hashed one-time backup codes.</summary>
+    public string? MfaBackupCodesHashJson { get; set; }
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
+    public ICollection<UserBranch> UserBranches { get; set; } = new List<UserBranch>();
 }
 
 public class Role : BaseEntity
@@ -64,6 +80,16 @@ public class UserRole : BaseEntity
     public AppUser User { get; set; } = null!;
     public int RoleId { get; set; }
     public Role Role { get; set; } = null!;
+}
+
+/// <summary>User ↔ branch ACL (Phase 9).</summary>
+public class UserBranch : BaseEntity
+{
+    public int UserId { get; set; }
+    public AppUser User { get; set; } = null!;
+    public int BranchId { get; set; }
+    public Branch Branch { get; set; } = null!;
+    public bool IsDefault { get; set; }
 }
 
 public class RolePermission : BaseEntity
@@ -100,6 +126,10 @@ public class CompanySettings : BaseEntity
 {
     public string CompanyName { get; set; } = "Car Auto Parts";
     public string? LogoPath { get; set; }
+    /// <summary>Public URL or path for logo used in branding (preferred over LogoPath when set).</summary>
+    public string? LogoUrl { get; set; }
+    /// <summary>Business vertical preset key: auto-parts | bike-parts | general-retail.</summary>
+    public string VerticalKey { get; set; } = "auto-parts";
     public string? Address { get; set; }
     public string? City { get; set; }
     public string? Phone { get; set; }
@@ -125,6 +155,24 @@ public class CompanySettings : BaseEntity
     public decimal ThreeWayPriceTolerancePercent { get; set; }
     /// <summary>When false (default), stock deductions fail if quantity would go below zero.</summary>
     public bool AllowNegativeStock { get; set; }
+    /// <summary>Default costing for newly created inventory items.</summary>
+    public ValuationMethod DefaultValuationMethod { get; set; } = ValuationMethod.Average;
+    /// <summary>Go-live cutover date; GL posts before this date are blocked except OpeningBalance docs.</summary>
+    public DateTime? OpeningBalanceDate { get; set; }
+    /// <summary>When set, first-run onboarding wizard is complete.</summary>
+    public DateTime? SetupCompletedAt { get; set; }
+}
+
+/// <summary>Per-install config override (module/field/behavior/label/brand) layered over vertical presets.</summary>
+public class AppConfigEntry : BaseEntity
+{
+    /// <summary>Family: module | field | behavior | label | brand.</summary>
+    public string Scope { get; set; } = string.Empty;
+    /// <summary>Key within scope, e.g. sales.fbr, product.oem, fbr.enabled, Nav_POS, appName.</summary>
+    public string Key { get; set; } = string.Empty;
+    /// <summary>Culture for label overrides (en, ur); null for non-label scopes.</summary>
+    public string? Culture { get; set; }
+    public string Value { get; set; } = string.Empty;
 }
 
 public class BackupHistory : BaseEntity

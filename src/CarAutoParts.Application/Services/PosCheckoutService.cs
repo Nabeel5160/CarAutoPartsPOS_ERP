@@ -1,6 +1,9 @@
 using System.Text;
 using System.Text.Json;
+using CarAutoParts.Application.Common;
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.Constants;
+using CarAutoParts.Application.DTOs.Fbr;
 using CarAutoParts.Application.DTOs.Pos;
 using CarAutoParts.Application.Enterprise;
 using CarAutoParts.Application.Interfaces;
@@ -24,6 +27,7 @@ public class PosCheckoutService : IPosCheckoutService
     private readonly IRepository<CashierShift> _shifts;
     private readonly IRepository<HeldSale> _held;
     private readonly IRepository<ProductSupersession> _supersessions;
+    private readonly IRepository<Warehouse> _warehouses;
     private readonly IInventoryService _inventory;
     private readonly IFbrService _fbrService;
     private readonly IUnitOfWork _unitOfWork;
@@ -34,6 +38,7 @@ public class PosCheckoutService : IPosCheckoutService
     private readonly ICurrentUserService _currentUser;
     private readonly IEnterpriseSalesService _salesEnterprise;
     private readonly IAtpService _atp;
+    private readonly IFeatureGate _features;
 
     public PosCheckoutService(
         IRepository<Product> products,
@@ -46,6 +51,7 @@ public class PosCheckoutService : IPosCheckoutService
         IRepository<CashierShift> shifts,
         IRepository<HeldSale> held,
         IRepository<ProductSupersession> supersessions,
+        IRepository<Warehouse> warehouses,
         IInventoryService inventory,
         IFbrService fbrService,
         IUnitOfWork unitOfWork,
@@ -55,7 +61,8 @@ public class PosCheckoutService : IPosCheckoutService
         ICurrentCompanyContext company,
         ICurrentUserService currentUser,
         IEnterpriseSalesService salesEnterprise,
-        IAtpService atp)
+        IAtpService atp,
+        IFeatureGate features)
     {
         _products = products;
         _invoices = invoices;
@@ -67,6 +74,7 @@ public class PosCheckoutService : IPosCheckoutService
         _shifts = shifts;
         _held = held;
         _supersessions = supersessions;
+        _warehouses = warehouses;
         _inventory = inventory;
         _fbrService = fbrService;
         _unitOfWork = unitOfWork;
@@ -77,61 +85,270 @@ public class PosCheckoutService : IPosCheckoutService
         _currentUser = currentUser;
         _salesEnterprise = salesEnterprise;
         _atp = atp;
+        _features = features;
     }
 
-    public async Task<IReadOnlyList<PosProductDto>> GetPosProductsAsync(string? search, CancellationToken ct = default)
+    /// <summary>
+    /// POS catalog search. Exact SKU/barcode/OEM/part uses indexed equality (no full scan);
+    /// contains/fitment is a capped fallback. Smoke: p95 &lt;1s mindset on 50k SKU with exact scanner codes.
+    /// </summary>
+    public Task<IReadOnlyList<PosProductDto>> GetPosProductsAsync(
+        string? search = null,
+        string? make = null,
+        string? model = null,
+        int? year = null,
+        CancellationToken ct = default) =>
+        GetPosProductsCoreAsync(new PosProductSearchQuery(search, make, model, year), ct);
+
+    private async Task<IReadOnlyList<PosProductDto>> GetPosProductsCoreAsync(PosProductSearchQuery query, CancellationToken ct)
     {
-        var q = _products.Query()
-            .Include(p => p.InventoryItems)
-            .Include(p => p.VehicleCompatibilities)
-            .Where(p => !p.IsDeleted && p.IsActive);
+        var oemField = await _features.GetFieldAsync(ConfigKeys.FieldProductOem, ct);
+        var partField = await _features.GetFieldAsync(ConfigKeys.FieldProductPartNumber, ct);
+        var fitmentSearch = await _features.BehaviorEnabledAsync(ConfigKeys.BehFitmentSearch, ct);
+        var supersessionOn = await _features.BehaviorEnabledAsync(ConfigKeys.BehSupersession, ct);
+        var fitmentField = await _features.GetFieldAsync(ConfigKeys.FieldProductFitment, ct);
 
-        HashSet<int>? crossRefIds = null;
-        if (!string.IsNullOrWhiteSpace(search))
+        var make = fitmentSearch && !string.IsNullOrWhiteSpace(query.Make) ? query.Make.Trim() : null;
+        var model = fitmentSearch && !string.IsNullOrWhiteSpace(query.Model) ? query.Model.Trim() : null;
+        int? fitYear = fitmentSearch && query.Year is >= 1980 and <= 2100 ? query.Year : null;
+        var hasFitmentFilter = make is not null || model is not null || fitYear is not null;
+
+        var search = CatalogSearchNormalizer.NormalizePaste(query.Search);
+        var candidates = CatalogSearchNormalizer.BuildExactCandidates(search);
+
+        if (candidates.Count > 0 && !hasFitmentFilter)
         {
-            var s = search.Trim();
-            int? year = int.TryParse(s, out var y) && y is >= 1980 and <= 2100 ? y : null;
-
-            // Cross-ref: if search matches an old superseded product SKU/OEM, include the replacement
-            var oldMatches = await _products.Query()
-                .Where(p => !p.IsDeleted && (p.Sku == s || (p.OemNumber != null && p.OemNumber == s) || (p.PartNumber != null && p.PartNumber == s)))
-                .Select(p => p.Id)
+            // Hot path: equality on indexed columns — prefer exact barcode/SKU/OEM/part before fuzzy Contains.
+            var exact = await _products.Query()
+                .AsNoTracking()
+                .Where(p => !p.IsDeleted && p.IsActive &&
+                    (candidates.Contains(p.Sku) ||
+                     (p.Barcode != null && candidates.Contains(p.Barcode)) ||
+                     (oemField.Visible && p.OemNumber != null && candidates.Contains(p.OemNumber)) ||
+                     (partField.Visible && p.PartNumber != null && candidates.Contains(p.PartNumber))))
+                .OrderBy(p => p.Name)
+                .Take(QueryLimits.PosExactMatchTake)
+                .Select(p => new PosRow(
+                    p.Id, p.Name, p.Sku, p.Barcode, p.SalePrice, p.TaxRatePercent, p.Unit, p.HsCode,
+                    p.InventoryItems.Where(i => !i.IsDeleted).Sum(i => i.QuantityOnHand - i.ReservedQuantity),
+                    p.OemNumber, p.PartNumber))
                 .ToListAsync(ct);
-            if (oldMatches.Count > 0)
+
+            if (exact.Count > 0)
+                return await MapPosRowsAsync(exact, oemField.Visible, partField.Visible, supersessionOn, fitmentField.Visible && fitmentSearch, exactMatch: true, ct);
+
+            HashSet<int>? crossRefIds = null;
+            if (supersessionOn)
             {
-                var newIds = await _supersessions.Query()
-                    .Where(x => !x.IsDeleted && oldMatches.Contains(x.OldProductId))
-                    .Select(x => x.NewProductId)
+                var oldMatches = await _products.Query()
+                    .AsNoTracking()
+                    .Where(p => !p.IsDeleted && (
+                        candidates.Contains(p.Sku) ||
+                        (oemField.Visible && p.OemNumber != null && candidates.Contains(p.OemNumber)) ||
+                        (partField.Visible && p.PartNumber != null && candidates.Contains(p.PartNumber))))
+                    .Select(p => p.Id)
                     .ToListAsync(ct);
-                if (newIds.Count > 0)
-                    crossRefIds = newIds.ToHashSet();
+                if (oldMatches.Count > 0)
+                {
+                    var newIds = await _supersessions.Query()
+                        .AsNoTracking()
+                        .Where(x => !x.IsDeleted && oldMatches.Contains(x.OldProductId))
+                        .Select(x => x.NewProductId)
+                        .ToListAsync(ct);
+                    if (newIds.Count > 0)
+                        crossRefIds = newIds.ToHashSet();
+                }
             }
 
-            q = q.Where(p =>
-                (crossRefIds != null && crossRefIds.Contains(p.Id)) ||
-                p.Name.Contains(s) ||
-                p.Sku.Contains(s) ||
-                (p.Barcode != null && p.Barcode.Contains(s)) ||
-                (p.OemNumber != null && p.OemNumber.Contains(s)) ||
-                (p.PartNumber != null && p.PartNumber.Contains(s)) ||
-                p.VehicleCompatibilities.Any(v =>
-                    v.Make.Contains(s) ||
-                    v.Model.Contains(s) ||
-                    (year != null && (v.YearFrom == null || v.YearFrom <= year) && (v.YearTo == null || v.YearTo >= year))));
+            int? yearToken = int.TryParse(search, out var y) && y is >= 1980 and <= 2100 ? y : null;
+
+            // Fallback: Contains / fitment — capped Take(100).
+            var soft = await _products.Query()
+                .AsNoTracking()
+                .Where(p => !p.IsDeleted && p.IsActive)
+                .Where(p =>
+                    (crossRefIds != null && crossRefIds.Contains(p.Id)) ||
+                    p.Name.Contains(search) ||
+                    p.Sku.Contains(search) ||
+                    (p.Barcode != null && p.Barcode.Contains(search)) ||
+                    (oemField.Visible && p.OemNumber != null && p.OemNumber.Contains(search)) ||
+                    (partField.Visible && p.PartNumber != null && p.PartNumber.Contains(search)) ||
+                    (fitmentSearch && p.VehicleCompatibilities.Any(v =>
+                        v.Make.Contains(search) ||
+                        v.Model.Contains(search) ||
+                        (yearToken != null && (v.YearFrom == null || v.YearFrom <= yearToken) && (v.YearTo == null || v.YearTo >= yearToken)))))
+                .OrderBy(p => p.Name)
+                .Take(QueryLimits.PosSoftSearchTake)
+                .Select(p => new PosRow(
+                    p.Id, p.Name, p.Sku, p.Barcode, p.SalePrice, p.TaxRatePercent, p.Unit, p.HsCode,
+                    p.InventoryItems.Where(i => !i.IsDeleted).Sum(i => i.QuantityOnHand - i.ReservedQuantity),
+                    p.OemNumber, p.PartNumber))
+                .ToListAsync(ct);
+
+            return await MapPosRowsAsync(soft, oemField.Visible, partField.Visible, supersessionOn, fitmentField.Visible && fitmentSearch, exactMatch: false, ct);
         }
 
-        var items = await q.OrderBy(p => p.Name).Take(100).ToListAsync(ct);
-        return items.Select(p => new PosProductDto(
-            p.Id, p.Name, p.Sku, p.Barcode, p.SalePrice, p.TaxRatePercent, p.Unit, p.HsCode,
-            p.InventoryItems.Where(i => !i.IsDeleted).Sum(i => i.QuantityOnHand - i.ReservedQuantity),
-            p.OemNumber, p.PartNumber)).ToList();
+        // Browse or fitment-picker filter (no text / with make-model-year).
+        var browseQ = _products.Query()
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.IsActive);
+
+        if (hasFitmentFilter)
+        {
+            browseQ = browseQ.Where(p => p.VehicleCompatibilities.Any(v =>
+                (make == null || v.Make == make) &&
+                (model == null || v.Model == model) &&
+                (fitYear == null || ((v.YearFrom == null || v.YearFrom <= fitYear) && (v.YearTo == null || v.YearTo >= fitYear)))));
+        }
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            browseQ = browseQ.Where(p =>
+                p.Name.Contains(search) ||
+                p.Sku.Contains(search) ||
+                (p.Barcode != null && p.Barcode.Contains(search)) ||
+                (oemField.Visible && p.OemNumber != null && p.OemNumber.Contains(search)) ||
+                (partField.Visible && p.PartNumber != null && p.PartNumber.Contains(search)));
+        }
+
+        var browse = await browseQ
+            .OrderBy(p => p.Name)
+            .Take(QueryLimits.PosSoftSearchTake)
+            .Select(p => new PosRow(
+                p.Id, p.Name, p.Sku, p.Barcode, p.SalePrice, p.TaxRatePercent, p.Unit, p.HsCode,
+                p.InventoryItems.Where(i => !i.IsDeleted).Sum(i => i.QuantityOnHand - i.ReservedQuantity),
+                p.OemNumber, p.PartNumber))
+            .ToListAsync(ct);
+
+        return await MapPosRowsAsync(browse, oemField.Visible, partField.Visible, supersessionOn, fitmentField.Visible && fitmentSearch, exactMatch: false, ct);
     }
+
+    /// <inheritdoc />
+    public async Task<FitmentOptionsDto> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default)
+    {
+        if (!await _features.BehaviorEnabledAsync(ConfigKeys.BehFitmentSearch, ct))
+            return new FitmentOptionsDto(Array.Empty<string>(), Array.Empty<string>());
+
+        var compat = _products.Query()
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.IsActive)
+            .SelectMany(p => p.VehicleCompatibilities.Where(v => !v.IsDeleted));
+
+        var makes = await compat
+            .Select(v => v.Make)
+            .Distinct()
+            .OrderBy(m => m)
+            .Take(500)
+            .ToListAsync(ct);
+
+        IReadOnlyList<string> models = Array.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(make))
+        {
+            var m = make.Trim();
+            models = await compat
+                .Where(v => v.Make == m)
+                .Select(v => v.Model)
+                .Distinct()
+                .OrderBy(x => x)
+                .Take(500)
+                .ToListAsync(ct);
+        }
+
+        return new FitmentOptionsDto(makes, models);
+    }
+
+    private async Task<IReadOnlyList<PosProductDto>> MapPosRowsAsync(
+        List<PosRow> rows,
+        bool showOem,
+        bool showPart,
+        bool supersessionOn,
+        bool showFitment,
+        bool exactMatch,
+        CancellationToken ct)
+    {
+        if (rows.Count == 0)
+            return Array.Empty<PosProductDto>();
+
+        Dictionary<int, string>? supersededBy = null;
+        Dictionary<int, string>? supersedes = null;
+        Dictionary<int, string>? fitment = null;
+
+        var ids = rows.Select(r => r.Id).ToList();
+
+        if (supersessionOn)
+        {
+            var links = await _supersessions.Query()
+                .AsNoTracking()
+                .Where(x => !x.IsDeleted && (ids.Contains(x.OldProductId) || ids.Contains(x.NewProductId)))
+                .Select(x => new
+                {
+                    x.OldProductId,
+                    x.NewProductId,
+                    OldSku = x.OldProduct.Sku,
+                    NewSku = x.NewProduct.Sku
+                })
+                .ToListAsync(ct);
+
+            supersededBy = links
+                .Where(l => ids.Contains(l.OldProductId))
+                .GroupBy(l => l.OldProductId)
+                .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(x => x.NewSku).Distinct()));
+
+            supersedes = links
+                .Where(l => ids.Contains(l.NewProductId))
+                .GroupBy(l => l.NewProductId)
+                .ToDictionary(g => g.Key, g => string.Join(", ", g.Select(x => x.OldSku).Distinct()));
+        }
+
+        if (showFitment)
+        {
+            var fits = await _products.Query()
+                .AsNoTracking()
+                .Where(p => ids.Contains(p.Id))
+                .Select(p => new
+                {
+                    p.Id,
+                    Lines = p.VehicleCompatibilities
+                        .Where(v => !v.IsDeleted)
+                        .OrderBy(v => v.Make).ThenBy(v => v.Model)
+                        .Take(3)
+                        .Select(v => v.Make + " " + v.Model +
+                            (v.YearFrom != null || v.YearTo != null
+                                ? " " + (v.YearFrom != null ? v.YearFrom.ToString() : "") +
+                                  (v.YearTo != null && v.YearTo != v.YearFrom ? "-" + v.YearTo : "")
+                                : ""))
+                        .ToList()
+                })
+                .ToListAsync(ct);
+            fitment = fits.ToDictionary(x => x.Id, x => string.Join("; ", x.Lines));
+        }
+
+        return rows.Select(p => new PosProductDto(
+            p.Id, p.Name, p.Sku, p.Barcode, p.SalePrice, p.TaxRatePercent, p.Unit, p.HsCode,
+            p.Stock,
+            showOem ? p.OemNumber : null,
+            showPart ? p.PartNumber : null,
+            exactMatch,
+            supersessionOn && supersedes is not null && supersedes.TryGetValue(p.Id, out var olds) ? olds : null,
+            supersessionOn && supersededBy is not null && supersededBy.TryGetValue(p.Id, out var news) ? news : null,
+            fitment is not null && fitment.TryGetValue(p.Id, out var fs) && !string.IsNullOrWhiteSpace(fs) ? fs : null
+        )).ToList();
+    }
+
+    private sealed record PosRow(
+        int Id, string Name, string Sku, string? Barcode, decimal SalePrice, decimal TaxRatePercent,
+        string Unit, string? HsCode, decimal Stock, string? OemNumber, string? PartNumber);
 
     public async Task<PosCheckoutResultDto> CheckoutAsync(PosCheckoutDto dto, CancellationToken ct = default)
     {
         var validation = await _validator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             throw new InvalidOperationException(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
+
+        var warehouse = await _warehouses.Query().FirstOrDefaultAsync(w => w.Id == dto.WarehouseId && !w.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Warehouse not found.");
+        if (warehouse.BranchId is int branchId && !_company.IsBranchAllowed(branchId))
+            throw new InvalidOperationException("Warehouse branch is not allowed for this user.");
 
         // Authenticated cashiers must have an open shift; in-process tests without user skip the gate.
         CashierShift? shift = null;
@@ -159,6 +376,7 @@ public class PosCheckoutService : IPosCheckoutService
         }
 
         var settings = await _settings.Query().FirstOrDefaultAsync(s => !s.IsDeleted, ct) ?? new CompanySettings();
+        var taxEnabled = await _features.BehaviorEnabledAsync(ConfigKeys.BehTaxEnabled, ct);
         var invoiceNumber = await GenerateInvoiceNumberAsync(settings, ct);
         SalesInvoice? invoice = null;
 
@@ -183,7 +401,7 @@ public class PosCheckoutService : IPosCheckoutService
             };
 
             decimal subTotal = 0, taxTotal = 0, cogsTotal = 0;
-            var lineItems = new List<(Product Product, PosCheckoutLineDto Line, decimal UnitPrice, decimal LineTax, decimal LineTotal)>();
+            var lineItems = new List<(Product Product, PosCheckoutLineDto Line, decimal UnitPrice, decimal LineTax, decimal LineTotal, decimal TaxRate)>();
 
             foreach (var line in dto.Lines)
             {
@@ -195,18 +413,23 @@ public class PosCheckoutService : IPosCheckoutService
                 var unitPrice = await ResolveUnitPriceAsync(product, line, dto.CustomerId, innerCt);
                 await EnsureStockForSaleAsync(product, dto.WarehouseId, line.Quantity, innerCt);
 
+                var taxRate = !taxEnabled
+                    ? 0m
+                    : product.TaxRatePercent > 0
+                        ? product.TaxRatePercent
+                        : settings.DefaultTaxRate;
                 var lineSub = unitPrice * line.Quantity - line.DiscountAmount;
-                var lineTax = lineSub * product.TaxRatePercent / 100m;
+                var lineTax = lineSub * taxRate / 100m;
                 subTotal += lineSub;
                 taxTotal += lineTax;
-                lineItems.Add((product, line, unitPrice, lineTax, lineSub + lineTax));
+                lineItems.Add((product, line, unitPrice, lineTax, lineSub + lineTax, taxRate));
             }
 
             invoice.SubTotal = subTotal;
             invoice.TaxAmount = taxTotal;
             invoice.GrandTotal = subTotal + taxTotal - dto.DiscountAmount;
 
-            foreach (var (product, line, unitPrice, lineTax, lineTotal) in lineItems)
+            foreach (var (product, line, unitPrice, lineTax, lineTotal, taxRate) in lineItems)
             {
                 invoice.Lines.Add(new SalesInvoiceLine
                 {
@@ -215,7 +438,7 @@ public class PosCheckoutService : IPosCheckoutService
                     Sku = product.Sku,
                     Quantity = line.Quantity,
                     UnitPrice = unitPrice,
-                    TaxRate = product.TaxRatePercent,
+                    TaxRate = taxRate,
                     TaxAmount = lineTax,
                     LineTotal = lineTotal,
                     HsCode = product.HsCode,
@@ -226,8 +449,16 @@ public class PosCheckoutService : IPosCheckoutService
             _invoices.Add(invoice);
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            foreach (var (product, line, _, _, _) in lineItems)
-                cogsTotal += await DeductForSaleAsync(product, dto.WarehouseId, line.Quantity, invoice.Id, innerCt);
+            var lineList = invoice.Lines.ToList();
+            for (var i = 0; i < lineItems.Count; i++)
+            {
+                var (product, line, _, _, _, _) = lineItems[i];
+                var cogs = await DeductForSaleAsync(product, dto.WarehouseId, line.Quantity, invoice.Id, innerCt);
+                var unitCost = line.Quantity > 0 ? cogs / line.Quantity : 0;
+                lineList[i].UnitCost = unitCost;
+                cogsTotal += cogs;
+            }
+            await _unitOfWork.SaveChangesAsync(innerCt);
 
             var tenders = BuildTenders(dto, invoice.GrandTotal);
             var (recorded, changeDue, creditAmount, status) = await ApplyTendersAsync(invoice, tenders, innerCt);
@@ -253,24 +484,55 @@ public class PosCheckoutService : IPosCheckoutService
         if (invoice is null)
             throw new InvalidOperationException("Checkout produced no invoice.");
 
-        var fbrRequest = FbrInvoiceBuilder.Build(invoice, invoice.Lines.ToList(), settings, dto.Buyer, dto.ScenarioId, dto.SaleType);
-        var fbrResult = await _fbrService.PostInvoiceAsync(fbrRequest, ct);
-        var submission = new FbrSubmission
+        // Sale is already committed. FBR must never roll back checkout — catch all failures + enqueue retry.
+        var fbrEnabled = await _features.BehaviorEnabledAsync(ConfigKeys.BehFbrEnabled, ct);
+        if (!fbrEnabled)
         {
-            SalesInvoiceId = invoice.Id,
-            FbrInvoiceNumber = fbrResult.InvoiceNumber,
-            Status = fbrResult.Success
-                ? (fbrResult.WasStubbed ? FbrSubmissionStatus.Stub : FbrSubmissionStatus.Success)
-                : FbrSubmissionStatus.Failed,
-            RequestJson = fbrResult.RequestJson ?? JsonSerializer.Serialize(fbrRequest),
-            ResponseJson = fbrResult.ResponseJson,
-            ErrorMessage = fbrResult.Success ? null : fbrResult.Message,
-            SubmittedAt = DateTime.UtcNow
-        };
-        _fbrSubmissions.Add(submission);
-        await _unitOfWork.SaveChangesAsync(ct);
-        if (!fbrResult.Success)
-            _fbrOutbox.EnqueueFbrRetry(invoice.Id, submission.RequestJson);
+            return new PosCheckoutResultDto(
+                invoice.Id, invoice.InvoiceNumber, null,
+                false, false, null,
+                invoice.GrandTotal, invoice.TaxAmount, invoice.SubTotal,
+                invoice.ChangeDue, invoice.PaymentStatus.ToString());
+        }
+
+        var fbrRequest = FbrInvoiceBuilder.Build(invoice, invoice.Lines.ToList(), settings, dto.Buyer, dto.ScenarioId, dto.SaleType);
+        FbrPostResultDto fbrResult;
+        try
+        {
+            fbrResult = await _fbrService.PostInvoiceAsync(fbrRequest, ct);
+        }
+        catch (Exception ex)
+        {
+            fbrResult = FbrPostResultDto.Fail(
+                $"FBR post threw after sale commit: {ex.Message}",
+                JsonSerializer.Serialize(fbrRequest));
+        }
+
+        try
+        {
+            var submission = new FbrSubmission
+            {
+                SalesInvoiceId = invoice.Id,
+                FbrInvoiceNumber = fbrResult.InvoiceNumber,
+                Status = fbrResult.Success
+                    ? (fbrResult.WasStubbed ? FbrSubmissionStatus.Stub : FbrSubmissionStatus.Success)
+                    : FbrSubmissionStatus.Failed,
+                RequestJson = fbrResult.RequestJson ?? JsonSerializer.Serialize(fbrRequest),
+                ResponseJson = fbrResult.ResponseJson,
+                ErrorMessage = fbrResult.Success ? null : fbrResult.Message,
+                SubmittedAt = DateTime.UtcNow
+            };
+            _fbrSubmissions.Add(submission);
+            await _unitOfWork.SaveChangesAsync(ct);
+            if (!fbrResult.Success)
+                _fbrOutbox.EnqueueFbrRetry(invoice.Id, submission.RequestJson);
+        }
+        catch
+        {
+            // Persistence of FBR row failed — still enqueue retry so outbox can rebuild payload.
+            if (!fbrResult.Success)
+                _fbrOutbox.EnqueueFbrRetry(invoice.Id, fbrResult.RequestJson ?? JsonSerializer.Serialize(fbrRequest));
+        }
 
         return new PosCheckoutResultDto(
             invoice.Id, invoice.InvoiceNumber, fbrResult.InvoiceNumber,
@@ -283,13 +545,24 @@ public class PosCheckoutService : IPosCheckoutService
     {
         var invoice = await _invoices.Query()
             .Include(i => i.Lines).Include(i => i.Payments).Include(i => i.Customer)
+            .Include(i => i.FbrSubmission)
             .FirstOrDefaultAsync(i => i.Id == salesInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
 
+        var brandName = await _features.GetBrandAsync(ConfigKeys.BrandAppName, "Car Auto Parts", ct);
+        var fbr = invoice.FbrSubmission;
+        var fbrPosted = fbr is not null &&
+            fbr.Status is FbrSubmissionStatus.Success or FbrSubmissionStatus.Stub &&
+            !string.IsNullOrWhiteSpace(fbr.FbrInvoiceNumber);
+        var irn = fbrPosted ? fbr!.FbrInvoiceNumber! : null;
+        var qrPayload = fbrPosted
+            ? $"FBR-IRN:{irn}|TOTAL:{invoice.GrandTotal:0.00}"
+            : null;
+
         var sb = new StringBuilder();
         sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'><title>").Append(invoice.InvoiceNumber)
-            .Append("</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:320px;margin:1rem auto;font-size:13px}h1{font-size:16px;margin:0 0 .5rem}table{width:100%;border-collapse:collapse}td{padding:.2rem 0}.r{text-align:right}.muted{color:#666;font-size:11px}</style></head><body>");
-        sb.Append("<h1>Car Auto Parts</h1><div class='muted'>").Append(invoice.InvoiceNumber).Append(" · ")
+            .Append("</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:320px;margin:1rem auto;font-size:13px}h1{font-size:16px;margin:0 0 .5rem}table{width:100%;border-collapse:collapse}td{padding:.2rem 0}.r{text-align:right}.muted{color:#666;font-size:11px}.fbr{margin-top:.75rem;text-align:center}.warn{color:#a60;font-size:11px}</style></head><body>");
+        sb.Append("<h1>").Append(System.Net.WebUtility.HtmlEncode(brandName)).Append("</h1><div class='muted'>").Append(invoice.InvoiceNumber).Append(" · ")
             .Append(invoice.InvoiceDate.ToLocalTime().ToString("g")).Append("</div><div>")
             .Append(System.Net.WebUtility.HtmlEncode(invoice.BuyerName ?? invoice.Customer?.Name ?? "Walk-in"))
             .Append("</div><hr/><table>");
@@ -306,7 +579,25 @@ public class PosCheckoutService : IPosCheckoutService
             sb.Append("<tr><td>").Append(System.Net.WebUtility.HtmlEncode(p.PaymentMethod)).Append("</td><td class='r'>").Append(p.Amount.ToString("N2")).Append("</td></tr>");
         if (invoice.ChangeDue > 0)
             sb.Append("<tr><td>Change</td><td class='r'>").Append(invoice.ChangeDue.ToString("N2")).Append("</td></tr>");
-        sb.Append("</table><p class='muted'>Thank you</p><script>window.onload=()=>window.print()</script></body></html>");
+        sb.Append("</table>");
+
+        if (fbrPosted)
+        {
+            sb.Append("<div class='fbr'><div><strong>FBR IRN</strong></div><div>")
+                .Append(System.Net.WebUtility.HtmlEncode(irn))
+                .Append("</div>");
+            if (fbr!.Status == FbrSubmissionStatus.Stub)
+                sb.Append("<div class='warn'>Sandbox / stub</div>");
+            sb.Append("<div class='muted' style='margin-top:.4rem;word-break:break-all'>")
+                .Append(System.Net.WebUtility.HtmlEncode(qrPayload))
+                .Append("</div></div>");
+        }
+        else if (fbr is not null && fbr.Status == FbrSubmissionStatus.Failed)
+        {
+            sb.Append("<p class='warn'>FBR pending / failed — reprint after outbox retry posts IRN.</p>");
+        }
+
+        sb.Append("<p class='muted'>Thank you</p><script>window.onload=()=>window.print()</script></body></html>");
         return sb.ToString();
     }
 
@@ -488,7 +779,8 @@ public class PosCheckoutService : IPosCheckoutService
                 var deduct = await _inventory.DeductStockAsync(comp.Id, warehouseId, need, nameof(SalesInvoice), invoiceId, ct);
                 if (!deduct.Succeeded)
                     throw new InvalidOperationException(deduct.Error ?? "Kit component stock deduction failed.");
-                cogs += (comp.CostPrice > 0 ? comp.CostPrice : comp.PurchasePrice) * need;
+                var issued = deduct.Data;
+                cogs += (issued > 0 ? issued : (comp.CostPrice > 0 ? comp.CostPrice : comp.PurchasePrice)) * need;
             }
             return cogs;
         }
@@ -496,7 +788,10 @@ public class PosCheckoutService : IPosCheckoutService
         var result = await _inventory.DeductStockAsync(product.Id, warehouseId, qty, nameof(SalesInvoice), invoiceId, ct);
         if (!result.Succeeded)
             throw new InvalidOperationException(result.Error ?? "Stock deduction failed.");
-        return (product.CostPrice > 0 ? product.CostPrice : product.PurchasePrice) * qty;
+        var unit = result.Data;
+        if (unit <= 0)
+            unit = product.CostPrice > 0 ? product.CostPrice : product.PurchasePrice;
+        return unit * qty;
     }
 
     private static bool IsCredit(string method) =>

@@ -4,8 +4,9 @@
 @inject IToastService Toast
 @inject IJSRuntime Js
 @inject PermissionService Perms
+@inject WebAppConfigService AppConfig
 
-<PageHeader Title="Products" Subtitle="Catalog CRUD, import & export">
+<PageHeader Title="Products" Subtitle="Catalog CRUD, OEM/fitment import & export">
     @if (_canCreate)
     {
         <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add product</button>
@@ -18,25 +19,82 @@
 
 <div class="cap-card mb-3">
     <div class="row g-2 align-items-end">
-        <div class="col-md-6">
+        <div class="col-md-5">
             <label class="form-label">Search</label>
             <input class="form-control" @bind="_search" @bind:event="oninput" />
         </div>
-        <div class="col-md-3">
-            <button class="btn btn-cap" @onclick="LoadAsync">Search</button>
+        <div class="col-md-2">
+            <button class="btn btn-cap" @onclick="SearchAsync">Search</button>
         </div>
         @if (_canImport)
         {
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label class="form-label">Excel import</label>
                 <InputFile OnChange="ImportAsync" class="form-control" accept=".xlsx,.xls" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">OEM / fitment CSV</label>
+                <InputFile OnChange="ImportOemFitmentAsync" class="form-control" accept=".csv,text/csv" />
             </div>
         }
     </div>
+    @if (_canImport && AppConfig.Field(ModuleKeys.FieldProductFitment).Visible)
+    {
+        <div class="small text-secondary mt-2">
+            CSV columns: <span class="mono">Sku,OemNumber,PartNumber,Make,Model,YearFrom,YearTo</span>
+            — upserts OEM/part on existing SKUs; adds fitment rows (does not wipe catalog).
+        </div>
+    }
 </div>
+
+@if (_fitmentEnabled)
+{
+    <div class="cap-card mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Filter make</label>
+                <select class="form-select" value="@_filterMake" @onchange="OnFilterMakeChanged">
+                    <option value="">Any</option>
+                    @foreach (var m in _fitMakes)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Model</label>
+                <select class="form-select" @bind="_filterModel">
+                    <option value="">Any</option>
+                    @foreach (var m in _fitModels)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Year</label>
+                <input type="number" class="form-control" @bind="_filterYear" min="1980" max="2100" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-outline-light" @onclick="FilterByFitmentAsync">Apply fitment</button>
+            </div>
+        </div>
+    </div>
+}
 
 <LoadingState Busy="@_busy" Error="@_error" />
 
-@if (_items is not null)
+@if (_items is not null && !_busy && _items.TotalCount == 0)
+{
+    <EmptyState Title="No products yet"
+                Message="Add your first SKU, or import Excel / OEM-fitment CSV to seed the catalog.">
+        @if (_canCreate)
+        {
+            <button type="button" class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add product</button>
+        }
+    </EmptyState>
+}
+else if (_items is not null)
 {
     <div class="cap-card table-responsive">
         <table class="table table-cap table-striped align-middle mb-0">
@@ -60,7 +118,8 @@
             }
             </tbody>
         </table>
-        <div class="mt-2 small text-secondary">Total @_items.TotalCount</div>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -77,11 +136,63 @@
             <div class="col-md-3"><label class="form-label">Purchase</label><input type="number" class="form-control" @bind="_form.PurchasePrice" /></div>
             <div class="col-md-3"><label class="form-label">Sale</label><input type="number" class="form-control" @bind="_form.SalePrice" /></div>
             <div class="col-md-3"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_form.TaxRatePercent" /></div>
+            @if (AppConfig.Field(ModuleKeys.FieldProductOem).Visible)
+            {
+                <div class="col-md-3"><label class="form-label">@AppConfig.Field(ModuleKeys.FieldProductOem).Label</label><input class="form-control" @bind="_form.OemNumber" /></div>
+            }
+            @if (AppConfig.Field(ModuleKeys.FieldProductPartNumber).Visible)
+            {
+                <div class="col-md-3"><label class="form-label">@AppConfig.Field(ModuleKeys.FieldProductPartNumber).Label</label><input class="form-control" @bind="_form.PartNumber" /></div>
+            }
+            @if (AppConfig.Field(ModuleKeys.FieldProductHsCode).Visible)
+            {
+                <div class="col-md-3"><label class="form-label">@AppConfig.Field(ModuleKeys.FieldProductHsCode).Label</label><input class="form-control" @bind="_form.HsCode" /></div>
+            }
             <div class="col-md-3"><label class="form-label">Min stock</label><input type="number" class="form-control" @bind="_form.MinimumStock" /></div>
             <div class="col-md-3"><label class="form-label">Reorder level</label><input type="number" class="form-control" @bind="_form.ReorderLevel" /></div>
             <div class="col-md-3"><label class="form-label">Max stock</label><input type="number" class="form-control" @bind="_form.MaximumStock" /></div>
             <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" @bind="_form.Description"></textarea></div>
         </div>
+
+        @if (_supersessionEnabled && (_supersedesSkus is not null || _supersededBySku is not null))
+        {
+            <div class="mt-3 p-2 border rounded">
+                <div class="fw-semibold mb-1">Supersession</div>
+                @if (!string.IsNullOrWhiteSpace(_supersededBySku))
+                {
+                    <div class="small text-warning">Superseded by: @_supersededBySku</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(_supersedesSkus))
+                {
+                    <div class="small text-info">Supersedes: @_supersedesSkus</div>
+                }
+            </div>
+        }
+
+        @if (AppConfig.Field(ModuleKeys.FieldProductFitment).Visible)
+        {
+            <div class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">@AppConfig.Field(ModuleKeys.FieldProductFitment).Label</h6>
+                    <button type="button" class="btn btn-sm btn-outline-light" @onclick="AddFitmentRow">+ row</button>
+                </div>
+                @foreach (var row in _fitmentRows)
+                {
+                    <div class="row g-2 mb-1 align-items-end">
+                        <div class="col-md-3"><input class="form-control form-control-sm" placeholder="Make" @bind="row.Make" /></div>
+                        <div class="col-md-3"><input class="form-control form-control-sm" placeholder="Model" @bind="row.Model" /></div>
+                        <div class="col-md-2"><input type="number" class="form-control form-control-sm" placeholder="Year from" @bind="row.YearFrom" /></div>
+                        <div class="col-md-2"><input type="number" class="form-control form-control-sm" placeholder="Year to" @bind="row.YearTo" /></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => _fitmentRows.Remove(row)">Remove</button></div>
+                    </div>
+                }
+                @if (_fitmentRows.Count == 0)
+                {
+                    <div class="small text-secondary">No fitment rows — add make/model/year.</div>
+                }
+            </div>
+        }
+
         <div class="mt-3 d-flex gap-2">
             <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
             <button class="btn btn-outline-light" @onclick="() => _editing = false">Cancel</button>
@@ -94,10 +205,22 @@
     private bool _busy = true;
     private string? _error;
     private string? _search;
+    private int _page = 1;
+    private int _pageSize = 10;
     private bool _editing;
     private int? _editId;
     private ProductCreateDto _form = new();
+    private readonly List<VehicleCompatibilityDto> _fitmentRows = [];
+    private string? _supersedesSkus;
+    private string? _supersededBySku;
     private bool _canCreate, _canUpdate, _canDelete, _canImport, _canExport;
+    private bool _fitmentEnabled;
+    private bool _supersessionEnabled;
+    private string _filterMake = "";
+    private string _filterModel = "";
+    private int? _filterYear;
+    private List<string> _fitMakes = [];
+    private List<string> _fitModels = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -106,22 +229,87 @@
         _canDelete = await Perms.HasAsync(Permissions.ProductsDelete);
         _canImport = await Perms.HasAsync(Permissions.ProductsImport);
         _canExport = await Perms.HasAsync(Permissions.ProductsExport);
+        _fitmentEnabled = AppConfig.BehaviorEnabled("pos.fitmentSearch") || AppConfig.Field(ModuleKeys.FieldProductFitment).Visible;
+        _supersessionEnabled = AppConfig.BehaviorEnabled("pos.supersession");
+        if (_fitmentEnabled)
+        {
+            var (opts, _, _) = await Api.GetFitmentOptionsAsync();
+            _fitMakes = opts?.Makes ?? [];
+        }
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetProductsAsync(new QuerySpec { Search = _search, Page = 1, PageSize = 50 });
-        _items = data;
-        _error = error;
-        _busy = false;
+        try
+        {
+            var (data, error, _) = await Api.GetProductsAsync(new QuerySpec
+            {
+                Search = _search,
+                Page = _page,
+                PageSize = _pageSize,
+                FitmentMake = string.IsNullOrWhiteSpace(_filterMake) ? null : _filterMake,
+                FitmentModel = string.IsNullOrWhiteSpace(_filterModel) ? null : _filterModel,
+                FitmentYear = _filterYear
+            });
+            _items = data;
+            _error = error;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        if (page < 1 || page == _page) return;
+        _page = page;
+        await LoadAsync();
+    }
+
+    private async Task OnPageSizeChanged(int size)
+    {
+        size = Math.Clamp(size, 1, 500);
+        if (size == _pageSize) return;
+        _pageSize = size;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnFilterMakeChanged(ChangeEventArgs e)
+    {
+        _filterMake = e.Value?.ToString() ?? "";
+        _filterModel = "";
+        _fitModels = [];
+        if (!string.IsNullOrWhiteSpace(_filterMake))
+        {
+            var (opts, _, _) = await Api.GetFitmentOptionsAsync(_filterMake);
+            _fitModels = opts?.Models ?? [];
+        }
+    }
+
+    private async Task FilterByFitmentAsync()
+    {
+        if (!_fitmentEnabled) return;
+        _page = 1;
+        await LoadAsync();
     }
 
     private async Task BeginEdit(int? id)
     {
         _editId = id;
         _editing = true;
+        _fitmentRows.Clear();
+        _supersedesSkus = null;
+        _supersededBySku = null;
         if (id is null)
         {
             _form = new ProductCreateDto { IsActive = true, Unit = "PCS" };
@@ -139,10 +327,35 @@
             HsCode = detail.HsCode, TaxRatePercent = detail.TaxRatePercent, IsActive = detail.IsActive,
             TrackSerialNumbers = detail.TrackSerialNumbers, TrackBatches = detail.TrackBatches
         };
+        if (detail.VehicleCompatibilities is { Count: > 0 })
+            _fitmentRows.AddRange(detail.VehicleCompatibilities);
+        if (_supersessionEnabled)
+        {
+            _supersedesSkus = detail.SupersedesSkus;
+            _supersededBySku = detail.SupersededBySku;
+        }
     }
+
+    private void AddFitmentRow() =>
+        _fitmentRows.Add(new VehicleCompatibilityDto());
 
     private async Task SaveAsync()
     {
+        if (AppConfig.Field(ModuleKeys.FieldProductFitment).Visible)
+        {
+            _form.VehicleCompatibilities = _fitmentRows
+                .Where(r => !string.IsNullOrWhiteSpace(r.Make) && !string.IsNullOrWhiteSpace(r.Model))
+                .Select(r => new VehicleCompatibilityDto
+                {
+                    Id = r.Id,
+                    Make = r.Make.Trim(),
+                    Model = r.Model.Trim(),
+                    YearFrom = r.YearFrom,
+                    YearTo = r.YearTo
+                })
+                .ToList();
+        }
+
         if (_editId is null)
         {
             var (_, error, _) = await Api.CreateProductAsync(_form);
@@ -181,5 +394,24 @@
         var (count, error) = await Api.ImportProductsAsync(stream, file.Name);
         if (error is not null) Toast.ShowError(error);
         else { Toast.ShowSuccess($"Imported {count} rows"); await LoadAsync(); }
+    }
+
+    private async Task ImportOemFitmentAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        await using var stream = file.OpenReadStream(20_000_000);
+        var (data, error) = await Api.ImportOemFitmentCsvAsync(stream, file.Name);
+        if (data is null) { Toast.ShowError(error ?? "Import failed"); return; }
+
+        Toast.ShowSuccess(
+            $"OEM/fitment: {data.OemUpdated} OEM updated, {data.FitmentAdded} fitment added, {data.Skipped} skipped, {data.ErrorCount} errors");
+
+        if (data.ErrorCount > 0 && !string.IsNullOrWhiteSpace(data.ErrorReportCsv))
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(data.ErrorReportCsv);
+            await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), "oem-fitment-errors.csv", "text/csv");
+        }
+
+        await LoadAsync();
     }
 }

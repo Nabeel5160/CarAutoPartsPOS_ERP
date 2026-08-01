@@ -19,6 +19,7 @@ public sealed class FinanceDbAdapter : IFinanceDb
     public DbSet<FiscalYear> FiscalYears => _db.FiscalYears;
     public DbSet<JournalEntry> JournalEntries => _db.JournalEntries;
     public DbSet<NumberSequence> NumberSequences => _db.NumberSequences;
+    public DbSet<CompanySettings> CompanySettings => _db.CompanySettings;
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

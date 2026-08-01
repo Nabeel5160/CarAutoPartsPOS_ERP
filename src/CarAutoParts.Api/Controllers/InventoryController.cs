@@ -66,8 +66,12 @@ public class InventoryController : ApiControllerBase
 
     [HttpGet("value")]
     [Authorize(Policy = Permissions.InventoryView)]
-    public async Task<IActionResult> Value(CancellationToken ct)
-        => Ok(new { value = await _inventory.GetInventoryValueAsync(ct) });
+    public async Task<IActionResult> Value(
+        [FromQuery] string? method,
+        [FromQuery] int? warehouseId,
+        [FromQuery] int? branchId,
+        CancellationToken ct)
+        => Ok(await _inventory.GetInventoryValueAsync(method, warehouseId, branchId, ct));
 
     [HttpGet("atp")]
     [Authorize(Policy = Permissions.InventoryView)]

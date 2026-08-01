@@ -53,10 +53,11 @@ public record SalesOrderListDto(
     DateTime OrderDate,
     decimal GrandTotal);
 
-/// <summary>Sales return row.</summary>
+/// <summary>Sales return / credit note row.</summary>
 public record SalesReturnDto(
     int Id,
     string ReturnNumber,
+    string? CreditNoteNumber,
     int? SalesInvoiceId,
     string? InvoiceNumber,
     int? CustomerId,
@@ -65,10 +66,13 @@ public record SalesReturnDto(
     ReturnType ReturnType,
     DateTime ReturnDate,
     decimal GrandTotal,
+    decimal TaxAmount,
+    decimal AppliedAmount,
+    bool StockAffected,
     string? Notes,
     string ReasonCode = "");
 
-/// <summary>Payload for creating a sales return.</summary>
+/// <summary>Payload for creating a sales return / credit note.</summary>
 public record SalesReturnCreateDto(
     int? SalesInvoiceId,
     int? CustomerId,
@@ -76,7 +80,14 @@ public record SalesReturnCreateDto(
     string? Notes,
     int WarehouseId,
     IReadOnlyList<SalesReturnLineDto> Lines,
-    string ReasonCode = "");
+    string ReasonCode = "",
+    bool StockAffected = true);
 
 /// <summary>Sales return line.</summary>
-public record SalesReturnLineDto(int ProductId, decimal Quantity, decimal UnitPrice);
+public record SalesReturnLineDto(
+    int ProductId,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal TaxRate = 0);
+
+public record ApplyCreditNoteRequest(int SalesInvoiceId, decimal Amount, string? Notes = null);

@@ -39,6 +39,11 @@ public class ProductsController : ApiControllerBase
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
         => FromResult(await _products.DeleteAsync(id, ct));
 
+    [HttpGet("fitment-options")]
+    [Authorize(Policy = Permissions.ProductsView)]
+    public async Task<IActionResult> FitmentOptions([FromQuery] string? make, CancellationToken ct)
+        => Ok(await _products.GetFitmentOptionsAsync(make, ct));
+
     [HttpPost("import")]
     [Authorize(Policy = Permissions.ProductsImport)]
     [RequestSizeLimit(20_000_000)]
@@ -49,6 +54,18 @@ public class ProductsController : ApiControllerBase
 
         await using var stream = file.OpenReadStream();
         return FromResult(await _products.ImportFromExcelAsync(stream, ct));
+    }
+
+    [HttpPost("import-oem-fitment")]
+    [Authorize(Policy = Permissions.ProductsImport)]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> ImportOemFitment(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "CSV file is required." });
+
+        await using var stream = file.OpenReadStream();
+        return FromResult(await _products.ImportOemFitmentCsvAsync(stream, ct));
     }
 
     [HttpGet("export")]

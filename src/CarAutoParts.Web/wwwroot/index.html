@@ -17,7 +17,7 @@
     <div id="app">
         <div class="cap-scene login-wrap">
             <div class="login-panel">
-                <strong>Car Auto <span style="color:#f5a623">Parts</span></strong>
+                <strong>Car Auto <span style="color:var(--cap-accent,#f5a623)">Parts</span></strong>
                 <div class="mt-2 text-secondary">Loading Blazor UI…</div>
             </div>
         </div>
@@ -29,6 +29,10 @@
         <span class="dismiss">🗙</span>
     </div>
     <script src="js/theme.js"></script>
+    <script src="js/brand.js"></script>
+    <script src="js/offline-outbox.js"></script>
+    <script src="js/capCharts.js"></script>
+    <script>window.capTheme && window.capTheme.bootFromStorage();</script>
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script>
         Blazor.start().catch(err => {

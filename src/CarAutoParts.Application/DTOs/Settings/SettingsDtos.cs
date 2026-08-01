@@ -25,7 +25,12 @@ public record CompanySettingsDto(
     bool GrnUnderReceiveAllowed = true,
     decimal ThreeWayQtyTolerancePercent = 0,
     decimal ThreeWayPriceTolerancePercent = 0,
-    bool AllowNegativeStock = false);
+    bool AllowNegativeStock = false,
+    string DefaultValuationMethod = "Average",
+    DateTime? OpeningBalanceDate = null,
+    DateTime? SetupCompletedAt = null,
+    string VerticalKey = "auto-parts",
+    string? LogoUrl = null);
 
 /// <summary>Database backup history entry.</summary>
 public record BackupHistoryDto(

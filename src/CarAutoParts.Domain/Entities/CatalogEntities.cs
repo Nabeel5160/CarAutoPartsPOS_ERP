@@ -32,6 +32,21 @@ public class Warehouse : CompanyEntity
     public string? PhoneNumber { get; set; }
     public bool IsDefault { get; set; }
     public ICollection<InventoryItem> InventoryItems { get; set; } = new List<InventoryItem>();
+    public ICollection<WarehouseLocation> Locations { get; set; } = new List<WarehouseLocation>();
+}
+
+/// <summary>Bin / aisle location within a warehouse (Phase 15).</summary>
+public class WarehouseLocation : CompanyEntity
+{
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsReceivingDefault { get; set; }
+    public bool IsPickDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+    public ICollection<InventoryLocationBalance> Balances { get; set; } = new List<InventoryLocationBalance>();
 }
 
 public class Product : CompanyEntity

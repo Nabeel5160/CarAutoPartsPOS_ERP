@@ -110,16 +110,29 @@ public sealed class MasterDataService : IMasterDataService
         return Result<ProductSupersessionDto>.Success(MapSupersession(entity));
     }
 
-    public async Task<IReadOnlyList<ProductKitDto>> GetKitsAsync(int? parentProductId = null, CancellationToken ct = default)
+    public async Task<PagedResult<ProductKitDto>> GetKitsAsync(QuerySpec? query = null, int? parentProductId = null, CancellationToken ct = default)
     {
         EnsureCompanyOrThrow();
+        query ??= new QuerySpec();
 
         var q = _db.ProductKits.Include(k => k.Components).AsNoTracking();
         if (parentProductId.HasValue)
             q = q.Where(k => k.ParentProductId == parentProductId.Value);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            q = q.Where(k => k.Name.Contains(s));
+        }
 
-        var kits = await q.OrderBy(k => k.Name).ToListAsync(ct);
-        return kits.Select(MapKit).ToList();
+        var ordered = q.OrderBy(k => k.Name);
+        var paged = await ordered.ToPagedResultAsync(query.Page, query.PageSize, ct);
+        return new PagedResult<ProductKitDto>
+        {
+            Items = paged.Items.Select(MapKit).ToList(),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize
+        };
     }
 
     public async Task<IReadOnlyList<ProductSupersessionDto>> GetSupersessionsAsync(
@@ -132,7 +145,11 @@ public sealed class MasterDataService : IMasterDataService
         if (productId.HasValue)
             q = q.Where(s => s.OldProductId == productId.Value || s.NewProductId == productId.Value);
 
-        var items = await q.OrderByDescending(s => s.EffectiveFrom).ToListAsync(ct);
+        var items = await q
+            .Include(s => s.OldProduct)
+            .Include(s => s.NewProduct)
+            .OrderByDescending(s => s.EffectiveFrom)
+            .ToListAsync(ct);
         return items.Select(MapSupersession).ToList();
     }
 
@@ -167,5 +184,7 @@ public sealed class MasterDataService : IMasterDataService
         s.OldProductId,
         s.NewProductId,
         s.EffectiveFrom,
-        s.Notes);
+        s.Notes,
+        s.OldProduct?.Sku,
+        s.NewProduct?.Sku);
 }

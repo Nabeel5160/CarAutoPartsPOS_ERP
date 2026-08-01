@@ -136,6 +136,12 @@ public sealed class ApiClient
         var sb = new StringBuilder($"?page={q.Page}&pageSize={q.PageSize}");
         if (!string.IsNullOrWhiteSpace(q.Search))
             sb.Append($"&search={Uri.EscapeDataString(q.Search)}");
+        if (!string.IsNullOrWhiteSpace(q.FitmentMake))
+            sb.Append($"&fitmentMake={Uri.EscapeDataString(q.FitmentMake)}");
+        if (!string.IsNullOrWhiteSpace(q.FitmentModel))
+            sb.Append($"&fitmentModel={Uri.EscapeDataString(q.FitmentModel)}");
+        if (q.FitmentYear is int y)
+            sb.Append($"&fitmentYear={y}");
         return sb.ToString();
     }
 

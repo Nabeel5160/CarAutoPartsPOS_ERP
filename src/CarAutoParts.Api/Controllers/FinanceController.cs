@@ -12,8 +12,13 @@ namespace CarAutoParts.Api.Controllers;
 public class FinanceController : ApiControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IPhase4FinanceService _phase4;
 
-    public FinanceController(IMediator mediator) => _mediator = mediator;
+    public FinanceController(IMediator mediator, IPhase4FinanceService phase4)
+    {
+        _mediator = mediator;
+        _phase4 = phase4;
+    }
 
     [HttpGet("companies")]
     [Authorize(Policy = Permissions.PlatformView)]
@@ -40,10 +45,15 @@ public class FinanceController : ApiControllerBase
     public async Task<ActionResult<IReadOnlyList<AccountingPeriodDto>>> GetPeriods(CancellationToken ct) =>
         Ok(await _mediator.Send(new GetOpenPeriodsQuery(), ct));
 
+    [HttpGet("periods/{id:int}/close-checklist")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<ActionResult<PeriodCloseChecklistDto>> GetCloseChecklist(int id, CancellationToken ct) =>
+        Ok(await _phase4.GetPeriodCloseChecklistAsync(id, ct));
+
     [HttpPost("periods/{id:int}/close")]
     [Authorize(Policy = Permissions.FinancePost)]
-    public async Task<IActionResult> ClosePeriod(int id, CancellationToken ct) =>
-        FromResult(await _mediator.Send(new ClosePeriodCommand(id), ct));
+    public async Task<IActionResult> ClosePeriod(int id, [FromQuery] bool force = false, CancellationToken ct = default) =>
+        FromResult(await _phase4.ClosePeriodWithChecklistAsync(id, force, ct));
 
     [HttpPost("periods/{id:int}/reopen")]
     [Authorize(Policy = Permissions.FinancePost)]
@@ -69,4 +79,49 @@ public class FinanceController : ApiControllerBase
     [Authorize(Policy = Permissions.FinanceView)]
     public async Task<IActionResult> NextNumber([FromQuery] string documentType, CancellationToken ct) =>
         FromResult(await _mediator.Send(new GetNextDocumentNumberQuery(documentType), ct));
+
+    [HttpGet("opening-balances")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> GetOpeningBalances(CancellationToken ct) =>
+        Ok(await _phase4.GetOpeningBalanceBatchesAsync(ct));
+
+    [HttpPost("opening-balances")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> PostOpeningBalances([FromBody] PostOpeningBalancesRequest request, CancellationToken ct) =>
+        FromResult(await _phase4.PostOpeningBalancesAsync(request, ct));
+
+    [HttpGet("bank-statements")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> GetBankStatements(CancellationToken ct) =>
+        Ok(await _phase4.GetBankStatementsAsync(ct));
+
+    [HttpPost("bank-statements")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> CreateBankStatement([FromBody] CreateBankStatementRequest request, CancellationToken ct) =>
+        FromResult(await _phase4.CreateBankStatementAsync(request, ct));
+
+    [HttpPost("bank-statements/{id:int}/lines")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> AddBankLine(int id, [FromBody] CreateBankStatementLineRequest request, CancellationToken ct) =>
+        FromResult(await _phase4.AddBankStatementLineAsync(id, request, ct));
+
+    [HttpPost("bank-statements/lines/{lineId:int}/match")]
+    [Authorize(Policy = Permissions.FinancePost)]
+    public async Task<IActionResult> MatchBankLine(int lineId, [FromQuery] int journalLineId, CancellationToken ct) =>
+        FromResult(await _phase4.MatchBankLineAsync(lineId, journalLineId, ct));
+
+    [HttpPost("bank-statements/lines/{lineId:int}/unclear")]
+    [Authorize(Policy = Permissions.FinanceManage)]
+    public async Task<IActionResult> UnclearBankLine(int lineId, CancellationToken ct) =>
+        FromResult(await _phase4.UnclearBankLineAsync(lineId, ct));
+
+    [HttpGet("bank-statements/uncleared-gl")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> UnclearedGl([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct) =>
+        Ok(await _phase4.GetUnclearedBankGlLinesAsync(from, to, ct));
+
+    [HttpGet("bank-statements/{id:int}/report")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> BankReconReport(int id, CancellationToken ct) =>
+        FromResult(await _phase4.GetBankReconReportAsync(id, ct));
 }

@@ -22,10 +22,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<WarehouseLocation> WarehouseLocations => Set<WarehouseLocation>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<ProductVehicleCompatibility> ProductVehicleCompatibilities => Set<ProductVehicleCompatibility>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<InventoryLocationBalance> InventoryLocationBalances => Set<InventoryLocationBalance>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<StockBatch> StockBatches => Set<StockBatch>();
     public DbSet<SerialNumber> SerialNumbers => Set<SerialNumber>();
@@ -51,16 +53,22 @@ public class ApplicationDbContext : DbContext
     public DbSet<HeldSale> HeldSales => Set<HeldSale>();
     public DbSet<HeldSaleLine> HeldSaleLines => Set<HeldSaleLine>();
     public DbSet<CashierShift> CashierShifts => Set<CashierShift>();
+    public DbSet<Till> Tills => Set<Till>();
+    public DbSet<SafeDrop> SafeDrops => Set<SafeDrop>();
     public DbSet<InventoryTransfer> InventoryTransfers => Set<InventoryTransfer>();
     public DbSet<InventoryTransferLine> InventoryTransferLines => Set<InventoryTransferLine>();
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
+    public DbSet<UserBranch> UserBranches => Set<UserBranch>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
+    public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
     public DbSet<AppNotification> Notifications => Set<AppNotification>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+    public DbSet<AppConfigEntry> AppConfigEntries => Set<AppConfigEntry>();
     public DbSet<BackupHistory> BackupHistories => Set<BackupHistory>();
 
     // Platform / Finance
@@ -76,6 +84,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<AccountMapping> AccountMappings => Set<AccountMapping>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
+    public DbSet<OpeningBalanceBatch> OpeningBalanceBatches => Set<OpeningBalanceBatch>();
+    public DbSet<OpeningBalanceLine> OpeningBalanceLines => Set<OpeningBalanceLine>();
+    public DbSet<BankStatement> BankStatements => Set<BankStatement>();
+    public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
+    public DbSet<CreditNoteApplication> CreditNoteApplications => Set<CreditNoteApplication>();
+    public DbSet<PurchaseCreditNoteApplication> PurchaseCreditNoteApplications => Set<PurchaseCreditNoteApplication>();
 
     // Enterprise ops (M2/M3)
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();

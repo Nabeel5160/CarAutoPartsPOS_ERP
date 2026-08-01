@@ -1,3 +1,6 @@
+using CarAutoParts.Application.DTOs.Reports;
+using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Application.Services;
 using CarAutoParts.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
@@ -6,26 +9,39 @@ using QuestPDF.Infrastructure;
 
 namespace CarAutoParts.Infrastructure.Services;
 
+/// <summary>QuestPDF exports with the same branch ACL / warehouse scoping as Excel paths.</summary>
 public class PdfReportService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ICurrentCompanyContext _company;
 
     static PdfReportService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public PdfReportService(ApplicationDbContext db)
+    public PdfReportService(ApplicationDbContext db, ICurrentCompanyContext company)
     {
         _db = db;
+        _company = company;
     }
 
-    public async Task<byte[]> GenerateInventoryReportAsync(CancellationToken ct = default)
+    /// <summary>Returns null when the requested branch is not allowed.</summary>
+    public async Task<byte[]?> GenerateInventoryReportAsync(int? branchId = null, CancellationToken ct = default)
     {
-        var items = await _db.InventoryItems
+        if (ReportBranchScope.IsDenied(_company, branchId))
+            return null;
+
+        var whIds = ReportBranchScope.AllowedWarehouseIds(_db.Warehouses.AsNoTracking(), _company, branchId);
+        var q = _db.InventoryItems
             .AsNoTracking()
             .Include(i => i.Product)
             .Include(i => i.Warehouse)
+            .Where(i => !i.IsDeleted);
+        if (whIds is not null)
+            q = q.Where(i => whIds.Contains(i.WarehouseId));
+
+        var items = await q
             .OrderBy(i => i.Product.Name)
             .Select(i => new
             {
@@ -52,11 +68,21 @@ public class PdfReportService
             }));
     }
 
-    public async Task<byte[]> GenerateSalesReportAsync(DateTime from, DateTime to, CancellationToken ct = default)
+    /// <summary>Returns null when the requested branch is not allowed.</summary>
+    public async Task<byte[]?> GenerateSalesReportAsync(
+        DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default)
     {
-        var invoices = await _db.SalesInvoices
+        if (ReportBranchScope.IsDenied(_company, branchId))
+            return null;
+
+        var whIds = ReportBranchScope.AllowedWarehouseIds(_db.Warehouses.AsNoTracking(), _company, branchId);
+        var q = _db.SalesInvoices
             .AsNoTracking()
-            .Where(i => i.InvoiceDate >= from && i.InvoiceDate <= to)
+            .Where(i => !i.IsDeleted && !i.IsVoided && i.InvoiceDate >= from && i.InvoiceDate <= to);
+        if (whIds is not null)
+            q = q.Where(i => i.WarehouseId != null && whIds.Contains(i.WarehouseId.Value));
+
+        var invoices = await q
             .OrderByDescending(i => i.InvoiceDate)
             .Select(i => new
             {
@@ -79,12 +105,22 @@ public class PdfReportService
             }));
     }
 
-    public async Task<byte[]> GeneratePurchaseReportAsync(DateTime from, DateTime to, CancellationToken ct = default)
+    /// <summary>Returns null when the requested branch is not allowed.</summary>
+    public async Task<byte[]?> GeneratePurchaseReportAsync(
+        DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default)
     {
-        var orders = await _db.PurchaseOrders
+        if (ReportBranchScope.IsDenied(_company, branchId))
+            return null;
+
+        var whIds = ReportBranchScope.AllowedWarehouseIds(_db.Warehouses.AsNoTracking(), _company, branchId);
+        var q = _db.PurchaseOrders
             .AsNoTracking()
             .Include(o => o.Supplier)
-            .Where(o => o.OrderDate >= from && o.OrderDate <= to)
+            .Where(o => !o.IsDeleted && o.OrderDate >= from && o.OrderDate <= to);
+        if (whIds is not null)
+            q = q.Where(o => o.WarehouseId == null || whIds.Contains(o.WarehouseId.Value));
+
+        var orders = await q
             .OrderByDescending(o => o.OrderDate)
             .Select(o => new
             {
@@ -107,6 +143,31 @@ public class PdfReportService
                 o.GrandTotal.ToString("N2"),
                 o.Status.ToString()
             }));
+    }
+
+    public Task<byte[]> GenerateDailySalesReportAsync(DailySalesSummaryDto summary, CancellationToken ct = default)
+    {
+        var rows = new List<string[]>
+        {
+            new[] { "Invoices", summary.InvoiceCount.ToString() },
+            new[] { "Returns", summary.ReturnCount.ToString() },
+            new[] { "Sales", summary.SalesTotal.ToString("N2") },
+            new[] { "Tax", summary.TaxAmount.ToString("N2") },
+            new[] { "Returns total", summary.ReturnsTotal.ToString("N2") },
+            new[] { "Net sales", summary.NetSales.ToString("N2") }
+        };
+        rows.AddRange(summary.Tenders.Select(t => new[] { $"Tender: {t.Method}", t.Amount.ToString("N2") }));
+        rows.AddRange(summary.Days.Select(d => new[]
+        {
+            d.Date.ToString("dd-MMM-yyyy"),
+            $"Inv {d.InvoiceCount} · Net {d.NetSales:N2}"
+        }));
+
+        var bytes = BuildTableReport(
+            $"Daily Sales ({summary.From:dd-MMM-yyyy} – {summary.To:dd-MMM-yyyy})",
+            new[] { "Metric / Day", "Value" },
+            rows);
+        return Task.FromResult(bytes);
     }
 
     private static byte[] BuildTableReport(string title, string[] headers, IEnumerable<string[]> rows)

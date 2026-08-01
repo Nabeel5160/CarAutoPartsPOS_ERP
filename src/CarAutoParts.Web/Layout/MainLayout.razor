@@ -1,9 +1,12 @@
-﻿@inherits LayoutComponentBase
+@using CarAutoParts.Web.Navigation
+@inherits LayoutComponentBase
 @inject ThemeService Theme
 @inject LocaleService Locale
 @inject PermissionService Perms
 @inject AuthApiService AuthApi
 @inject CapApiService Api
+@inject OfflineCheckoutQueue OfflineQueue
+@inject WebAppConfigService AppConfig
 @inject NavigationManager Nav
 @inject JwtAuthStateProvider AuthState
 @implements IDisposable
@@ -12,14 +15,18 @@
     <BlazoredToasts Position="Blazored.Toast.Configuration.ToastPosition.BottomRight" Timeout="4" />
     @if (ApiReachability.IsDown)
     {
-        <div class="alert alert-danger mb-0 rounded-0 text-center py-2">API unreachable — @ApiReachability.LastError</div>
+        <div class="alert alert-cap border-danger text-danger cap-banner-offline">API unreachable — @ApiReachability.LastError</div>
     }
     <AuthorizeView>
         <Authorized>
-            <div class="cap-shell">
+            <div class="cap-shell @(_sidebarOpen ? "cap-nav-open" : null)">
+                @if (_sidebarOpen)
+                {
+                    <button type="button" class="cap-nav-backdrop d-lg-none" aria-label="Close menu" @onclick="CloseSidebar"></button>
+                }
                 <aside class="cap-sidebar @(_sidebarOpen ? "open" : null)">
-                    <div class="cap-brand">Car Auto <span>Parts</span></div>
-                    <nav class="cap-nav">
+                    <div class="cap-brand">@AppConfig.Branding.ShortName <span>@AppConfig.Branding.AccentWord</span></div>
+                    <nav class="cap-nav" @onclick="OnNavClick">
                         @foreach (var group in _groups.Where(g => g.Visible))
                         {
                             @if (group.IsLeaf)
@@ -34,7 +41,7 @@
                             {
                                 var open = _expanded.Contains(group.Id);
                                 <div class="cap-nav-group @(open ? "open" : null) @(IsGroupActive(group) ? "has-active" : null)">
-                                    <button type="button" class="cap-nav-parent" @onclick="() => ToggleGroup(group.Id)" aria-expanded="@open">
+                                    <button type="button" class="cap-nav-parent" @onclick="() => ToggleGroup(group.Id)" @onclick:stopPropagation="true" aria-expanded="@open">
                                         <span class="cap-nav-ico">@group.Icon</span>
                                         <span class="cap-nav-parent-label">@group.Title</span>
                                         <span class="cap-nav-chevron" aria-hidden="true">▾</span>
@@ -57,30 +64,37 @@
                 </aside>
                 <div class="cap-main">
                     <header class="cap-topbar">
-                        <div class="d-flex align-items-center gap-2">
-                            <button class="btn btn-sm btn-outline-light d-lg-none" @onclick="() => _sidebarOpen = !_sidebarOpen">Menu</button>
-                            <span class="badge badge-soft">@_displayName</span>
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <button type="button" class="btn btn-sm btn-cap-ghost d-lg-none cap-touch-btn" @onclick="() => _sidebarOpen = !_sidebarOpen">Menu</button>
+                            <span class="badge badge-soft text-truncate">@_displayName</span>
+                            @if (OfflineQueue.PendingCount > 0)
+                            {
+                                <a class="badge text-bg-warning text-decoration-none" href="pos" title="Offline checkout queue">
+                                    Queue @OfflineQueue.PendingCount
+                                </a>
+                            }
                             @if (_unread > 0)
                             {
                                 <a class="badge text-bg-warning text-decoration-none" href="notifications">@_unread new</a>
                             }
+                            <a class="badge badge-soft text-decoration-none d-lg-none" href="m" title="Mobile tools">Mobile</a>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <select class="form-select form-select-sm" style="width:auto" value="@Locale.Culture" @onchange="OnCultureChanged">
+                        <div class="d-flex align-items-center gap-2 cap-topbar-tools">
+                            <select class="form-select form-select-sm cap-topbar-dense" style="width:auto" value="@Locale.Culture" @onchange="OnCultureChanged">
                                 <option value="en">EN</option>
                                 <option value="ur">UR</option>
                             </select>
-                            <select class="form-select form-select-sm" style="width:auto" value="@Theme.Mode" @onchange="OnModeChanged">
+                            <select class="form-select form-select-sm cap-topbar-dense" style="width:auto" value="@Theme.Mode" @onchange="OnModeChanged">
                                 <option value="dark">Dark</option>
                                 <option value="light">Light</option>
                             </select>
-                            <select class="form-select form-select-sm" style="width:auto" value="@Theme.Accent" @onchange="OnAccentChanged">
+                            <select class="form-select form-select-sm cap-topbar-dense d-none d-sm-block" style="width:auto" value="@Theme.Accent" @onchange="OnAccentChanged">
                                 <option value="amber">Amber</option>
                                 <option value="cyan">Cyan</option>
                                 <option value="emerald">Emerald</option>
                                 <option value="rose">Rose</option>
                             </select>
-                            <button class="btn btn-sm btn-outline-warning" @onclick="LogoutAsync">Logout</button>
+                            <button type="button" class="btn btn-sm btn-cap-outline cap-touch-btn" @onclick="LogoutAsync">Logout</button>
                         </div>
                     </header>
                     <main class="cap-content">
@@ -101,20 +115,76 @@
     private int _unread;
     private List<NavGroup> _groups = [];
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _navBuildLock = new(1, 1);
 
     protected override async Task OnInitializedAsync()
     {
         ApiReachability.Changed += OnApiReachabilityChanged;
+        OfflineQueue.Changed += OnOfflineQueueChanged;
         Theme.Changed += OnThemeChanged;
-        Locale.Changed += OnLocaleChanged;
         Nav.LocationChanged += OnLocationChanged;
-        await Theme.InitializeAsync();
-        await Locale.InitializeAsync();
-        await EnforcePasswordChangeAsync();
+        try
+        {
+            await Theme.InitializeAsync();
+            await Locale.InitializeAsync();
+            await AppConfig.RefreshFullAsync();
+            // Branding refresh must not leave company theme on the DOM — restore user preference.
+            await Theme.ReapplyAsync();
+            await EnforcePasswordChangeAsync();
+            await EnforceOnboardingAsync();
+            await EnforceModuleRouteAsync();
+            // Build once after refresh, then subscribe — RefreshFullAsync fires AppConfig/Locale
+            // Changed (via ApplyLocaleOverrides), which would otherwise race BuildNavAsync.
+            await BuildNavAsync();
+            Locale.Changed += OnLocaleChanged;
+            AppConfig.Changed += OnAppConfigChanged;
+            _displayName = await Perms.DisplayNameAsync();
+            var (count, _, status) = await Api.GetUnreadCountAsync();
+            if (status == 200 && count is not null) _unread = count.Count;
+            await OfflineQueue.RefreshCountAsync();
+        }
+        catch (Exception ex)
+        {
+            // Keep shell usable after login even if one init call fails (nav/notifications/offline).
+            System.Diagnostics.Debug.WriteLine("MainLayout init: " + ex);
+            Locale.Changed += OnLocaleChanged;
+            AppConfig.Changed += OnAppConfigChanged;
+            try { await BuildNavAsync(); } catch { /* ignore */ }
+        }
+    }
+
+    private void OnAppConfigChanged() => InvokeAsync(async () =>
+    {
+        await Theme.ReapplyAsync();
         await BuildNavAsync();
-        _displayName = await Perms.DisplayNameAsync();
-        var (count, _, status) = await Api.GetUnreadCountAsync();
-        if (status == 200 && count is not null) _unread = count.Count;
+        StateHasChanged();
+    });
+
+    private Task EnforceModuleRouteAsync()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
+        var module = NavDefinition.ModuleForRoute(relative);
+        if (module is not null && !AppConfig.ModuleEnabled(module))
+            Nav.NavigateTo("/");
+        return Task.CompletedTask;
+    }
+
+    private void OnOfflineQueueChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnApiReachabilityChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            if (!ApiReachability.IsDown && OfflineQueue.PendingCount > 0)
+            {
+                await OfflineQueue.DrainAsync(async payload =>
+                {
+                    var (data, error, _) = await Api.CheckoutRawAsync(payload);
+                    return (data is not null, error);
+                });
+            }
+        });
     }
 
     private async Task EnforcePasswordChangeAsync()
@@ -123,99 +193,61 @@
         if (user?.MustChangePassword != true) return;
         var relative = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
         if (relative.StartsWith("settings", StringComparison.OrdinalIgnoreCase) ||
-            relative.StartsWith("login", StringComparison.OrdinalIgnoreCase))
+            relative.StartsWith("login", StringComparison.OrdinalIgnoreCase) ||
+            relative.StartsWith("onboarding", StringComparison.OrdinalIgnoreCase))
             return;
         Nav.NavigateTo("/settings?forcePassword=1");
     }
 
+    private async Task EnforceOnboardingAsync()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
+        if (relative.StartsWith("onboarding", StringComparison.OrdinalIgnoreCase) ||
+            relative.StartsWith("login", StringComparison.OrdinalIgnoreCase) ||
+            relative.StartsWith("settings", StringComparison.OrdinalIgnoreCase) ||
+            relative.StartsWith("mfa-setup", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var (status, _, code) = await Api.GetOnboardingStatusAsync();
+        if (code != 200 || status is null || status.IsComplete) return;
+        Nav.NavigateTo("/onboarding");
+    }
+
     private async Task BuildNavAsync()
     {
-        async Task<bool> Can(string? p) => p is null || await Perms.HasAsync(p);
-
-        async Task<NavItem> Item(string title, string href, string icon, string? perm, bool exact = false) =>
-            new(title, href, icon, await Can(perm), exact);
-
-        var dashboard = await Item(Locale["Nav_Dashboard"], "", "◉", Permissions.DashboardView, true);
-
-        _groups =
-        [
-            new NavGroup("dash", Locale["Nav_Dashboard"], "◉", true, [dashboard], leaf: true),
-            new NavGroup("catalog", "Catalog", "▣", true,
-            [
-                await Item("Products", "products", "▣", Permissions.ProductsView),
-                await Item("Categories", "categories", "▦", Permissions.CategoriesView),
-                await Item("Brands", "brands", "◈", Permissions.BrandsView),
-                await Item("Kits", "kits", "🧩", Permissions.KitsManage),
-                await Item("Price Lists", "price-lists", "💲", Permissions.PriceListsManage),
-                await Item("Barcodes", "barcodes", "║", Permissions.ProductsView),
-            ]),
-            new NavGroup("inventory", "Inventory", "▤", true,
-            [
-                await Item("Stock", "inventory", "▤", Permissions.InventoryView),
-                await Item("Warehouses", "warehouses", "⌂", Permissions.WarehousesView),
-                await Item("Movements", "movements", "⇄", Permissions.InventoryView),
-                await Item("Serials", "serials", "#", Permissions.SerialNumbersView),
-                await Item("Reservations", "reservations", "⏳", Permissions.InventoryAdjust),
-                await Item("Cycle Counts", "cycle-counts", "🔢", Permissions.CycleCountManage),
-                await Item("Transfers", "transfers", "↔", Permissions.TransfersView),
-            ]),
-            new NavGroup("partners", "Partners", "◎", true,
-            [
-                await Item("Suppliers", "suppliers", "🚚", Permissions.SuppliersView),
-                await Item("Customers", "customers", "◎", Permissions.CustomersView),
-                await Item("Aging", "partner-aging", "⏰", Permissions.FinanceView),
-                await Item("Receipts", "receipts", "💰", Permissions.FinanceView),
-            ]),
-            new NavGroup("purchasing", "Purchasing", "↓", true,
-            [
-                await Item("Purchase Orders", "purchases", "↓", Permissions.PurchasesView),
-                await Item("Requisitions", "requisitions", "☰", Permissions.PurchasesRequisition),
-                await Item("Reorder", "reorder", "↻", Permissions.PurchasesRequisition),
-                await Item("GRN", "grn", "📥", Permissions.GrnManage),
-                await Item("AP Invoices", "ap-invoices", "📄", Permissions.ApInvoiceManage),
-            ]),
-            new NavGroup("sales", "Sales", "💳", true,
-            [
-                await Item(Locale["Nav_POS"], "pos", "💳", Permissions.PosCheckout),
-                await Item("Quotations", "quotations", "✎", Permissions.QuotationsManage),
-                await Item("Sales Orders", "sales-orders", "≡", Permissions.SalesView),
-                await Item("Deliveries", "deliveries", "🚛", Permissions.DeliveriesManage),
-                await Item("Invoices", "invoices", "🧾", Permissions.SalesView),
-                await Item("Returns", "returns", "↩", Permissions.ReturnsManage),
-                await Item("FBR", "fbr", "☁", Permissions.PosCheckout),
-            ]),
-            new NavGroup("finance", "Finance", "📒", true,
-            [
-                await Item("Company", "company", "🏢", Permissions.PlatformView),
-                await Item("COA", "coa", "📒", Permissions.FinanceView),
-                await Item(Locale["Finance_Journals"], "journals", "☰", Permissions.FinanceView),
-                await Item("Periods", "periods", "📅", Permissions.FinancePost),
-                await Item("Fin Reports", "financial-reports", "Σ", Permissions.FinanceView),
-                await Item("Mappings", "account-mappings", "🔗", Permissions.FinanceView),
-            ]),
-            new NavGroup("insights", "Insights", "📈", true,
-            [
-                await Item("Reports", "reports", "▤", Permissions.ReportsExport),
-                await Item("Analytics", "analytics", "📈", Permissions.AnalyticsView),
-            ]),
-            new NavGroup("system", "System", "⚙", true,
-            [
-                await Item("Users", "users", "☺", Permissions.UsersView),
-                await Item("Audit", "audit", "⏱", Permissions.AuditView),
-                await Item("Settings", "settings", "⚙", Permissions.SettingsView),
-                await Item("Backup", "backup", "💾", Permissions.BackupView),
-                await Item("Notifications", "notifications", "🔔", null),
-            ]),
-        ];
-
-        // Hide empty groups (all children filtered by permission)
-        foreach (var g in _groups)
+        await _navBuildLock.WaitAsync();
+        try
         {
-            if (!g.IsLeaf)
-                g.Visible = g.Children.Any(c => c.Visible);
-        }
+            async Task<bool> Can(string? p) => p is null || await Perms.HasAsync(p);
 
-        ExpandActiveGroups();
+            string Title(NavDefItem item) =>
+                item.TitleIsLocaleKey ? Locale[item.TitleKeyOrLiteral] : item.TitleKeyOrLiteral;
+
+            string GroupTitle(NavDefGroup g) =>
+                g.TitleIsLocaleKey ? Locale[g.TitleKeyOrLiteral] : g.TitleKeyOrLiteral;
+
+            var built = new List<NavGroup>();
+            foreach (var def in NavDefinition.Groups)
+            {
+                var children = new List<NavItem>();
+                foreach (var item in def.Children)
+                {
+                    var visible = await Can(item.Permission) &&
+                                  (item.ModuleKey is null || AppConfig.ModuleEnabled(item.ModuleKey));
+                    children.Add(new NavItem(Title(item), item.Href, item.Icon, visible, item.Exact));
+                }
+
+                var groupVisible = children.Any(c => c.Visible);
+                built.Add(new NavGroup(def.Id, GroupTitle(def), def.Icon, groupVisible, children, def.Leaf));
+            }
+
+            _groups = built;
+            ExpandActiveGroups();
+        }
+        finally
+        {
+            _navBuildLock.Release();
+        }
     }
 
     private void ToggleGroup(string id)
@@ -226,8 +258,8 @@
 
     private bool IsGroupActive(NavGroup group)
     {
-        var path = CurrentPath();
-        return group.Children.Any(c => c.Visible && PathMatches(path, c.Href, c.Exact));
+        var relative = CurrentRelative();
+        return group.Children.Any(c => c.Visible && PathMatches(relative, c.Href, c.Exact));
     }
 
     private void ExpandActiveGroups()
@@ -236,26 +268,77 @@
             _expanded.Add(g.Id);
     }
 
-    private string CurrentPath()
+    /// <summary>Base-relative path including query (no leading slash), for query-aware nav matching.</summary>
+    private string CurrentRelative()
     {
         var uri = Nav.ToBaseRelativePath(Nav.Uri);
-        var q = uri.IndexOf('?', StringComparison.Ordinal);
-        if (q >= 0) uri = uri[..q];
-        return uri.Trim('/');
+        var hash = uri.IndexOf('#', StringComparison.Ordinal);
+        if (hash >= 0) uri = uri[..hash];
+        return uri.TrimStart('/');
     }
 
-    private static bool PathMatches(string path, string href, bool exact)
+    private static bool PathMatches(string relativeWithQuery, string href, bool exact)
     {
-        href = (href ?? "").Trim('/');
-        if (exact) return string.Equals(path, href, StringComparison.OrdinalIgnoreCase);
-        if (string.IsNullOrEmpty(href)) return string.IsNullOrEmpty(path);
-        return path.Equals(href, StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith(href + "/", StringComparison.OrdinalIgnoreCase);
+        href = (href ?? "").TrimStart('/');
+        var path = relativeWithQuery.Split('?', 2)[0].TrimEnd('/');
+        var hrefParts = href.Split('?', 2);
+        var hrefPath = hrefParts[0].TrimEnd('/');
+        var hrefQuery = hrefParts.Length > 1 ? hrefParts[1] : null;
+        var uriQuery = relativeWithQuery.Contains('?', StringComparison.Ordinal)
+            ? relativeWithQuery[(relativeWithQuery.IndexOf('?', StringComparison.Ordinal) + 1)..]
+            : null;
+
+        if (!string.IsNullOrEmpty(hrefQuery))
+        {
+            if (!path.Equals(hrefPath, StringComparison.OrdinalIgnoreCase)) return false;
+            return QueryContainsAll(uriQuery, hrefQuery);
+        }
+
+        if (exact) return string.Equals(path, hrefPath, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(hrefPath)) return string.IsNullOrEmpty(path);
+        return path.Equals(hrefPath, StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith(hrefPath + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool QueryContainsAll(string? uriQuery, string requiredQuery)
+    {
+        if (string.IsNullOrEmpty(uriQuery)) return false;
+        var uriPairs = ParseQuery(uriQuery);
+        foreach (var (key, value) in ParseQuery(requiredQuery))
+        {
+            if (!uriPairs.TryGetValue(key, out var actual) ||
+                !string.Equals(actual, value, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
+    }
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) result[part] = "";
+            else result[part[..eq]] = part[(eq + 1)..];
+        }
+        return result;
+    }
+
+    private void CloseSidebar() => _sidebarOpen = false;
+
+    private void OnNavClick()
+    {
+        // Close drawer after tapping a link (group toggles stop propagation).
+        if (_sidebarOpen) _sidebarOpen = false;
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
+        _sidebarOpen = false;
         _ = EnforcePasswordChangeAsync();
+        _ = EnforceOnboardingAsync();
+        _ = EnforceModuleRouteAsync();
         ExpandActiveGroups();
         InvokeAsync(StateHasChanged);
     }
@@ -285,14 +368,15 @@
     private void OnThemeChanged() => InvokeAsync(StateHasChanged);
     private void OnLocaleChanged() => InvokeAsync(async () => { await BuildNavAsync(); StateHasChanged(); });
 
-    private void OnApiReachabilityChanged() => InvokeAsync(StateHasChanged);
-
     public void Dispose()
     {
         ApiReachability.Changed -= OnApiReachabilityChanged;
+        OfflineQueue.Changed -= OnOfflineQueueChanged;
         Theme.Changed -= OnThemeChanged;
         Locale.Changed -= OnLocaleChanged;
+        AppConfig.Changed -= OnAppConfigChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        _navBuildLock.Dispose();
     }
 
     private sealed record NavItem(string Title, string Href, string Icon, bool Visible, bool Exact);

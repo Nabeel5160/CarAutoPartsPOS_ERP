@@ -5,9 +5,31 @@
 <PageHeader Title="Dashboard" Subtitle="Live KPIs from the API" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
+@if (!_busy && string.IsNullOrWhiteSpace(_error) && _data is null)
+{
+    <EmptyState Title="No dashboard data"
+                Message="KPIs will appear once the API returns branch/company metrics. Check API connectivity or pick another branch." />
+}
+
+<div class="cap-card mb-3 d-flex flex-wrap gap-2 align-items-end">
+    <div>
+        <label class="form-label">Branch</label>
+        <select class="form-select" style="min-width:12rem" @bind="_branchIdText" @bind:after="LoadAsync">
+            <option value="">All / company default</option>
+            @if (_branches is not null)
+            {
+                @foreach (var b in _branches)
+                {
+                    <option value="@b.Id">@b.Code — @b.Name</option>
+                }
+            }
+        </select>
+    </div>
+</div>
+
 @if (_data is not null)
 {
-    <div class="row g-3">
+    <div class="row g-3 mb-3">
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today sales</span><span class="value">@_data.TodaySales.ToString("N0")</span></div></div>
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month sales</span><span class="value">@_data.MonthSales.ToString("N0")</span></div></div>
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.InventoryValue.ToString("N0")</span></div></div>
@@ -16,19 +38,215 @@
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending POs</span><span class="value">@_data.PendingPurchaseOrders</span></div></div>
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending transfers</span><span class="value">@_data.PendingTransfers</span></div></div>
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Unread alerts</span><span class="value">@_data.UnreadNotifications</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today cash variance</span><span class="value">@_data.TodayCashVariance.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Open shifts</span><span class="value">@_data.OpenShifts</span></div></div>
+        @if (_fbr is not null)
+        {
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR success %</span><span class="value">@_fbr.SuccessRatePercent.ToString("0.#")%</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR needs retry</span><span class="value">@_fbr.NeedsRetryCount</span></div></div>
+        }
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Sales vs purchases" Spec="@_salesPurchasesSpec" Height="280" ShowSkeleton="@_busy" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Category mix" Spec="@_categorySpec" Height="280" ShowSkeleton="@_busy" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Top products" Spec="@_topProductsSpec" Height="280" ShowSkeleton="@_busy" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Inventory value trend" Spec="@_inventorySpec" Height="280" ShowSkeleton="@_busy" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChartPlayer Title="4D Sales Pulse" Spec="@_pulseSpec" Height="300" ShowSkeleton="@(_busy || _timelineBusy)" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChartPlayer Title="Executive 3D (category × month)" Spec="@_bar3dSpec" Height="320" ShowSkeleton="@(_busy || _timelineBusy)" />
+            </div>
+        </div>
     </div>
 }
 
 @code {
     private DashboardDto? _data;
+    private DashboardTimelineDto? _timeline;
+    private FbrMetricsDto? _fbr;
+    private List<BranchDto>? _branches;
+    private string _branchIdText = "";
     private bool _busy = true;
+    private bool _timelineBusy;
     private string? _error;
+
+    private CapChartSpec? _salesPurchasesSpec;
+    private CapChartSpec? _categorySpec;
+    private CapChartSpec? _topProductsSpec;
+    private CapChartSpec? _inventorySpec;
+    private CapChartSpec? _pulseSpec;
+    private CapChartSpec? _bar3dSpec;
 
     protected override async Task OnInitializedAsync()
     {
-        var (data, error, _) = await Api.GetDashboardAsync();
+        var (companies, _, _) = await Api.GetCompaniesAsync();
+        var companyId = companies?.FirstOrDefault()?.Id;
+        if (companyId is int cid)
+        {
+            var (branches, _, _) = await Api.GetBranchesAsync(cid);
+            _branches = branches;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        int? branchId = int.TryParse(_branchIdText, out var b) ? b : null;
+        var (data, error, _) = await Api.GetDashboardAsync(branchId);
         _data = data;
         _error = error;
+        BuildCoreCharts();
+        var fbr = await Api.GetFbrMetricsAsync();
+        _fbr = fbr.Data;
         _busy = false;
+        await LoadTimelineAsync(branchId);
     }
+
+    private async Task LoadTimelineAsync(int? branchId)
+    {
+        _timelineBusy = true;
+        var to = DateTime.Today;
+        var from = to.AddDays(-29);
+        var (tl, _, _) = await Api.GetDashboardTimelineAsync(from, to, "day", "category", branchId);
+        _timeline = tl;
+        BuildTimelineCharts();
+        _timelineBusy = false;
+    }
+
+    private void BuildCoreCharts()
+    {
+        if (_data is null)
+        {
+            _salesPurchasesSpec = _categorySpec = _topProductsSpec = _inventorySpec = null;
+            return;
+        }
+
+        var months = _data.MonthlySales;
+        _salesPurchasesSpec = months.Count == 0
+            ? null
+            : CapChartFactory.DualLine(
+                months.Select(m => m.Month),
+                "Sales", months.Select(m => m.Sales),
+                "Purchases", months.Select(m => m.Purchases));
+
+        var cats = _data.CategoryDistribution.Take(10).ToList();
+        _categorySpec = cats.Count == 0
+            ? null
+            : CapChartFactory.Doughnut(cats.Select(c => c.CategoryName), "Value", cats.Select(c => c.Value));
+
+        var tops = _data.TopProducts.Take(10).Reverse().ToList();
+        _topProductsSpec = tops.Count == 0
+            ? null
+            : CapChartFactory.HorizontalBar(tops.Select(p => Truncate(p.ProductName, 28)), "Revenue", tops.Select(p => p.Revenue));
+
+        var trend = _data.InventoryTrend.OrderBy(t => t.Date).ToList();
+        _inventorySpec = trend.Count == 0
+            ? null
+            : CapChartFactory.Line(trend.Select(t => t.Date.ToString("dd MMM")), "Inventory value", trend.Select(t => t.Value));
+    }
+
+    private void BuildTimelineCharts()
+    {
+        if (_timeline is null || _timeline.Frames.Count == 0)
+        {
+            _pulseSpec = null;
+            _bar3dSpec = null;
+            return;
+        }
+
+        var keys = _timeline.SeriesKeys;
+        var frames = _timeline.Frames.Select(f => new CapChartFrame
+        {
+            Label = f.Label,
+            Labels = keys,
+            Datasets = keys.Select((k, i) => new CapChartDataset
+            {
+                Label = k,
+                Data = [i < f.Values.Count ? f.Values[i] : 0],
+                ColorRole = i == 0 ? "accent" : i == 1 ? "accent2" : null,
+                Fill = true
+            }).ToList()
+        }).ToList();
+
+        // Cumulative race across periods: each frame shows series totals for that day as horizontal bars
+        var pulseFrames = _timeline.Frames.Select(f =>
+        {
+            var pairs = keys.Select((k, i) => (Label: k, Value: i < f.Values.Count ? f.Values[i] : 0m))
+                .OrderBy(p => p.Value)
+                .ToList();
+            return new CapChartFrame
+            {
+                Label = f.Label,
+                Labels = pairs.Select(p => Truncate(p.Label, 22)).ToList(),
+                Datasets =
+                [
+                    new CapChartDataset
+                    {
+                        Label = "Sales",
+                        Data = pairs.Select(p => p.Value).ToList(),
+                        ColorRole = "accent"
+                    }
+                ]
+            };
+        }).ToList();
+
+        _pulseSpec = CapChartFactory.Timeline(pulseFrames, "horizontalBar", autoPlay: false, intervalMs: 1100);
+        _pulseSpec.Type = "horizontalBar";
+
+        var cats = _timeline.CategoryMonthSales.Select(x => x.Category).Distinct().OrderBy(x => x).ToList();
+        var months = _timeline.Months.Count > 0
+            ? _timeline.Months
+            : _timeline.CategoryMonthSales.Select(x => x.Month).Distinct().ToList();
+        var lookup = _timeline.CategoryMonthSales
+            .GroupBy(x => (x.Category, x.Month))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Sales));
+
+        var points = new List<CapChartPoint3D>();
+        for (var xi = 0; xi < cats.Count; xi++)
+        for (var yi = 0; yi < months.Count; yi++)
+        {
+            lookup.TryGetValue((cats[xi], months[yi]), out var sales);
+            if (sales > 0)
+                points.Add(new CapChartPoint3D { X = xi, Y = yi, Z = sales });
+        }
+
+        var barFrames = months.Select(m => new CapChartFrame
+        {
+            Label = m,
+            XCategories = cats,
+            YCategories = [m],
+            Points3D = cats.Select((c, xi) =>
+            {
+                lookup.TryGetValue((c, m), out var sales);
+                return new CapChartPoint3D { X = xi, Y = 0, Z = sales };
+            }).Where(p => p.Z > 0).ToList()
+        }).Where(f => f.Points3D is { Count: > 0 }).ToList();
+
+        _bar3dSpec = CapChartFactory.Bar3D(cats, months, points, barFrames.Count > 1 ? barFrames : null, autoRotate: false);
+    }
+
+    private static string Truncate(string value, int max)
+        => string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..(max - 1)] + "…";
 }

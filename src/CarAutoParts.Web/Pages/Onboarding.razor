@@ -1,0 +1,152 @@
+@page "/onboarding"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject NavigationManager Nav
+@inject IToastService Toast
+
+<PageHeader Title="First-run setup" Subtitle="Complete these steps before day-to-day ops" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_status is not null)
+{
+    @if (_status.IsComplete)
+    {
+        <div class="alert alert-success">Setup completed @_status.SetupCompletedAt?.ToLocalTime().ToString("g"). <a href="/">Go to dashboard</a></div>
+    }
+
+    <div class="row g-3 mb-3">
+        @foreach (var step in _status.Steps)
+        {
+            <div class="col-md-6">
+                <div class="cap-card @(step.Done ? "border-success" : "")">
+                    <div class="d-flex justify-content-between">
+                        <strong>@step.Title</strong>
+                        <span>@(step.Done ? "✓" : "…")</span>
+                    </div>
+                    <p class="small text-muted mb-2">@step.Hint</p>
+                    @if (!string.IsNullOrWhiteSpace(step.Href) && step.Href != "/onboarding")
+                    {
+                        <a class="btn btn-sm btn-outline-secondary" href="@step.Href">Open</a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="cap-card">
+        <h5>Company profile & finish</h5>
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label">Business type</label>
+                <select class="form-select" @bind="_form.VerticalKey">
+                    <option value="auto-parts">Auto Parts</option>
+                    <option value="bike-parts">Bike Parts</option>
+                    <option value="general-retail">General Retail / Stationery</option>
+                </select>
+            </div>
+            <div class="col-md-4"><label class="form-label">Company name</label><input class="form-control" @bind="_form.CompanyName" /></div>
+            <div class="col-md-2"><label class="form-label">NTN</label><input class="form-control" @bind="_form.Ntn" /></div>
+            <div class="col-md-2"><label class="form-label">STRN</label><input class="form-control" @bind="_form.Strn" /></div>
+            <div class="col-md-2"><label class="form-label">City</label><input class="form-control" @bind="_form.City" /></div>
+            <div class="col-md-2"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_form.DefaultTaxRate" /></div>
+            <div class="col-md-6"><label class="form-label">Address</label><input class="form-control" @bind="_form.Address" /></div>
+            <div class="col-md-3"><label class="form-label">Phone</label><input class="form-control" @bind="_form.Phone" /></div>
+            <div class="col-md-3"><label class="form-label">POS Id</label><input class="form-control" @bind="_form.PosId" /></div>
+            @if (_form.VerticalKey != "general-retail")
+            {
+                <div class="col-md-3 form-check mt-4">
+                    <input class="form-check-input" type="checkbox" @bind="_form.FbrUseSandbox" id="fbrSb" />
+                    <label class="form-check-label" for="fbrSb">FBR sandbox</label>
+                </div>
+            }
+            <div class="col-md-3">
+                <label class="form-label">Valuation</label>
+                <select class="form-select" @bind="_form.DefaultValuationMethod">
+                    <option value="Fifo">FIFO</option>
+                    <option value="Average">Average</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-cap w-100" @onclick="CompleteAsync" disabled="@_status.IsComplete">Mark setup complete</button>
+            </div>
+            <div class="col-12 small text-secondary">
+                Finish creates company profile, tax/FBR flags, and <strong>TILL-01</strong> if no till exists — then open a shift on POS.
+            </div>
+        </div>
+        <p class="small text-secondary mt-3 mb-0">
+            After finish: open <a href="/pos">POS</a>, select till (TILL-01), open shift, then sell.
+            FBR: sandbox first — production cutover in <code>docs/FBR-PRODUCTION.md</code> / <a href="/fbr">FBR page</a>.
+        </p>
+    </div>
+}
+
+@code {
+    private OnboardingStatusDto? _status;
+    private CompleteOnboardingForm _form = new();
+    private bool _busy = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetOnboardingStatusAsync();
+        _status = data; _error = error; _busy = false;
+        if (data is not null)
+        {
+            var settings = await Api.GetSettingsAsync();
+            if (settings.Data is not null)
+            {
+                _form.CompanyName = settings.Data.CompanyName;
+                _form.Ntn = settings.Data.Ntn;
+                _form.Strn = settings.Data.Strn;
+                _form.City = settings.Data.City;
+                _form.Address = settings.Data.Address;
+                _form.Phone = settings.Data.Phone;
+                _form.Email = settings.Data.Email;
+                _form.PosId = settings.Data.PosId;
+                _form.DefaultTaxRate = settings.Data.DefaultTaxRate;
+                _form.FbrUseSandbox = settings.Data.FbrUseSandbox;
+                _form.DefaultValuationMethod = string.IsNullOrWhiteSpace(settings.Data.DefaultValuationMethod) ? "Fifo" : settings.Data.DefaultValuationMethod;
+                _form.VerticalKey = string.IsNullOrWhiteSpace(settings.Data.VerticalKey) ? "auto-parts" : settings.Data.VerticalKey;
+            }
+        }
+    }
+
+    private async Task CompleteAsync()
+    {
+        var body = new
+        {
+            _form.CompanyName,
+            _form.Ntn,
+            _form.Strn,
+            _form.City,
+            _form.Address,
+            _form.Phone,
+            _form.Email,
+            _form.PosId,
+            _form.DefaultTaxRate,
+            _form.FbrUseSandbox,
+            _form.DefaultValuationMethod,
+            _form.VerticalKey
+        };
+        var (ok, error, _) = await Api.CompleteOnboardingAsync(body);
+        if (!ok) { Toast.ShowError(error ?? "Failed"); return; }
+        Toast.ShowSuccess("Setup complete");
+        Nav.NavigateTo("/");
+    }
+
+    private sealed class CompleteOnboardingForm
+    {
+        public string CompanyName { get; set; } = "Car Auto Parts";
+        public string? Ntn { get; set; }
+        public string? Strn { get; set; }
+        public string? City { get; set; }
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? PosId { get; set; }
+        public decimal DefaultTaxRate { get; set; } = 18;
+        public bool FbrUseSandbox { get; set; } = true;
+        public string DefaultValuationMethod { get; set; } = "Fifo";
+        public string VerticalKey { get; set; } = "auto-parts";
+    }
+}

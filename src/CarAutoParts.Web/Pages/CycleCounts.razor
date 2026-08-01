@@ -3,24 +3,27 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="Cycle Counts" Subtitle="Physical counts and variance posting" />
+<PageHeader Title="Cycle Counts" Subtitle="Physical counts by warehouse or bin; variance posts to stock" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_items is not null)
 {
     <div class="cap-card table-responsive mb-3">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Number</th><th>Warehouse</th><th>Status</th><th>Date</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead><tr><th>Number</th><th>Warehouse</th><th>Bin</th><th>Status</th><th>Date</th><th>Lines</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
             @foreach (var c in _items)
             {
                 <tr>
                     <td class="mono">@c.CountNumber</td>
                     <td>@c.WarehouseId</td>
+                    <td>@(c.WarehouseLocationId?.ToString() ?? "All")</td>
                     <td>@c.Status</td>
                     <td>@c.CountDate.ToLocalTime().ToString("d")</td>
+                    <td>@c.Lines.Count</td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => _selected = c">Sheet</button>
                             @if (c.Status is 0 or 1)
                             {
                                 <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => CompleteAsync(c.Id)">Complete</button>
@@ -38,14 +41,39 @@
     <h5>New cycle count</h5>
     <div class="row g-2">
         <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Bin Loc Id (opt)" @bind="_create.WarehouseLocationId" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId (opt)" @bind="_line.ProductId" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Counted qty" @bind="_line.CountedQuantity" /></div>
         <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
     </div>
+    <p class="text-muted small mt-2 mb-0">Leave Product blank to seed a count sheet for all stock in the warehouse (or selected bin).</p>
 </div>
+
+@if (_selected is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Count sheet @_selected.CountNumber</h5>
+        <table class="table table-cap table-sm mb-0">
+            <thead><tr><th>Product</th><th>Bin</th><th>System</th><th>Counted</th><th>Variance</th></tr></thead>
+            <tbody>
+            @foreach (var l in _selected.Lines)
+            {
+                <tr>
+                    <td>@l.ProductId</td>
+                    <td>@(l.LocationCode ?? l.WarehouseLocationId?.ToString() ?? "—")</td>
+                    <td>@l.SystemQuantity</td>
+                    <td>@l.CountedQuantity</td>
+                    <td>@l.Variance</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
 
 @code {
     private List<CycleCountDto>? _items;
+    private CycleCountDto? _selected;
     private CreateCycleCountRequest _create = new() { CountDate = DateTime.UtcNow };
     private CreateCycleCountLineRequest _line = new() { CountedQuantity = 0 };
     private bool _busy = true;
@@ -62,7 +90,10 @@
 
     private async Task CreateAsync()
     {
-        _create.Lines = [_line];
+        if (_line.ProductId > 0)
+            _create.Lines = [_line];
+        else
+            _create.Lines = null;
         var (_, error, _) = await Api.CreateCycleCountAsync(_create);
         if (error is not null) Toast.ShowError(error);
         else { Toast.ShowSuccess("Cycle count created"); await LoadAsync(); }

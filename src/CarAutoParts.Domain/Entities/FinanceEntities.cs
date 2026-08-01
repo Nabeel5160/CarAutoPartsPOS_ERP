@@ -81,6 +81,17 @@ public class JournalEntry : AggregateRoot
         Status = JournalStatus.Posted;
         Raise(new JournalPostedEvent(CompanyId, Id, JournalNumber, TotalDebit));
     }
+
+    public void Void(string? reason = null)
+    {
+        if (Status != JournalStatus.Posted)
+            throw new InvalidOperationException("Only posted journals can be voided.");
+        Status = JournalStatus.Voided;
+        if (!string.IsNullOrWhiteSpace(reason))
+            Description = string.IsNullOrWhiteSpace(Description)
+                ? $"VOID: {reason}"
+                : $"{Description} | VOID: {reason}";
+    }
 }
 
 public class JournalLine : CompanyEntity
@@ -110,4 +121,105 @@ public sealed class JournalPostedEvent : DomainEventBase
     public int JournalEntryId { get; }
     public string JournalNumber { get; }
     public decimal Amount { get; }
+}
+
+public enum OpeningBalanceLineType
+{
+    Gl = 0,
+    Inventory = 1,
+    Ar = 2,
+    Ap = 3
+}
+
+public enum OpeningBalanceStatus
+{
+    Draft = 0,
+    Posted = 1
+}
+
+public class OpeningBalanceBatch : AggregateRoot
+{
+    public string BatchNumber { get; set; } = string.Empty;
+    public DateTime CutoverDate { get; set; } = DateTime.UtcNow.Date;
+    public OpeningBalanceStatus Status { get; set; } = OpeningBalanceStatus.Draft;
+    public int? JournalEntryId { get; set; }
+    public JournalEntry? JournalEntry { get; set; }
+    public string? Notes { get; set; }
+    public ICollection<OpeningBalanceLine> Lines { get; set; } = new List<OpeningBalanceLine>();
+}
+
+public class OpeningBalanceLine : CompanyEntity
+{
+    public int OpeningBalanceBatchId { get; set; }
+    public OpeningBalanceBatch Batch { get; set; } = null!;
+    public OpeningBalanceLineType LineType { get; set; }
+    public int? AccountId { get; set; }
+    public GlAccount? Account { get; set; }
+    public int? ProductId { get; set; }
+    public Product? Product { get; set; }
+    public int? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public decimal? Quantity { get; set; }
+    public decimal? UnitCost { get; set; }
+    public int? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
+    public int? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public string? Description { get; set; }
+}
+
+public enum BankStatementStatus
+{
+    Draft = 0,
+    Finalized = 1
+}
+
+public class BankStatement : AggregateRoot
+{
+    public string StatementNumber { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public decimal OpeningBalance { get; set; }
+    public decimal ClosingBalance { get; set; }
+    public BankStatementStatus Status { get; set; } = BankStatementStatus.Draft;
+    public string? Notes { get; set; }
+    public ICollection<BankStatementLine> Lines { get; set; } = new List<BankStatementLine>();
+}
+
+public class BankStatementLine : CompanyEntity
+{
+    public int BankStatementId { get; set; }
+    public BankStatement Statement { get; set; } = null!;
+    public DateTime LineDate { get; set; }
+    /// <summary>Positive = deposit/inflow; negative = withdrawal/outflow.</summary>
+    public decimal Amount { get; set; }
+    public string? Reference { get; set; }
+    public string? Description { get; set; }
+    public bool IsCleared { get; set; }
+    public int? MatchedJournalLineId { get; set; }
+    public JournalLine? MatchedJournalLine { get; set; }
+}
+
+public class CreditNoteApplication : BaseEntity
+{
+    public int SalesReturnId { get; set; }
+    public SalesReturn SalesReturn { get; set; } = null!;
+    public int SalesInvoiceId { get; set; }
+    public SalesInvoice SalesInvoice { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
+    public string? Notes { get; set; }
+}
+
+public class PurchaseCreditNoteApplication : BaseEntity
+{
+    public int PurchaseReturnId { get; set; }
+    public PurchaseReturn PurchaseReturn { get; set; } = null!;
+    public int PurchaseInvoiceId { get; set; }
+    public PurchaseInvoice PurchaseInvoice { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
+    public string? Notes { get; set; }
 }

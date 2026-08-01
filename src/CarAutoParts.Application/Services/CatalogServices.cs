@@ -135,6 +135,27 @@ public class BrandService : IBrandService
     }
 
     /// <inheritdoc />
+    public async Task<PagedResult<BrandDto>> GetPagedAsync(QuerySpec query, CancellationToken ct = default)
+    {
+        var q = _brands.Query().Where(b => !b.IsDeleted);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            q = q.Where(b => b.Name.Contains(s));
+        }
+
+        q = q.OrderBy(b => b.Name);
+        var paged = await q.ToPagedResultAsync(query.Page, query.PageSize, ct);
+        return new PagedResult<BrandDto>
+        {
+            Items = _mapper.Map<List<BrandDto>>(paged.Items),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize
+        };
+    }
+
+    /// <inheritdoc />
     public async Task<Result<BrandDto>> CreateAsync(BrandDto dto, CancellationToken ct = default)
     {
         var validation = await _validator.ValidateAsync(dto, ct);
@@ -192,6 +213,7 @@ public class BrandService : IBrandService
 public class WarehouseService : IWarehouseService
 {
     private readonly IRepository<Warehouse> _warehouses;
+    private readonly IRepository<WarehouseLocation> _locations;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly IValidator<WarehouseDto> _validator;
@@ -199,12 +221,14 @@ public class WarehouseService : IWarehouseService
 
     public WarehouseService(
         IRepository<Warehouse> warehouses,
+        IRepository<WarehouseLocation> locations,
         IUnitOfWork unitOfWork,
         IMapper mapper,
         IValidator<WarehouseDto> validator,
         ICurrentCompanyContext company)
     {
         _warehouses = warehouses;
+        _locations = locations;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _validator = validator;
@@ -230,6 +254,36 @@ public class WarehouseService : IWarehouseService
     }
 
     /// <inheritdoc />
+    public async Task<PagedResult<WarehouseDto>> GetPagedAsync(QuerySpec query, CancellationToken ct = default)
+    {
+        var q = _warehouses.Query().Where(w => !w.IsDeleted);
+
+        if (_company.BranchId.HasValue)
+        {
+            var branchId = _company.BranchId.Value;
+            q = q.Where(w => w.BranchId == null || w.BranchId == branchId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            q = q.Where(w => w.Name.Contains(s)
+                || (w.City != null && w.City.Contains(s))
+                || (w.Address != null && w.Address.Contains(s)));
+        }
+
+        q = q.OrderByDescending(w => w.IsDefault).ThenBy(w => w.Name);
+        var paged = await q.ToPagedResultAsync(query.Page, query.PageSize, ct);
+        return new PagedResult<WarehouseDto>
+        {
+            Items = _mapper.Map<List<WarehouseDto>>(paged.Items),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize
+        };
+    }
+
+    /// <inheritdoc />
     public async Task<Result<WarehouseDto>> CreateAsync(WarehouseDto dto, CancellationToken ct = default)
     {
         var validation = await _validator.ValidateAsync(dto, ct);
@@ -239,6 +293,12 @@ public class WarehouseService : IWarehouseService
         if (dto.IsDefault)
             await ClearDefaultAsync(ct);
 
+        if (!dto.BranchId.HasValue || dto.BranchId.Value <= 0)
+            return Result<WarehouseDto>.Failure("BranchId is required for warehouses.");
+
+        if (!_company.IsBranchAllowed(dto.BranchId.Value))
+            return Result<WarehouseDto>.Failure("Branch is not allowed for this user.");
+
         var entity = new Warehouse
         {
             Name = dto.Name.Trim(),
@@ -246,11 +306,27 @@ public class WarehouseService : IWarehouseService
             City = dto.City,
             ContactPerson = dto.ContactPerson,
             PhoneNumber = dto.PhoneNumber,
-            IsDefault = dto.IsDefault
+            IsDefault = dto.IsDefault,
+            BranchId = dto.BranchId,
+            CompanyId = _company.CompanyId ?? 0
         };
 
         _warehouses.Add(entity);
         await _unitOfWork.SaveChangesAsync(ct);
+
+        _locations.Add(new WarehouseLocation
+        {
+            WarehouseId = entity.Id,
+            CompanyId = entity.CompanyId,
+            Code = LocationBalanceSync.DefaultCode,
+            Name = "Main",
+            IsReceivingDefault = true,
+            IsPickDefault = true,
+            IsActive = true,
+            SortOrder = 0
+        });
+        await _unitOfWork.SaveChangesAsync(ct);
+
         return Result<WarehouseDto>.Success(_mapper.Map<WarehouseDto>(entity));
     }
 
@@ -268,12 +344,19 @@ public class WarehouseService : IWarehouseService
         if (dto.IsDefault)
             await ClearDefaultAsync(ct);
 
+        if (!dto.BranchId.HasValue || dto.BranchId.Value <= 0)
+            return Result<WarehouseDto>.Failure("BranchId is required for warehouses.");
+
+        if (!_company.IsBranchAllowed(dto.BranchId.Value))
+            return Result<WarehouseDto>.Failure("Branch is not allowed for this user.");
+
         entity.Name = dto.Name.Trim();
         entity.Address = dto.Address;
         entity.City = dto.City;
         entity.ContactPerson = dto.ContactPerson;
         entity.PhoneNumber = dto.PhoneNumber;
         entity.IsDefault = dto.IsDefault;
+        entity.BranchId = dto.BranchId;
         entity.UpdatedAt = DateTime.UtcNow;
         _warehouses.Update(entity);
         await _unitOfWork.SaveChangesAsync(ct);

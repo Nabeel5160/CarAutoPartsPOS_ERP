@@ -22,8 +22,18 @@ public class PosController : ApiControllerBase
 
     [HttpGet("products")]
     [Authorize(Policy = Permissions.PosCheckout)]
-    public async Task<IActionResult> GetProducts([FromQuery] string? search, CancellationToken ct)
-        => Ok(await _pos.GetPosProductsAsync(search, ct));
+    public async Task<IActionResult> GetProducts(
+        [FromQuery] string? search,
+        [FromQuery] string? make,
+        [FromQuery] string? model,
+        [FromQuery] int? year,
+        CancellationToken ct)
+        => Ok(await _pos.GetPosProductsAsync(search, make, model, year, ct));
+
+    [HttpGet("fitment-options")]
+    [Authorize(Policy = Permissions.PosCheckout)]
+    public async Task<IActionResult> FitmentOptions([FromQuery] string? make, CancellationToken ct)
+        => Ok(await _pos.GetFitmentOptionsAsync(make, ct));
 
     [HttpPost("checkout")]
     [Authorize(Policy = Permissions.PosCheckout)]
@@ -77,4 +87,34 @@ public class PosController : ApiControllerBase
     [Authorize(Policy = Permissions.PosShift)]
     public async Task<IActionResult> ZReport(int id, CancellationToken ct)
         => FromResult(await _floor.GetZReportAsync(id, ct));
+
+    [HttpGet("shifts/x-report")]
+    [Authorize(Policy = Permissions.PosShift)]
+    public async Task<IActionResult> XReport([FromQuery] int? shiftId, CancellationToken ct)
+        => FromResult(await _floor.GetXReportAsync(shiftId, ct));
+
+    [HttpGet("shifts/{id:int}/x-report")]
+    [Authorize(Policy = Permissions.PosShift)]
+    public async Task<IActionResult> XReportById(int id, CancellationToken ct)
+        => FromResult(await _floor.GetXReportAsync(id, ct));
+
+    [HttpGet("tills")]
+    [Authorize(Policy = Permissions.PosShift)]
+    public async Task<IActionResult> ListTills([FromQuery] int? branchId, CancellationToken ct)
+        => Ok(await _floor.ListTillsAsync(branchId, ct));
+
+    [HttpPost("tills")]
+    [Authorize(Policy = Permissions.SettingsManage)]
+    public async Task<IActionResult> UpsertTill([FromBody] UpsertTillRequest dto, CancellationToken ct)
+        => FromResult(await _floor.UpsertTillAsync(dto, ct));
+
+    [HttpPost("shifts/{id:int}/safe-drops")]
+    [Authorize(Policy = Permissions.PosShift)]
+    public async Task<IActionResult> SafeDrop(int id, [FromBody] SafeDropRequest dto, CancellationToken ct)
+        => FromResult(await _floor.RecordSafeDropAsync(id, dto, ct));
+
+    [HttpGet("shifts/{id:int}/safe-drops")]
+    [Authorize(Policy = Permissions.PosShift)]
+    public async Task<IActionResult> ListSafeDrops(int id, CancellationToken ct)
+        => Ok(await _floor.ListSafeDropsAsync(id, ct));
 }

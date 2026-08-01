@@ -1552,3 +1552,35 @@ GO
 COMMIT;
 GO
 
+
+-- Phase 11 vertical profiles
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'CompanySettings') AND name = 'VerticalKey')
+BEGIN
+    ALTER TABLE [CompanySettings] ADD [LogoUrl] nvarchar(500) NULL;
+    ALTER TABLE [CompanySettings] ADD [VerticalKey] nvarchar(40) NOT NULL CONSTRAINT DF_CompanySettings_VerticalKey DEFAULT 'auto-parts';
+END
+GO
+
+IF OBJECT_ID(N'AppConfigEntries', N'U') IS NULL
+BEGIN
+    CREATE TABLE [AppConfigEntries] (
+        [Id] int NOT NULL IDENTITY,
+        [Scope] nvarchar(40) NOT NULL,
+        [Key] nvarchar(120) NOT NULL,
+        [Culture] nvarchar(10) NULL,
+        [Value] nvarchar(2000) NOT NULL,
+        [CreatedAt] datetime2 NOT NULL,
+        [UpdatedAt] datetime2 NULL,
+        [CreatedBy] nvarchar(max) NULL,
+        [UpdatedBy] nvarchar(max) NULL,
+        [IsDeleted] bit NOT NULL,
+        [RowVersion] rowversion NULL,
+        CONSTRAINT [PK_AppConfigEntries] PRIMARY KEY ([Id])
+    );
+    CREATE UNIQUE INDEX [IX_AppConfigEntries_Scope_Key_Culture] ON [AppConfigEntries] ([Scope], [Key], [Culture]) WHERE [IsDeleted] = 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20260730210000_Phase11VerticalProfiles')
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES (N'20260730210000_Phase11VerticalProfiles', N'8.0.11');
+GO

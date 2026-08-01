@@ -1,0 +1,175 @@
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<div class="cap-chart-player">
+    <CapChart @ref="_chart"
+              Title="@Title"
+              Spec="@Spec"
+              Height="@Height"
+              ShowExport="@ShowExport"
+              ShowSkeleton="@ShowSkeleton"
+              EnableClick="@EnableClick"
+              OnSegmentClick="@OnSegmentClick"
+              FrameIndex="@_index"
+              FrameIndexChanged="OnFrameChanged" />
+
+    @if (Spec?.Frames is { Count: > 0 } frames)
+    {
+        <div class="cap-chart-player-controls">
+            <button type="button" class="btn btn-sm btn-outline-light" @onclick="TogglePlay" disabled="@_reduceMotion">
+                @(_playing ? "Pause" : "Play")
+            </button>
+            <label class="cap-chart-player-speed">
+                <span class="text-muted">Speed</span>
+                <select class="form-select form-select-sm" @bind="_speedMs" @bind:after="OnSpeedChanged">
+                    <option value="2000">0.5×</option>
+                    <option value="1200">1×</option>
+                    <option value="700">1.5×</option>
+                    <option value="400">2×</option>
+                </select>
+            </label>
+            <input class="form-range cap-chart-player-scrub"
+                   type="range"
+                   min="0"
+                   max="@(frames.Count - 1)"
+                   value="@_index"
+                   @oninput="OnScrub" />
+            <span class="cap-chart-player-label text-muted">@(frames[_index].Label)</span>
+        </div>
+    }
+</div>
+
+@code {
+    private CapChart? _chart;
+    private int _index;
+    private bool _playing;
+    private int _speedMs = 1200;
+    private bool _reduceMotion;
+    private CancellationTokenSource? _playCts;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public CapChartSpec? Spec { get; set; }
+    [Parameter] public int Height { get; set; } = 280;
+    [Parameter] public bool ShowExport { get; set; } = true;
+    [Parameter] public bool ShowSkeleton { get; set; }
+    [Parameter] public bool EnableClick { get; set; }
+    [Parameter] public EventCallback<(string Name, string Series, decimal Value)> OnSegmentClick { get; set; }
+    [Parameter] public EventCallback<int> OnFrameIndexChanged { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _reduceMotion = await Js.InvokeAsync<bool>("capCharts.reduceMotion");
+            if (_reduceMotion) _playing = false;
+            else if (Spec?.Playback?.AutoPlay == true)
+                await StartPlayAsync();
+        }
+        catch { /* JS not ready */ }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Spec?.Playback is not null)
+            _speedMs = Spec.Playback.IntervalMs > 0 ? Spec.Playback.IntervalMs : 1200;
+        var count = Spec?.Frames?.Count ?? 0;
+        if (count > 0 && _index >= count) _index = count - 1;
+    }
+
+    private async Task OnFrameChanged(int index)
+    {
+        _index = index;
+        await OnFrameIndexChanged.InvokeAsync(index);
+    }
+
+    private async Task OnScrub(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var idx)) return;
+        await StopPlayAsync();
+        await SeekAsync(idx);
+    }
+
+    private async Task OnSpeedChanged()
+    {
+        if (Spec?.Playback is not null)
+            Spec.Playback.IntervalMs = _speedMs;
+        if (_playing)
+        {
+            await StopPlayAsync();
+            await StartPlayAsync();
+        }
+    }
+
+    private async Task TogglePlay()
+    {
+        if (_reduceMotion) return;
+        if (_playing) await StopPlayAsync();
+        else await StartPlayAsync();
+    }
+
+    private async Task StartPlayAsync()
+    {
+        var frames = Spec?.Frames;
+        if (frames is null || frames.Count == 0 || _reduceMotion) return;
+        await StopPlayAsync();
+        _playing = true;
+        _playCts = new CancellationTokenSource();
+        var token = _playCts.Token;
+        _ = PlayLoopAsync(token);
+        StateHasChanged();
+    }
+
+    private async Task PlayLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(_speedMs, token);
+                var count = Spec?.Frames?.Count ?? 0;
+                if (count == 0) break;
+                var next = _index + 1;
+                if (next >= count)
+                {
+                    if (Spec?.Playback?.Loop != false) next = 0;
+                    else { _playing = false; break; }
+                }
+                await InvokeAsync(() => SeekAsync(next));
+            }
+        }
+        catch (TaskCanceledException) { /* expected */ }
+        finally
+        {
+            _playing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SeekAsync(int index)
+    {
+        var count = Spec?.Frames?.Count ?? 0;
+        if (count == 0) return;
+        _index = Math.Clamp(index, 0, count - 1);
+        if (_chart is not null)
+            await _chart.SetFrameAsync(_index);
+        else if (Spec?.Playback is not null)
+            Spec.Playback.CurrentIndex = _index;
+        await OnFrameIndexChanged.InvokeAsync(_index);
+        StateHasChanged();
+    }
+
+    private Task StopPlayAsync()
+    {
+        _playing = false;
+        _playCts?.Cancel();
+        _playCts?.Dispose();
+        _playCts = null;
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopPlayAsync();
+    }
+}

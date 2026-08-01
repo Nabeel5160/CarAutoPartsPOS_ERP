@@ -16,6 +16,22 @@ public class AuditController : ApiControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.AuditView)]
-    public async Task<IActionResult> GetAll([FromQuery] QuerySpec query, CancellationToken ct)
-        => Ok(await _audit.GetAuditLogsAsync(query, ct));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] QuerySpec query,
+        [FromQuery] string? action,
+        [FromQuery] string? entityType,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(action))
+            query.Filters["Action"] = action;
+        if (!string.IsNullOrWhiteSpace(entityType))
+            query.Filters["EntityType"] = entityType;
+        if (fromDate.HasValue)
+            query.Filters["FromDate"] = fromDate.Value;
+        if (toDate.HasValue)
+            query.Filters["ToDate"] = toDate.Value;
+        return Ok(await _audit.GetAuditLogsAsync(query, ct));
+    }
 }

@@ -20,6 +20,8 @@ public class DataSeeder
         await _db.Database.MigrateAsync(ct);
         await EnsurePermissionsAsync(ct);
         await EnforceDefaultAdminPasswordChangeAsync(ct);
+        await ClearDemoUserForcePasswordAsync(ct);
+        await EnsureDefaultUserBranchesAsync(ct);
 
         if (await _db.Users.AnyAsync(ct))
         {
@@ -31,9 +33,9 @@ public class DataSeeder
 
         var roles = await SeedRolesAsync(ct);
         await SeedAdminUserAsync(roles["Admin"], ct);
+        await SeedCompanySettingsAsync(ct);
         await SeedBrandsAsync(ct);
         await SeedWarehouseAsync(ct);
-        await SeedCompanySettingsAsync(ct);
         await SeedCategoriesAsync(ct);
 
         await _db.SaveChangesAsync(ct);
@@ -53,6 +55,25 @@ public class DataSeeder
             await _db.SaveChangesAsync(ct);
             _logger.LogWarning("Admin still uses default password; MustChangePassword enforced.");
         }
+    }
+
+    /// <summary>
+    /// Demo counter users must not inherit force-password friction (admin-only on admin123).
+    /// Uses List for EF Contains (avoid array → ReadOnlySpan binding).
+    /// </summary>
+    private async Task ClearDemoUserForcePasswordAsync(CancellationToken ct)
+    {
+        var demoUsernames = new List<string> { "cashier", "sales", "manager", "inventory", "accountant" };
+        var users = await _db.Users
+            .Where(u => demoUsernames.Contains(u.Username) && !u.IsDeleted && u.MustChangePassword)
+            .ToListAsync(ct);
+        if (users.Count == 0)
+            return;
+
+        foreach (var u in users)
+            u.MustChangePassword = false;
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("Cleared MustChangePassword on {Count} demo non-admin users.", users.Count);
     }
 
     private async Task EnsurePermissionsAsync(CancellationToken ct)
@@ -75,78 +96,69 @@ public class DataSeeder
         }
 
         if (added)
-        {
             await _db.SaveChangesAsync(ct);
-            // Grant new permissions to Admin role when present
-            var admin = await _db.Roles.FirstOrDefaultAsync(r => r.Name == "Admin", ct);
-            if (admin is not null)
+
+        await SyncRoleTemplatesAsync(ct);
+    }
+
+    /// <summary>Ensure all role templates exist and have the latest permission set.</summary>
+    private async Task SyncRoleTemplatesAsync(CancellationToken ct)
+    {
+        var permissions = await _db.Permissions.ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase, ct);
+        var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Admin"] = "Full system access",
+            ["Manager"] = "Store manager access",
+            ["SalesUser"] = "POS and sales access",
+            ["InventoryUser"] = "Inventory and purchasing access",
+            ["Cashier"] = "Counter cashier (POS, no price override)",
+            ["Accountant"] = "Finance and reports (no POS checkout)"
+        };
+
+        foreach (var (roleName, codes) in PermissionDefinitions.RoleTemplates)
+        {
+            var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName, ct);
+            if (role is null)
             {
-                var adminCodes = await _db.RolePermissions
-                    .Where(rp => rp.RoleId == admin.Id)
-                    .Select(rp => rp.Permission.Code)
-                    .ToListAsync(ct);
-                var adminSet = adminCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var permissions = await _db.Permissions.ToDictionaryAsync(p => p.Code, ct);
-                foreach (var code in PermissionDefinitions.Admin)
+                role = new Role
                 {
-                    if (adminSet.Contains(code)) continue;
-                    if (!permissions.TryGetValue(code, out var permission)) continue;
-                    _db.RolePermissions.Add(new RolePermission
-                    {
-                        RoleId = admin.Id,
-                        PermissionId = permission.Id,
-                        CreatedAt = DateTime.UtcNow,
-                        CreatedBy = "system"
-                    });
-                }
+                    Name = roleName,
+                    Description = descriptions.GetValueOrDefault(roleName, roleName),
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "system"
+                };
+                _db.Roles.Add(role);
                 await _db.SaveChangesAsync(ct);
             }
+
+            var current = await _db.RolePermissions
+                .Where(rp => rp.RoleId == role.Id)
+                .Select(rp => rp.Permission.Code)
+                .ToListAsync(ct);
+            var currentSet = current.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var changed = false;
+            foreach (var code in codes)
+            {
+                if (currentSet.Contains(code)) continue;
+                if (!permissions.TryGetValue(code, out var permission)) continue;
+                _db.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = role.Id,
+                    PermissionId = permission.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = "system"
+                });
+                changed = true;
+            }
+            if (changed)
+                await _db.SaveChangesAsync(ct);
         }
     }
 
     private async Task<Dictionary<string, Role>> SeedRolesAsync(CancellationToken ct)
     {
-        var roleDefs = new Dictionary<string, (string Description, string[] Permissions)>
-        {
-            ["Admin"] = ("Full system access", PermissionDefinitions.Admin),
-            ["Manager"] = ("Store manager access", PermissionDefinitions.Manager),
-            ["SalesUser"] = ("POS and sales access", PermissionDefinitions.SalesUser),
-            ["InventoryUser"] = ("Inventory and purchasing access", PermissionDefinitions.InventoryUser)
-        };
-
-        var permissions = await _db.Permissions.ToDictionaryAsync(p => p.Code, ct);
-        var roles = new Dictionary<string, Role>();
-
-        foreach (var (name, (description, codes)) in roleDefs)
-        {
-            var role = new Role
-            {
-                Name = name,
-                Description = description,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = "system"
-            };
-            _db.Roles.Add(role);
-
-            foreach (var code in codes)
-            {
-                if (permissions.TryGetValue(code, out var permission))
-                {
-                    _db.RolePermissions.Add(new RolePermission
-                    {
-                        Role = role,
-                        Permission = permission,
-                        CreatedAt = DateTime.UtcNow,
-                        CreatedBy = "system"
-                    });
-                }
-            }
-
-            roles[name] = role;
-        }
-
-        await _db.SaveChangesAsync(ct);
-        return roles;
+        await SyncRoleTemplatesAsync(ct);
+        return await _db.Roles.ToDictionaryAsync(r => r.Name, ct);
     }
 
     private async Task SeedAdminUserAsync(Role adminRole, CancellationToken ct)
@@ -175,8 +187,9 @@ public class DataSeeder
 
     private async Task SeedBrandsAsync(CancellationToken ct)
     {
-        var brands = new[] { "Toyota", "Honda", "Suzuki", "Hyundai", "Kia", "Nissan", "BMW", "Audi" };
-        foreach (var name in brands)
+        var vertical = await ResolveVerticalKeyAsync(ct);
+        var pack = VerticalSeedPacks.For(vertical);
+        foreach (var name in pack.Brands)
         {
             _db.Brands.Add(new Brand
             {
@@ -208,13 +221,15 @@ public class DataSeeder
 
     private async Task SeedCompanySettingsAsync(CancellationToken ct)
     {
+        var vertical = Environment.GetEnvironmentVariable("CAP_VERTICAL") ?? "auto-parts";
         _db.CompanySettings.Add(new CompanySettings
         {
-            CompanyName = "Car Auto Parts",
+            CompanyName = VerticalSeedPacks.DefaultCompanyName(vertical),
+            VerticalKey = vertical,
             Address = "Main Boulevard, Gulberg III",
             City = "Lahore",
             Phone = "+92-42-0000000",
-            Email = "info@carautoparts.local",
+            Email = "info@local",
             Ntn = "0000000-0",
             Strn = "0000000000000",
             PosId = "POS-001",
@@ -234,19 +249,10 @@ public class DataSeeder
 
     private async Task SeedCategoriesAsync(CancellationToken ct)
     {
-        var categories = new[]
-        {
-            ("Engine Parts", "Engine components and assemblies"),
-            ("Brake System", "Brake pads, discs, and fluids"),
-            ("Electrical", "Batteries, alternators, and wiring"),
-            ("Suspension", "Shocks, struts, and bushings"),
-            ("Filters", "Oil, air, and fuel filters"),
-            ("Body Parts", "Panels, bumpers, and mirrors"),
-            ("Transmission", "Gears, clutches, and fluids"),
-            ("Cooling System", "Radiators, hoses, and thermostats")
-        };
+        var vertical = await ResolveVerticalKeyAsync(ct);
+        var pack = VerticalSeedPacks.For(vertical);
 
-        foreach (var (name, description) in categories)
+        foreach (var (name, description) in pack.Categories)
         {
             _db.Categories.Add(new Category
             {
@@ -258,5 +264,57 @@ public class DataSeeder
         }
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<string> ResolveVerticalKeyAsync(CancellationToken ct)
+    {
+        var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        return settings?.VerticalKey ?? Environment.GetEnvironmentVariable("CAP_VERTICAL") ?? "auto-parts";
+    }
+
+    /// <summary>
+    /// Assigns the company default branch to non-admin users with no ACL rows.
+    /// Admin / platform users keep empty ACL (JWT grants all branches).
+    /// </summary>
+    private async Task EnsureDefaultUserBranchesAsync(CancellationToken ct)
+    {
+        var defaultBranchId = await _db.Branches.AsNoTracking()
+            .Where(b => b.IsActive && !b.IsDeleted && b.IsDefault)
+            .Select(b => (int?)b.Id)
+            .FirstOrDefaultAsync(ct)
+            ?? await _db.Branches.AsNoTracking()
+                .Where(b => b.IsActive && !b.IsDeleted)
+                .OrderBy(b => b.Id)
+                .Select(b => (int?)b.Id)
+                .FirstOrDefaultAsync(ct);
+
+        if (defaultBranchId is null)
+            return;
+
+        var usersNeedingAcl = await _db.Users
+            .AsNoTracking()
+            .Where(u => !u.IsDeleted && u.IsActive)
+            .Where(u => !u.UserRoles.Any(ur => ur.Role.Name == "Admin"))
+            .Where(u => !u.UserBranches.Any(ub => !ub.IsDeleted))
+            .Select(u => u.Id)
+            .ToListAsync(ct);
+
+        if (usersNeedingAcl.Count == 0)
+            return;
+
+        foreach (var userId in usersNeedingAcl)
+        {
+            _db.UserBranches.Add(new UserBranch
+            {
+                UserId = userId,
+                BranchId = defaultBranchId.Value,
+                IsDefault = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "system"
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("Assigned default branch ACL to {Count} users.", usersNeedingAcl.Count);
     }
 }

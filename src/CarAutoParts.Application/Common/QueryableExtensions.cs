@@ -14,7 +14,7 @@ public static class QueryableExtensions
         CancellationToken ct = default)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 500);
+        pageSize = Math.Clamp(pageSize, 1, QueryLimits.MaxPageSize);
 
         var total = await query.CountAsync(ct);
         var items = await query

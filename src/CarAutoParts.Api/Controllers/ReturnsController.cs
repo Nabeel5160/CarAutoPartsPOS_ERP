@@ -30,4 +30,14 @@ public class ReturnsController : ApiControllerBase
     [Authorize(Policy = Permissions.ReturnsManage)]
     public async Task<IActionResult> CreatePurchaseReturn([FromBody] PurchaseReturnCreateDto dto, CancellationToken ct)
         => FromResult(await _returns.CreatePurchaseReturnAsync(dto, ct));
+
+    [HttpPost("sales/{id:int}/apply")]
+    [Authorize(Policy = Permissions.ReturnsManage)]
+    public async Task<IActionResult> ApplySalesCredit(int id, [FromBody] ApplyCreditNoteRequest request, CancellationToken ct)
+        => FromResult(await _returns.ApplySalesCreditAsync(id, request, ct));
+
+    [HttpPost("purchases/{id:int}/apply")]
+    [Authorize(Policy = Permissions.ReturnsManage)]
+    public async Task<IActionResult> ApplyPurchaseCredit(int id, [FromBody] ApplyPurchaseCreditRequest request, CancellationToken ct)
+        => FromResult(await _returns.ApplyPurchaseCreditAsync(id, request, ct));
 }

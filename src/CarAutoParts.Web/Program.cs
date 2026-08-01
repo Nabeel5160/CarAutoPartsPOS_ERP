@@ -48,5 +48,15 @@ builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<AuthApiService>();
 builder.Services.AddScoped<CapApiService>();
 builder.Services.AddScoped<LocaleService>();
+builder.Services.AddScoped<WebAppConfigService>();
+builder.Services.AddScoped<OfflineCheckoutQueue>();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+try
+{
+    var cfg = host.Services.GetRequiredService<WebAppConfigService>();
+    await cfg.InitializePublicAsync();
+}
+catch { /* offline / API down — use defaults */ }
+
+await host.RunAsync();

@@ -37,6 +37,8 @@ public sealed class JwtAuthStateProvider : AuthenticationStateProvider
 
     public async Task MarkUserAsAuthenticatedAsync(ApiLoginResponse login)
     {
+        if (string.IsNullOrWhiteSpace(login.AccessToken) || login.User is null)
+            throw new InvalidOperationException("Cannot authenticate without access token.");
         await _storage.SetItemAsStringAsync(TokenKey, login.AccessToken);
         await _storage.SetItemAsync(UserKey, login.User);
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(

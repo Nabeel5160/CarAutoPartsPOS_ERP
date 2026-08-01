@@ -12,7 +12,7 @@
         <table class="table table-cap table-striped mb-0">
             <thead><tr><th>Name</th><th>Currency</th><th>Default</th><th>Customer</th><th>Items</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
-            @foreach (var p in _items)
+            @foreach (var p in _items.Items)
             {
                 <tr>
                     <td>@p.Name</td>
@@ -29,6 +29,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -55,22 +57,27 @@
 }
 
 @code {
-    private List<PriceListDto>? _items;
+    private PagedResult<PriceListDto>? _items;
     private CreatePriceListRequest _create = new();
     private UpsertPriceListItemRequest _item = new() { MinQuantity = 1 };
     private int? _customerId;
     private int? _selectedListId;
     private bool _busy = true;
     private string? _error;
+    private int _page = 1;
+    private int _pageSize = 10;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetPriceListsAsync();
+        var (data, error, _) = await Api.GetPriceListsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private void SelectList(int id) => _selectedListId = id;
 

@@ -15,6 +15,11 @@ public class AnalyticsController : ApiControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.AnalyticsView)]
-    public async Task<IActionResult> Get([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
-        => Ok(await _analytics.GetAnalyticsAsync(from, to, ct));
+    public async Task<IActionResult> Get(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int? branchId,
+        [FromQuery] int deadStockDays = 90,
+        CancellationToken ct = default)
+        => Ok(await _analytics.GetAnalyticsAsync(from, to, branchId, deadStockDays, ct));
 }

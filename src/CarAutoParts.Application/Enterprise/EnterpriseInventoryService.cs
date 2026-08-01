@@ -1,5 +1,6 @@
 using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Application.Services;
 using CarAutoParts.Domain.Entities;
 using CarAutoParts.Domain.Enums;
 using CarAutoParts.Domain.Services;
@@ -31,19 +32,39 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         _gl = gl;
     }
 
-    public async Task<IReadOnlyList<GoodsReceiptNoteDto>> GetGrnsAsync(CancellationToken ct = default)
+    public async Task<PagedResult<GoodsReceiptNoteDto>> GetGrnsAsync(QuerySpec? query = null, CancellationToken ct = default)
     {
         EnsureCompanyOrThrow();
+        query ??= new QuerySpec();
 
-        var items = await _db.GoodsReceiptNotes
-            .AsNoTracking()
+        var baseQ = _db.GoodsReceiptNotes.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            baseQ = baseQ.Where(g => g.GrnNumber.Contains(s));
+        }
+
+        var total = await baseQ.CountAsync(ct);
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize <= 0 ? QueryLimits.DefaultPageSize : query.PageSize, 1, QueryLimits.MaxPageSize);
+
+        var items = await baseQ
             .Include(g => g.Lines)
             .Include(g => g.LandedCostLines)
             .OrderByDescending(g => g.ReceiptDate)
             .ThenByDescending(g => g.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            
             .ToListAsync(ct);
 
-        return items.Select(MapGrn).ToList();
+        return new PagedResult<GoodsReceiptNoteDto>
+        {
+            Items = items.Select(MapGrn).ToList(),
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<IReadOnlyList<StockReservationDto>> GetReservationsAsync(CancellationToken ct = default)
@@ -69,7 +90,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
             .ThenByDescending(c => c.Id)
             .ToListAsync(ct);
 
-        return items.Select(MapCycleCount).ToList();
+        return items.Select(c => MapCycleCount(c)).ToList();
     }
 
     public async Task<Result<StockReservationDto>> ReserveStockAsync(ReserveStockRequest request, CancellationToken ct = default)
@@ -241,7 +262,8 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
                 PurchaseOrderLineId = line.PurchaseOrderLineId,
                 BatchNumber = line.BatchNumber,
                 ExpiryDate = line.ExpiryDate,
-                SerialNumbersJson = serialJson
+                SerialNumbersJson = serialJson,
+                WarehouseLocationId = line.WarehouseLocationId
             });
         }
 
@@ -333,6 +355,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
                 line.BatchNumber,
                 nameof(GoodsReceiptNote),
                 grn.Id,
+                line.WarehouseLocationId,
                 ct);
 
             if (!receiveResult.Succeeded)
@@ -445,12 +468,21 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         if (!await _db.Warehouses.AnyAsync(w => w.Id == request.WarehouseId && !w.IsDeleted, ct))
             return Result<CycleCountDto>.Failure("Warehouse not found.");
 
+        if (request.WarehouseLocationId is int locId)
+        {
+            var locOk = await _db.WarehouseLocations.AnyAsync(l =>
+                l.Id == locId && l.WarehouseId == request.WarehouseId && l.IsActive && !l.IsDeleted, ct);
+            if (!locOk)
+                return Result<CycleCountDto>.Failure("Cycle count location is invalid for this warehouse.");
+        }
+
         var countNumber = await EnterpriseDocumentNumbers.AllocateAsync(_db, "CC", ct);
         var cycleCount = new CycleCount
         {
             CompanyId = companyId,
             CountNumber = countNumber,
             WarehouseId = request.WarehouseId,
+            WarehouseLocationId = request.WarehouseLocationId,
             CountDate = request.CountDate,
             Notes = request.Notes,
             Status = CycleCountStatus.Draft
@@ -460,13 +492,39 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         {
             foreach (var line in request.Lines)
             {
-                var systemQty = await GetSystemQuantityAsync(line.ProductId, request.WarehouseId, ct);
+                var lineLoc = line.WarehouseLocationId ?? request.WarehouseLocationId;
+                var systemQty = await GetSystemQuantityAsync(line.ProductId, request.WarehouseId, lineLoc, ct);
                 cycleCount.Lines.Add(new CycleCountLine
                 {
                     CompanyId = companyId,
                     ProductId = line.ProductId,
+                    WarehouseLocationId = lineLoc,
                     SystemQuantity = systemQty,
                     CountedQuantity = line.CountedQuantity
+                });
+            }
+        }
+        else if (request.WarehouseLocationId is int filterLoc)
+        {
+            var balances = await _db.InventoryLocationBalances
+                .Include(b => b.InventoryItem)
+                .Where(b =>
+                    !b.IsDeleted &&
+                    b.WarehouseLocationId == filterLoc &&
+                    b.QuantityOnHand > 0 &&
+                    b.InventoryItem.WarehouseId == request.WarehouseId &&
+                    !b.InventoryItem.IsDeleted)
+                .ToListAsync(ct);
+
+            foreach (var bal in balances)
+            {
+                cycleCount.Lines.Add(new CycleCountLine
+                {
+                    CompanyId = companyId,
+                    ProductId = bal.InventoryItem.ProductId,
+                    WarehouseLocationId = filterLoc,
+                    SystemQuantity = bal.QuantityOnHand,
+                    CountedQuantity = bal.QuantityOnHand
                 });
             }
         }
@@ -494,7 +552,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         cycleCount.Status = CycleCountStatus.InProgress;
         _db.CycleCounts.Add(cycleCount);
         await _db.SaveChangesAsync(ct);
-        return Result<CycleCountDto>.Success(MapCycleCount(cycleCount));
+        return Result<CycleCountDto>.Success(await MapCycleCountAsync(cycleCount, ct));
     }
 
     public async Task<Result<CycleCountDto>> CompleteCycleCountAsync(int cycleCountId, CancellationToken ct = default)
@@ -518,6 +576,8 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
             if (variance == 0)
                 continue;
 
+            var locationId = line.WarehouseLocationId ?? cycleCount.WarehouseLocationId;
+
             if (variance > 0)
             {
                 var receive = await ReceiveStockInternalAsync(
@@ -529,6 +589,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
                     null,
                     nameof(CycleCount),
                     cycleCount.Id,
+                    locationId,
                     ct);
                 if (!receive.Succeeded)
                     return Result<CycleCountDto>.Failure(receive.Error!);
@@ -541,6 +602,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
                     Math.Abs(variance),
                     nameof(CycleCount),
                     cycleCount.Id,
+                    locationId,
                     ct);
                 if (!deduct.Succeeded)
                     return Result<CycleCountDto>.Failure(deduct.Error!);
@@ -550,7 +612,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         cycleCount.Status = CycleCountStatus.Completed;
         cycleCount.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return Result<CycleCountDto>.Success(MapCycleCount(cycleCount));
+        return Result<CycleCountDto>.Success(await MapCycleCountAsync(cycleCount, ct));
     }
 
     private async Task<Result> ReceiveStockInternalAsync(
@@ -562,6 +624,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         string? batchNumber,
         string referenceType,
         int referenceId,
+        int? warehouseLocationId,
         CancellationToken ct)
     {
         var item = await GetOrCreateInventoryItemAsync(productId, warehouseId, ct);
@@ -584,8 +647,21 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
             UnitCost = unitCost,
             ReferenceType = referenceType,
             ReferenceId = referenceId,
-            MovementDate = DateTime.UtcNow
+            MovementDate = DateTime.UtcNow,
+            Notes = batchNumber
         });
+
+        try
+        {
+            var locId = await LocationBalanceSync.ResolveReceivingLocationIdAsync(
+                _db.WarehouseLocations, l => _db.WarehouseLocations.Add(l), warehouseId, companyId, warehouseLocationId, ct);
+            await LocationBalanceSync.IncreaseAsync(
+                _db.InventoryLocationBalances, b => _db.InventoryLocationBalances.Add(b), item.Id, locId, quantity, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(ex.Message);
+        }
 
         return Result.Success();
     }
@@ -596,6 +672,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         decimal quantity,
         string referenceType,
         int referenceId,
+        int? warehouseLocationId,
         CancellationToken ct)
     {
         var item = await _db.InventoryItems
@@ -622,6 +699,21 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
             MovementDate = DateTime.UtcNow
         });
 
+        var companyId = _company.CompanyId ?? 0;
+        try
+        {
+            var locId = await LocationBalanceSync.ResolvePickLocationIdAsync(
+                _db.WarehouseLocations, l => _db.WarehouseLocations.Add(l), warehouseId, companyId, warehouseLocationId, ct);
+            var locErr = await LocationBalanceSync.DecreaseAsync(
+                _db.InventoryLocationBalances, b => _db.InventoryLocationBalances.Add(b), item.Id, locId, quantity, allowNegative: false, ct);
+            if (locErr is not null)
+                return Result.Failure(locErr);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(ex.Message);
+        }
+
         return Result.Success();
     }
 
@@ -636,11 +728,16 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         if (existing is not null)
             return existing;
 
+        var defaultMethod = await _db.CompanySettings.AsNoTracking()
+            .Where(s => !s.IsDeleted)
+            .Select(s => (ValuationMethod?)s.DefaultValuationMethod)
+            .FirstOrDefaultAsync(ct) ?? ValuationMethod.Average;
+
         var item = new InventoryItem
         {
             ProductId = productId,
             WarehouseId = warehouseId,
-            ValuationMethod = ValuationMethod.Average
+            ValuationMethod = defaultMethod
         };
 
         _db.InventoryItems.Add(item);
@@ -648,8 +745,21 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         return item;
     }
 
-    private async Task<decimal> GetSystemQuantityAsync(int productId, int warehouseId, CancellationToken ct)
+    private async Task<decimal> GetSystemQuantityAsync(int productId, int warehouseId, int? locationId, CancellationToken ct)
     {
+        if (locationId is int loc)
+        {
+            var bal = await _db.InventoryLocationBalances
+                .Include(b => b.InventoryItem)
+                .FirstOrDefaultAsync(b =>
+                    !b.IsDeleted &&
+                    b.WarehouseLocationId == loc &&
+                    b.InventoryItem.ProductId == productId &&
+                    b.InventoryItem.WarehouseId == warehouseId &&
+                    !b.InventoryItem.IsDeleted, ct);
+            return bal?.QuantityOnHand ?? 0;
+        }
+
         var item = await _db.InventoryItems
             .FirstOrDefaultAsync(i =>
                 i.ProductId == productId &&
@@ -699,15 +809,39 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
             l.PurchaseOrderLineId,
             string.IsNullOrWhiteSpace(l.SerialNumbersJson)
                 ? null
-                : System.Text.Json.JsonSerializer.Deserialize<List<string>>(l.SerialNumbersJson))).ToList(),
+                : System.Text.Json.JsonSerializer.Deserialize<List<string>>(l.SerialNumbersJson),
+            l.WarehouseLocationId)).ToList(),
         g.LandedCostLines?.Select(l => new GrnLandedCostLineDto(l.Id, l.CostType, l.Amount, l.Notes)).ToList());
 
-    private static CycleCountDto MapCycleCount(CycleCount c) => new(
+    private async Task<CycleCountDto> MapCycleCountAsync(CycleCount c, CancellationToken ct)
+    {
+        var locIds = c.Lines.Where(l => l.WarehouseLocationId.HasValue).Select(l => l.WarehouseLocationId!.Value)
+            .Concat(c.WarehouseLocationId.HasValue ? [c.WarehouseLocationId.Value] : Array.Empty<int>())
+            .Distinct()
+            .ToList();
+        var codes = locIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.WarehouseLocations.AsNoTracking()
+                .Where(l => locIds.Contains(l.Id))
+                .ToDictionaryAsync(l => l.Id, l => l.Code, ct);
+
+        return MapCycleCount(c, codes);
+    }
+
+    private static CycleCountDto MapCycleCount(CycleCount c, IReadOnlyDictionary<int, string>? codes = null) => new(
         c.Id,
         c.CountNumber,
         c.WarehouseId,
         c.CountDate,
         c.Status,
         c.Notes,
-        c.Lines.Select(l => new CycleCountLineDto(l.Id, l.ProductId, l.SystemQuantity, l.CountedQuantity, l.Variance)).ToList());
+        c.Lines.Select(l => new CycleCountLineDto(
+            l.Id,
+            l.ProductId,
+            l.SystemQuantity,
+            l.CountedQuantity,
+            l.Variance,
+            l.WarehouseLocationId,
+            l.WarehouseLocationId is int lid && codes is not null && codes.TryGetValue(lid, out var code) ? code : null)).ToList(),
+        c.WarehouseLocationId);
 }

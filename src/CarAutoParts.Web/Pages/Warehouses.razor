@@ -3,7 +3,7 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="Warehouses" Subtitle="Warehouse master data">
+<PageHeader Title="Warehouses" Subtitle="Warehouse master data and bin locations">
     <button class="btn btn-cap btn-sm" @onclick="() => BeginEdit(null)">Add</button>
 </PageHeader>
 <LoadingState Busy="@_busy" Error="@_error" />
@@ -12,15 +12,16 @@
 {
     <div class="cap-card table-responsive">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Name</th><th>City</th><th>Default</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>City</th><th>Branch</th><th>Default</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
-            @foreach (var w in _items)
+            @foreach (var w in _items.Items)
             {
                 <tr>
-                    <td>@w.Name</td><td>@w.City</td><td>@(w.IsDefault ? "Yes" : "")</td>
+                    <td>@w.Name</td><td>@w.City</td><td>@(w.BranchId?.ToString() ?? "—")</td><td>@(w.IsDefault ? "Yes" : "")</td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
                             <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginEdit(w)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-info" @onclick="() => OpenLocationsAsync(w)">Bins</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(w.Id)">Delete</button>
                         </div>
                     </td>
@@ -28,6 +29,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -38,6 +41,7 @@
             <div class="col-md-4"><label class="form-label">Name</label><input class="form-control" @bind="_form.Name" /></div>
             <div class="col-md-4"><label class="form-label">City</label><input class="form-control" @bind="_form.City" /></div>
             <div class="col-md-4"><label class="form-label">Phone</label><input class="form-control" @bind="_form.PhoneNumber" /></div>
+            <div class="col-md-4"><label class="form-label">Branch Id</label><input type="number" class="form-control" @bind="_form.BranchId" /></div>
             <div class="col-12"><label class="form-label">Address</label><input class="form-control" @bind="_form.Address" /></div>
             <div class="col-md-4 form-check mt-3"><InputCheckbox class="form-check-input" @bind-Value="_form.IsDefault" /> Default</div>
         </div>
@@ -48,21 +52,66 @@
     </div>
 }
 
+@if (_locWarehouse is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>Bins — @_locWarehouse.Name</h5>
+        <div class="row g-2 mb-3">
+            <div class="col-md-2"><input class="form-control" placeholder="Code" @bind="_locForm.Code" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="Name" @bind="_locForm.Name" /></div>
+            <div class="col-md-2 form-check mt-2"><input class="form-check-input" type="checkbox" id="recv" @bind="_locForm.IsReceivingDefault" /><label class="form-check-label" for="recv">Receiving</label></div>
+            <div class="col-md-2 form-check mt-2"><input class="form-check-input" type="checkbox" id="pick" @bind="_locForm.IsPickDefault" /><label class="form-check-label" for="pick">Pick</label></div>
+            <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="SaveLocationAsync">@(_locEditId is null ? "Add bin" : "Update")</button></div>
+        </div>
+        @if (_locations is not null)
+        {
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Code</th><th>Name</th><th>Receiving</th><th>Pick</th><th>Active</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var l in _locations)
+                {
+                    <tr>
+                        <td class="mono">@l.Code</td><td>@l.Name</td>
+                        <td>@(l.IsReceivingDefault ? "Yes" : "")</td>
+                        <td>@(l.IsPickDefault ? "Yes" : "")</td>
+                        <td>@(l.IsActive ? "Yes" : "No")</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => BeginLocEdit(l)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLocAsync(l.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        <button class="btn btn-outline-light btn-sm mt-2" @onclick="() => _locWarehouse = null">Close bins</button>
+    </div>
+}
+
 @code {
-    private List<WarehouseDto>? _items;
+    private PagedResult<WarehouseDto>? _items;
     private bool _busy = true, _editing;
     private string? _error;
     private int? _editId;
     private WarehouseDto _form = new();
+    private WarehouseDto? _locWarehouse;
+    private List<WarehouseLocationDto>? _locations;
+    private UpsertWarehouseLocationDto _locForm = new();
+    private int? _locEditId;
+    private int _page = 1;
+    private int _pageSize = 10;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetWarehousesAsync();
+        var (data, error, _) = await Api.GetWarehousesPagedAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private void BeginEdit(WarehouseDto? w)
     {
@@ -72,7 +121,8 @@
         _form = new WarehouseDto
         {
             Id = w.Id, Name = w.Name, Address = w.Address, City = w.City,
-            ContactPerson = w.ContactPerson, PhoneNumber = w.PhoneNumber, IsDefault = w.IsDefault
+            ContactPerson = w.ContactPerson, PhoneNumber = w.PhoneNumber, IsDefault = w.IsDefault,
+            BranchId = w.BranchId
         };
     }
 
@@ -95,5 +145,50 @@
     {
         var (ok, error, _) = await Api.DeleteWarehouseAsync(id);
         if (!ok) Toast.ShowError(error ?? "Failed"); else await LoadAsync();
+    }
+
+    private async Task OpenLocationsAsync(WarehouseDto w)
+    {
+        _locWarehouse = w;
+        _locEditId = null;
+        _locForm = new UpsertWarehouseLocationDto { IsActive = true };
+        var (data, error, _) = await Api.GetWarehouseLocationsAsync(w.Id);
+        if (error is not null) Toast.ShowError(error);
+        _locations = data;
+    }
+
+    private void BeginLocEdit(WarehouseLocationDto l)
+    {
+        _locEditId = l.Id;
+        _locForm = new UpsertWarehouseLocationDto
+        {
+            Code = l.Code, Name = l.Name, IsReceivingDefault = l.IsReceivingDefault,
+            IsPickDefault = l.IsPickDefault, IsActive = l.IsActive, SortOrder = l.SortOrder
+        };
+    }
+
+    private async Task SaveLocationAsync()
+    {
+        if (_locWarehouse is null) return;
+        if (_locEditId is null)
+        {
+            var (_, error, _) = await Api.CreateWarehouseLocationAsync(_locWarehouse.Id, _locForm);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        else
+        {
+            var (_, error, _) = await Api.UpdateWarehouseLocationAsync(_locWarehouse.Id, _locEditId.Value, _locForm);
+            if (error is not null) { Toast.ShowError(error); return; }
+        }
+        Toast.ShowSuccess("Location saved");
+        await OpenLocationsAsync(_locWarehouse);
+    }
+
+    private async Task DeleteLocAsync(int id)
+    {
+        if (_locWarehouse is null) return;
+        var (ok, error, _) = await Api.DeleteWarehouseLocationAsync(_locWarehouse.Id, id);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else await OpenLocationsAsync(_locWarehouse);
     }
 }

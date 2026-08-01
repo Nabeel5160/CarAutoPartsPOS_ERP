@@ -20,6 +20,7 @@ public class PurchaseOrderService : IPurchaseOrderService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly IValidator<PurchaseOrderCreateDto> _validator;
+    private readonly IApprovalWorkflowService _approvals;
 
     public PurchaseOrderService(
         IRepository<PurchaseOrder> orders,
@@ -29,7 +30,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         IInventoryService inventory,
         IUnitOfWork unitOfWork,
         IMapper mapper,
-        IValidator<PurchaseOrderCreateDto> validator)
+        IValidator<PurchaseOrderCreateDto> validator,
+        IApprovalWorkflowService approvals)
     {
         _orders = orders;
         _lines = lines;
@@ -39,6 +41,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _validator = validator;
+        _approvals = approvals;
     }
 
     /// <inheritdoc />
@@ -197,6 +200,11 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (order.Status != PurchaseOrderStatus.Draft)
             return Result.Failure("Only draft orders can be approved.");
+
+        var gate = await _approvals.EnsureApprovedOrQueueAsync(
+            "PurchaseOrder", order.Id, order.OrderNumber, order.GrandTotal, ct);
+        if (!gate.Succeeded)
+            return gate;
 
         order.Status = PurchaseOrderStatus.Approved;
         order.UpdatedAt = DateTime.UtcNow;

@@ -12,7 +12,7 @@
         <table class="table table-cap table-striped mb-0">
             <thead><tr><th>Number</th><th>Supplier</th><th>Status</th><th>Requested</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
-            @foreach (var r in _items)
+            @foreach (var r in _items.Items)
             {
                 <tr>
                     <td class="mono">@r.RequisitionNumber</td>
@@ -40,6 +40,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -56,11 +58,13 @@
 </div>
 
 @code {
-    private List<PurchaseRequisitionDto>? _items;
+    private PagedResult<PurchaseRequisitionDto>? _items;
     private PurchaseRequisitionCreateDto _create = new();
     private PurchaseRequisitionLineCreateDto _line = new() { Quantity = 1 };
     private bool _busy = true;
     private string? _error;
+    private int _page = 1;
+    private int _pageSize = 10;
 
     private static string StatusName(int s) => s switch
     {
@@ -77,9 +81,12 @@
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetRequisitionsAsync();
+        var (data, error, _) = await Api.GetRequisitionsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task CreateAsync()
     {

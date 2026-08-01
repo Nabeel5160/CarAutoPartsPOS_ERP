@@ -9,6 +9,7 @@ Demo company **CAP — Car Auto Parts** seeds a Pakistan-friendly chart:
 | 1110 | Bank | Asset |
 | 1200 | Accounts Receivable | Asset |
 | 1300 | Inventory Asset | Asset |
+| 1350 | Goods In Transit | Asset |
 | 2000 | Liabilities | header |
 | 2100 | Accounts Payable | Liability |
 | 2200 | Sales Tax Payable | Liability |
@@ -18,9 +19,11 @@ Demo company **CAP — Car Auto Parts** seeds a Pakistan-friendly chart:
 | 4100 | Sales Revenue | Revenue |
 | 5000 | COGS | header |
 | 5100 | COGS | CostOfGoods |
+| 5200 | Cash Over/Short | Expense |
 | 6000 | Expenses | header |
 | 6100 | Operating Expense | Expense |
 
 Account mappings link SalesInvoice / PurchaseInvoice / Grn / Payment document keys to these codes.
+Phase 5 also maps `InventoryTransfer` → Inventory (1300) + GoodsInTransit (1350), and `CashierShift` → Cash (1100) + OverShort (5200).
 
 Fiscal year follows July–June (Pakistan typical). Twelve monthly periods are opened at seed.

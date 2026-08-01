@@ -1,0 +1,173 @@
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject ThemeService Theme
+
+<div class="cap-chart">
+    <div class="cap-chart-header">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <h5 class="cap-chart-title">@Title</h5>
+        }
+        else
+        {
+            <span></span>
+        }
+        @if (ShowExport && Spec is not null && Spec.HasRenderableData())
+        {
+            <button type="button" class="btn btn-sm btn-outline-light cap-chart-export" @onclick="ExportPngAsync" title="Export PNG">PNG</button>
+        }
+    </div>
+    @if (Spec is null || !Spec.HasRenderableData())
+    {
+        @if (ShowSkeleton)
+        {
+            <div class="cap-chart-skeleton" style="height:@(Height)px" aria-hidden="true"></div>
+        }
+        else
+        {
+            <div class="cap-chart-empty text-muted">No chart data for this view.</div>
+        }
+    }
+    else
+    {
+        <div class="cap-chart-canvas-wrap" style="height:@(Height)px">
+            <div id="@_hostId" class="cap-chart-host" role="img" aria-label="@(Title ?? "Chart")"></div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly string _hostId = "cap-chart-" + Guid.NewGuid().ToString("N");
+    private bool _rendered;
+    private CapChartSpec? _lastSpec;
+    private string? _lastThemeKey;
+    private DotNetObjectReference<CapChart>? _selfRef;
+    private int _frameIndex;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public CapChartSpec? Spec { get; set; }
+    [Parameter] public int Height { get; set; } = 260;
+    [Parameter] public bool ShowExport { get; set; } = true;
+    [Parameter] public bool ShowSkeleton { get; set; }
+    [Parameter] public bool EnableClick { get; set; }
+    [Parameter] public EventCallback<(string Name, string Series, decimal Value)> OnSegmentClick { get; set; }
+    [Parameter] public int FrameIndex { get; set; }
+    [Parameter] public EventCallback<int> FrameIndexChanged { get; set; }
+
+    public string HostId => _hostId;
+
+    protected override void OnInitialized()
+    {
+        Theme.Changed += OnThemeChanged;
+        _selfRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (FrameIndex != _frameIndex)
+        {
+            _frameIndex = FrameIndex;
+            if (_rendered)
+            {
+                try { await Js.InvokeVoidAsync("capCharts.setFrame", _hostId, _frameIndex); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await SyncChartAsync();
+    }
+
+    private void OnThemeChanged() => _ = InvokeAsync(async () =>
+    {
+        _lastThemeKey = null;
+        try { await Js.InvokeVoidAsync("capCharts.rethemeAll"); } catch { /* ignore */ }
+        await SyncChartAsync(force: true);
+    });
+
+    private async Task SyncChartAsync(bool force = false)
+    {
+        if (Spec is null || !Spec.HasRenderableData())
+        {
+            if (_rendered)
+            {
+                try { await Js.InvokeVoidAsync("capCharts.destroy", _hostId); } catch { /* ignore */ }
+                _rendered = false;
+                _lastSpec = null;
+            }
+            return;
+        }
+
+        var themeKey = $"{Theme.Mode}:{Theme.Accent}";
+        var same = !force && ReferenceEquals(Spec, _lastSpec) && themeKey == _lastThemeKey;
+        if (same) return;
+
+        if (Spec.Playback is not null)
+            Spec.Playback.CurrentIndex = _frameIndex;
+
+        try
+        {
+            if (_rendered && themeKey == _lastThemeKey && !force)
+                await Js.InvokeVoidAsync("capCharts.update", _hostId, Spec);
+            else
+                await Js.InvokeVoidAsync("capCharts.render", _hostId, Spec);
+
+            if (EnableClick && _selfRef is not null)
+                await Js.InvokeVoidAsync("capCharts.onClick", _hostId, _selfRef);
+
+            _rendered = true;
+            _lastSpec = Spec;
+            _lastThemeKey = themeKey;
+        }
+        catch
+        {
+            // ECharts / host may not be ready on first paint.
+        }
+    }
+
+    public async Task SetFrameAsync(int index)
+    {
+        _frameIndex = index;
+        if (Spec?.Playback is not null)
+            Spec.Playback.CurrentIndex = index;
+        if (_rendered)
+        {
+            try { await Js.InvokeVoidAsync("capCharts.setFrame", _hostId, index); } catch { /* ignore */ }
+        }
+        await FrameIndexChanged.InvokeAsync(index);
+    }
+
+    private async Task ExportPngAsync()
+    {
+        try
+        {
+            var dataUrl = await Js.InvokeAsync<string?>("capCharts.exportPng", _hostId, 2);
+            if (string.IsNullOrWhiteSpace(dataUrl) || !dataUrl.Contains(',')) return;
+            var b64 = dataUrl[(dataUrl.IndexOf(',') + 1)..];
+            var name = string.IsNullOrWhiteSpace(Title) ? "chart.png" : $"{Sanitize(Title)}.png";
+            await Js.InvokeVoidAsync("capDownload", b64, name, "image/png");
+        }
+        catch { /* ignore */ }
+    }
+
+    private static string Sanitize(string title)
+    {
+        var chars = title.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray();
+        return chars.Length == 0 ? "chart" : new string(chars);
+    }
+
+    [JSInvokable]
+    public async Task OnChartClick(string name, string series, decimal value)
+    {
+        if (OnSegmentClick.HasDelegate)
+            await OnSegmentClick.InvokeAsync((name, series, value));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Theme.Changed -= OnThemeChanged;
+        try { await Js.InvokeVoidAsync("capCharts.destroy", _hostId); } catch { /* ignore */ }
+        _selfRef?.Dispose();
+    }
+}

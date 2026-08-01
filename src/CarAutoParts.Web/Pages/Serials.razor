@@ -33,6 +33,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -50,18 +52,26 @@
     private RegisterSerialRequest _reg = new();
     private bool _busy = true;
     private string? _error;
+    private int _page = 1;
+    private int _pageSize = 10;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
-        var (data, error, _) = await Api.GetSerialsAsync(new QuerySpec());
+        _busy = true;
+        var (data, error, _) = await Api.GetSerialsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task RegisterAsync()
     {
         var (ok, error, _) = await Api.RegisterSerialAsync(_reg);
         if (!ok) Toast.ShowError(error ?? "Failed");
-        else { Toast.ShowSuccess("Registered"); await OnInitializedAsync(); }
+        else { Toast.ShowSuccess("Registered"); _page = 1; await LoadAsync(); }
     }
 
     private async Task HistoryAsync(int id)

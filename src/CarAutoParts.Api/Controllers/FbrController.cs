@@ -1,3 +1,5 @@
+using CarAutoParts.Api.Filters;
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Fbr;
 using CarAutoParts.Application.Interfaces;
@@ -8,6 +10,7 @@ namespace CarAutoParts.Api.Controllers;
 
 [Authorize]
 [Route("api/fbr")]
+[RequireFeature(ConfigKeys.ModSalesFbr)]
 public class FbrController : ApiControllerBase
 {
     private readonly IFbrService _fbr;

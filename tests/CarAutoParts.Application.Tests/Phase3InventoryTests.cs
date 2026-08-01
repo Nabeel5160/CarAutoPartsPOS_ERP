@@ -1,4 +1,5 @@
 using CarAutoParts.Application.DTOs.Transfers;
+using CarAutoParts.Application.Enterprise;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Application.Mapping;
 using CarAutoParts.Application.Services;
@@ -65,24 +66,22 @@ public class Phase3InventoryTests
         await db.SaveChangesAsync();
 
         var mapper = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>()).CreateMapper();
-        var inventory = new InventoryService(
-            new Repository<InventoryItem>(db),
-            new Repository<StockMovement>(db),
-            new Repository<StockBatch>(db),
-            new Repository<Product>(db),
-            new Repository<Warehouse>(db),
-            new Repository<CompanySettings>(db),
-            new UnitOfWork(db),
-            mapper,
-            new Application.Validators.StockAdjustmentValidator());
+        var inventory = TestInventoryFactory.Create(db, mapper);
+        var approvals = new Mock<IApprovalWorkflowService>();
+        approvals.Setup(a => a.EnsureApprovedOrQueueAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.Common.Result.Success());
         var transfers = new TransferService(
             new Repository<InventoryTransfer>(db),
             new Repository<Warehouse>(db),
             new Repository<Product>(db),
             inventory,
             new CurrentUserService(),
+            new CurrentCompanyContext(),
+            new Mock<IGlPostingService>().Object,
             new UnitOfWork(db),
-            mapper);
+            mapper,
+            approvals.Object,
+            Mock.Of<IMoneyAuditService>());
 
         var created = await transfers.CreateAsync(new TransferCreateDto(
             from.Id, to.Id, null,
@@ -120,16 +119,7 @@ public class Phase3InventoryTests
         await db.SaveChangesAsync();
 
         var mapper = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>()).CreateMapper();
-        var inventory = new InventoryService(
-            new Repository<InventoryItem>(db),
-            new Repository<StockMovement>(db),
-            new Repository<StockBatch>(db),
-            new Repository<Product>(db),
-            new Repository<Warehouse>(db),
-            new Repository<CompanySettings>(db),
-            new UnitOfWork(db),
-            mapper,
-            new Application.Validators.StockAdjustmentValidator());
+        var inventory = TestInventoryFactory.Create(db, mapper);
 
         var result = await inventory.DeductStockAsync(1, 1, 5, "Sale", 1);
         result.Succeeded.Should().BeTrue();

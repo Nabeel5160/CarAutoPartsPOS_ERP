@@ -5,9 +5,12 @@ namespace CarAutoParts.Api.Contracts;
 public record LoginRequest(string Username, string Password);
 
 public record ApiLoginResponse(
-    string AccessToken,
-    DateTime ExpiresAt,
-    LoginResultDto User);
+    string? AccessToken,
+    DateTime? ExpiresAt,
+    LoginResultDto? User,
+    bool MfaRequired = false,
+    string? MfaTicket = null,
+    bool MustEnrollMfa = false);
 
 public record ReceiveStockRequest(
     int ProductId,

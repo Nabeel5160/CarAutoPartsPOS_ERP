@@ -9,7 +9,7 @@ namespace CarAutoParts.Application.Services;
 
 public interface IPurchaseRequisitionService
 {
-    Task<IReadOnlyList<PurchaseRequisitionDto>> GetAllAsync(CancellationToken ct = default);
+    Task<PagedResult<PurchaseRequisitionDto>> GetAllAsync(QuerySpec? query = null, CancellationToken ct = default);
     Task<PurchaseRequisitionDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<Result<PurchaseRequisitionDto>> CreateAsync(PurchaseRequisitionCreateDto dto, CancellationToken ct = default);
     Task<Result<PurchaseRequisitionDto>> SubmitAsync(int id, CancellationToken ct = default);
@@ -37,16 +37,32 @@ public sealed class PurchaseRequisitionService : IPurchaseRequisitionService
         _purchaseOrders = purchaseOrders;
     }
 
-    public async Task<IReadOnlyList<PurchaseRequisitionDto>> GetAllAsync(CancellationToken ct = default)
+    public async Task<PagedResult<PurchaseRequisitionDto>> GetAllAsync(QuerySpec? query = null, CancellationToken ct = default)
     {
-        var items = await _db.PurchaseRequisitions
+        query ??= new QuerySpec();
+        var q = _db.PurchaseRequisitions
             .AsNoTracking()
             .Include(r => r.Lines)
             .Include(r => r.Supplier)
             .OrderByDescending(r => r.RequestedAt)
             .ThenByDescending(r => r.Id)
-            .ToListAsync(ct);
-        return items.Select(Map).ToList();
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            q = q.Where(r => r.RequisitionNumber.Contains(s)
+                || (r.Supplier != null && r.Supplier.Name.Contains(s)));
+        }
+
+        var paged = await q.ToPagedResultAsync(query.Page, query.PageSize, ct);
+        return new PagedResult<PurchaseRequisitionDto>
+        {
+            Items = paged.Items.Select(Map).ToList(),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize
+        };
     }
 
     public async Task<PurchaseRequisitionDto?> GetByIdAsync(int id, CancellationToken ct = default)

@@ -63,6 +63,9 @@ public class SalesInvoiceConfiguration : IEntityTypeConfiguration<SalesInvoice>
         builder.HasOne(i => i.SalesOrder).WithMany().HasForeignKey(i => i.SalesOrderId);
         builder.HasOne(i => i.Warehouse).WithMany().HasForeignKey(i => i.WarehouseId);
         builder.HasOne(i => i.CashierShift).WithMany().HasForeignKey(i => i.CashierShiftId).OnDelete(DeleteBehavior.SetNull);
+
+        // Phase 19: day-range sales / dashboard / reports
+        builder.HasIndex(i => new { i.InvoiceDate, i.WarehouseId });
     }
 }
 
@@ -126,6 +129,9 @@ public class SalesReturnConfiguration : IEntityTypeConfiguration<SalesReturn>
 
         builder.HasOne(r => r.SalesInvoice).WithMany().HasForeignKey(r => r.SalesInvoiceId);
         builder.HasOne(r => r.Customer).WithMany().HasForeignKey(r => r.CustomerId);
+
+        // Phase 19: day sales returns filter
+        builder.HasIndex(r => r.ReturnDate);
     }
 }
 
@@ -182,8 +188,41 @@ public class CashierShiftConfiguration : IEntityTypeConfiguration<CashierShift>
         builder.Property(s => s.UserName).HasMaxLength(100).IsRequired();
         builder.Property(s => s.OpeningFloat).HasPrecision(18, 2);
         builder.Property(s => s.ClosingFloat).HasPrecision(18, 2);
+        builder.Property(s => s.DeclaredClosingCash).HasPrecision(18, 2);
+        builder.Property(s => s.ExpectedCash).HasPrecision(18, 2);
+        builder.Property(s => s.CashVariance).HasPrecision(18, 2);
         builder.Property(s => s.Notes).HasMaxLength(1000);
         builder.HasOne(s => s.Warehouse).WithMany().HasForeignKey(s => s.WarehouseId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(s => s.Till).WithMany().HasForeignKey(s => s.TillId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(s => new { s.UserId, s.Status });
+        builder.HasIndex(s => new { s.TillId, s.Status });
+    }
+}
+
+public class TillConfiguration : IEntityTypeConfiguration<Till>
+{
+    public void Configure(EntityTypeBuilder<Till> builder)
+    {
+        builder.ToTable("Tills");
+        builder.Property(t => t.Code).HasMaxLength(30).IsRequired();
+        builder.Property(t => t.Name).HasMaxLength(100).IsRequired();
+        builder.HasIndex(t => new { t.BranchId, t.Code })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
+        builder.HasOne(t => t.Branch).WithMany().HasForeignKey(t => t.BranchId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(t => t.Warehouse).WithMany().HasForeignKey(t => t.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class SafeDropConfiguration : IEntityTypeConfiguration<SafeDrop>
+{
+    public void Configure(EntityTypeBuilder<SafeDrop> builder)
+    {
+        builder.ToTable("SafeDrops");
+        builder.Property(d => d.Amount).HasPrecision(18, 2);
+        builder.Property(d => d.Notes).HasMaxLength(500);
+        builder.Property(d => d.CreatedByUserName).HasMaxLength(100);
+        builder.HasOne(d => d.CashierShift).WithMany(s => s.SafeDrops).HasForeignKey(d => d.CashierShiftId);
+        builder.HasOne(d => d.Till).WithMany().HasForeignKey(d => d.TillId).OnDelete(DeleteBehavior.Restrict);
     }
 }

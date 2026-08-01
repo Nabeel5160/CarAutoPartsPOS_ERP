@@ -15,6 +15,7 @@ public interface IFinanceDb
     DbSet<FiscalYear> FiscalYears { get; }
     DbSet<JournalEntry> JournalEntries { get; }
     DbSet<NumberSequence> NumberSequences { get; }
+    DbSet<CompanySettings> CompanySettings { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -150,6 +151,12 @@ public sealed class FinanceHandlers :
         var journal = await _db.JournalEntries.Include(j => j.Lines)
             .FirstOrDefaultAsync(j => j.Id == request.JournalId, ct);
         if (journal is null) return Result.Failure("Journal not found.");
+
+        var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        if (settings?.OpeningBalanceDate is DateTime cutover
+            && journal.JournalDate.Date < cutover.Date
+            && !string.Equals(journal.SourceDocumentType, "OpeningBalance", StringComparison.OrdinalIgnoreCase))
+            return Result.Failure("Journal date is before opening balance cutover.");
 
         var period = await _db.AccountingPeriods
             .FirstOrDefaultAsync(p =>

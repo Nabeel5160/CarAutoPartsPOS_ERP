@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Config;
 using CarAutoParts.Application.Enterprise;
 using CarAutoParts.Application.Finance;
 using CarAutoParts.Application.Interfaces;
@@ -19,6 +20,13 @@ public static class DependencyInjection
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
         services.AddValidatorsFromAssemblyContaining<ProductValidator>();
 
+        services.AddMemoryCache();
+        services.AddScoped<IMoneyAuditService, MoneyAuditService>();
+        services.AddScoped<IApprovalWorkflowService, ApprovalWorkflowService>();
+        services.AddScoped<IMfaService, MfaService>();
+        services.AddScoped<IDocumentVoidService, DocumentVoidService>();
+        services.AddScoped<IOnboardingService, OnboardingService>();
+
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentCompanyContext, CurrentCompanyContext>();
         services.AddScoped<IAuthService, AuthService>();
@@ -29,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<IWarehouseService, WarehouseService>();
+        services.AddScoped<IWarehouseLocationService, WarehouseLocationService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IAtpService, AtpService>();
 
@@ -52,6 +61,9 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<AppConfigService>();
+        services.AddScoped<IAppConfigService>(sp => sp.GetRequiredService<AppConfigService>());
+        services.AddScoped<IFeatureGate>(sp => sp.GetRequiredService<AppConfigService>());
 
         services.AddScoped<IEnterpriseInventoryService, EnterpriseInventoryService>();
         services.AddScoped<IEnterprisePurchaseService, EnterprisePurchaseService>();
@@ -62,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<IGlPostingService, GlPostingService>();
         services.AddScoped<IAccountingPeriodService, AccountingPeriodService>();
         services.AddScoped<IPaymentPostingService, PaymentPostingService>();
+        services.AddScoped<IPhase4FinanceService, Phase4FinanceService>();
 
         // IBarcodeService and IFbrService are registered in Infrastructure.
 

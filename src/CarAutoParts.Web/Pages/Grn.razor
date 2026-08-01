@@ -12,7 +12,7 @@
         <table class="table table-cap table-striped mb-0">
             <thead><tr><th>Number</th><th>Warehouse</th><th>Status</th><th>Landed</th><th>Date</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
-            @foreach (var g in _items)
+            @foreach (var g in _items.Items)
             {
                 <tr>
                     <td class="mono">@g.GrnNumber</td>
@@ -36,6 +36,8 @@
             }
             </tbody>
         </table>
+        <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+               PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
     </div>
 }
 
@@ -48,6 +50,7 @@
         <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
         <div class="col-md-1"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit cost" @bind="_line.UnitCost" /></div>
+        <div class="col-md-2"><input type="number" class="form-control" placeholder="Putaway Loc Id" @bind="_line.WarehouseLocationId" /></div>
         <div class="col-md-3"><input class="form-control" placeholder="Serials (comma-sep)" @bind="_serials" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Freight" @bind="_freight" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Duty" @bind="_duty" /></div>
@@ -60,7 +63,7 @@
 </div>
 
 @code {
-    private List<GoodsReceiptNoteDto>? _items;
+    private PagedResult<GoodsReceiptNoteDto>? _items;
     private CreateGrnRequest _create = new() { ReceiptDate = DateTime.UtcNow };
     private CreateGrnLineRequest _line = new() { Quantity = 1 };
     private int? _poId;
@@ -69,6 +72,8 @@
     private decimal _duty;
     private bool _busy = true;
     private string? _error;
+    private int _page = 1;
+    private int _pageSize = 10;
 
     private static string StatusName(int s) => s switch { 0 => "Draft", 1 => "Posted", 2 => "Cancelled", 3 => "QcHold", _ => s.ToString() };
 
@@ -77,9 +82,12 @@
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetGrnsAsync();
+        var (data, error, _) = await Api.GetGrnsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task CreateAsync()
     {

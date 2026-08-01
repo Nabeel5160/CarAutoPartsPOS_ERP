@@ -3,12 +3,12 @@
 @inject CapApiService Api
 @inject IToastService Toast
 
-<PageHeader Title="Returns" Subtitle="Sales and supplier returns with stock + GL" />
+<PageHeader Title="Returns / Credit notes" Subtitle="Sales & supplier returns with CN numbers, tax lines, apply-to-invoice" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 <ul class="nav nav-tabs mb-3">
-    <li class="nav-item"><button type="button" class="nav-link @(_tab == 0 ? "active" : null)" @onclick="() => _tab = 0">Sales</button></li>
-    <li class="nav-item"><button type="button" class="nav-link @(_tab == 1 ? "active" : null)" @onclick="() => _tab = 1">Purchase</button></li>
+    <li class="nav-item"><button type="button" class="nav-link @(_tab == 0 ? "active" : null)" @onclick="() => _tab = 0">Sales CN</button></li>
+    <li class="nav-item"><button type="button" class="nav-link @(_tab == 1 ? "active" : null)" @onclick="() => _tab = 1">Purchase SCN</button></li>
 </ul>
 
 @if (_tab == 0)
@@ -17,26 +17,30 @@
     {
         <div class="cap-card table-responsive mb-3">
             <table class="table table-cap table-striped mb-0">
-                <thead><tr><th>Number</th><th>Invoice</th><th>Reason</th><th>Status</th><th>Date</th><th>Total</th></tr></thead>
+                <thead><tr><th>Return</th><th>CN#</th><th>Invoice</th><th>Reason</th><th>Tax</th><th>Total</th><th>Applied</th><th>Date</th></tr></thead>
                 <tbody>
                 @foreach (var r in _items.Items)
                 {
                     <tr>
                         <td>@r.ReturnNumber</td>
+                        <td>@(r.CreditNoteNumber ?? "—")</td>
                         <td>@(r.InvoiceNumber ?? r.SalesInvoiceId?.ToString())</td>
                         <td>@r.ReasonCode</td>
-                        <td>@r.Status</td>
-                        <td>@r.ReturnDate.ToLocalTime().ToString("d")</td>
+                        <td>@r.TaxAmount.ToString("N2")</td>
                         <td>@r.GrandTotal.ToString("N2")</td>
+                        <td>@r.AppliedAmount.ToString("N2")</td>
+                        <td>@r.ReturnDate.ToLocalTime().ToString("d")</td>
                     </tr>
                 }
                 </tbody>
             </table>
+            <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+                   PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
         </div>
     }
 
-    <div class="cap-card">
-        <h5>Create sales return</h5>
+    <div class="cap-card mb-3">
+        <h5>Create sales credit note</h5>
         <div class="row g-2">
             <div class="col-md-3"><label class="form-label">Invoice Id</label><input type="number" class="form-control" @bind="_sales.SalesInvoiceId" /></div>
             <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_sales.WarehouseId" /></div>
@@ -48,19 +52,34 @@
                     <option value="WARRANTY">WARRANTY</option>
                 </select>
             </div>
+            <div class="col-md-3 form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="stockAff" @bind="_sales.StockAffected" />
+                <label class="form-check-label" for="stockAff">Affect stock (restock)</label>
+            </div>
             <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_sales.Notes" /></div>
-            <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_salesLine.ProductId" /></div>
-            <div class="col-md-3"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_salesLine.Quantity" /></div>
-            <div class="col-md-3"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_salesLine.UnitPrice" /></div>
-            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreateSalesAsync">Create return</button></div>
+            <div class="col-md-2"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_salesLine.ProductId" /></div>
+            <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_salesLine.Quantity" /></div>
+            <div class="col-md-2"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_salesLine.UnitPrice" /></div>
+            <div class="col-md-2"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_salesLine.TaxRate" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreateSalesAsync">Create CN</button></div>
+        </div>
+    </div>
+
+    <div class="cap-card">
+        <h5>Apply credit to invoice</h5>
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">Sales return / CN Id</label><input type="number" class="form-control" @bind="_applyReturnId" /></div>
+            <div class="col-md-3"><label class="form-label">Invoice Id</label><input type="number" class="form-control" @bind="_applyInvoiceId" /></div>
+            <div class="col-md-3"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_applyAmount" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light w-100" @onclick="ApplySalesAsync">Apply</button></div>
         </div>
     </div>
 }
 else
 {
-    <div class="cap-card">
-        <h5>Create supplier return</h5>
-        <p class="text-muted small">Deducts stock, reduces supplier balance, posts PurchaseReturn GL.</p>
+    <div class="cap-card mb-3">
+        <h5>Create supplier credit note</h5>
+        <p class="text-muted small">Optionally deducts stock, reduces supplier balance, posts PurchaseReturn GL.</p>
         <div class="row g-2">
             <div class="col-md-3"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_purchase.SupplierId" /></div>
             <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_purchase.WarehouseId" /></div>
@@ -72,11 +91,26 @@ else
                     <option value="OTHER">OTHER</option>
                 </select>
             </div>
+            <div class="col-md-3 form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="pStock" @bind="_purchase.StockAffected" />
+                <label class="form-check-label" for="pStock">Affect stock</label>
+            </div>
             <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_purchase.Notes" /></div>
-            <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_purchaseLine.ProductId" /></div>
-            <div class="col-md-3"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_purchaseLine.Quantity" /></div>
-            <div class="col-md-3"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_purchaseLine.UnitPrice" /></div>
-            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreatePurchaseAsync">Create return</button></div>
+            <div class="col-md-2"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_purchaseLine.ProductId" /></div>
+            <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_purchaseLine.Quantity" /></div>
+            <div class="col-md-2"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_purchaseLine.UnitPrice" /></div>
+            <div class="col-md-2"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_purchaseLine.TaxRate" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-cap w-100" @onclick="CreatePurchaseAsync">Create SCN</button></div>
+        </div>
+    </div>
+
+    <div class="cap-card">
+        <h5>Apply supplier credit to AP invoice</h5>
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">Purchase return Id</label><input type="number" class="form-control" @bind="_applyPurchaseReturnId" /></div>
+            <div class="col-md-3"><label class="form-label">Purchase invoice Id</label><input type="number" class="form-control" @bind="_applyPurchaseInvoiceId" /></div>
+            <div class="col-md-3"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_applyPurchaseAmount" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light w-100" @onclick="ApplyPurchaseAsync">Apply</button></div>
         </div>
     </div>
 }
@@ -86,25 +120,34 @@ else
     private PagedResult<SalesReturnDto>? _items;
     private bool _busy = true;
     private string? _error;
-    private SalesReturnCreateDto _sales = new() { ReasonCode = "CUSTOMER", WarehouseId = 1 };
+    private int _page = 1;
+    private int _pageSize = 10;
+    private SalesReturnCreateDto _sales = new() { ReasonCode = "CUSTOMER", WarehouseId = 1, StockAffected = true };
     private SalesReturnLineDto _salesLine = new() { Quantity = 1 };
-    private PurchaseReturnCreateDto _purchase = new() { ReasonCode = "DEFECT", WarehouseId = 1 };
+    private PurchaseReturnCreateDto _purchase = new() { ReasonCode = "DEFECT", WarehouseId = 1, StockAffected = true };
     private PurchaseReturnLineDto _purchaseLine = new() { Quantity = 1 };
+    private int _applyReturnId, _applyInvoiceId;
+    private decimal _applyAmount;
+    private int _applyPurchaseReturnId, _applyPurchaseInvoiceId;
+    private decimal _applyPurchaseAmount;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetSalesReturnsAsync(new QuerySpec());
+        var (data, error, _) = await Api.GetSalesReturnsAsync(new QuerySpec { Page = _page, PageSize = _pageSize });
         _items = data; _error = error; _busy = false;
     }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
 
     private async Task CreateSalesAsync()
     {
         _sales.Lines = [_salesLine];
         var (_, error, _) = await Api.CreateSalesReturnAsync(_sales);
-        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Return posted"); await LoadAsync(); }
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Credit note posted"); await LoadAsync(); }
     }
 
     private async Task CreatePurchaseAsync()
@@ -112,6 +155,20 @@ else
         _purchase.Lines = [_purchaseLine];
         var (ok, error, _) = await Api.CreatePurchaseReturnAsync(_purchase);
         if (!ok || error is not null) Toast.ShowError(error ?? "Failed");
-        else Toast.ShowSuccess("Supplier return posted");
+        else Toast.ShowSuccess("Supplier credit note posted");
+    }
+
+    private async Task ApplySalesAsync()
+    {
+        var (ok, error, _) = await Api.ApplySalesCreditAsync(_applyReturnId, new { SalesInvoiceId = _applyInvoiceId, Amount = _applyAmount });
+        if (!ok) Toast.ShowError(error ?? "Apply failed");
+        else { Toast.ShowSuccess("Credit applied"); await LoadAsync(); }
+    }
+
+    private async Task ApplyPurchaseAsync()
+    {
+        var (ok, error, _) = await Api.ApplyPurchaseCreditAsync(_applyPurchaseReturnId, new { PurchaseInvoiceId = _applyPurchaseInvoiceId, Amount = _applyPurchaseAmount });
+        if (!ok) Toast.ShowError(error ?? "Apply failed");
+        else Toast.ShowSuccess("Supplier credit applied");
     }
 }

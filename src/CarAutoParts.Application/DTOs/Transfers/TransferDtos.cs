@@ -9,7 +9,9 @@ public record TransferListDto(
     string FromWarehouseName,
     string ToWarehouseName,
     TransferStatus Status,
-    DateTime TransferDate);
+    DateTime TransferDate,
+    bool IsInterBranch = false,
+    bool AllLinesPicked = false);
 
 /// <summary>Inventory transfer detail with lines.</summary>
 public record TransferDetailDto(
@@ -24,7 +26,9 @@ public record TransferDetailDto(
     string? Notes,
     string? ApprovedBy,
     DateTime? ApprovedAt,
-    IReadOnlyList<TransferLineDto> Lines);
+    bool IsInterBranch,
+    IReadOnlyList<TransferLineDto> Lines,
+    bool AllLinesPicked = false);
 
 /// <summary>Payload for creating an inventory transfer.</summary>
 public record TransferCreateDto(
@@ -34,4 +38,17 @@ public record TransferCreateDto(
     IReadOnlyList<TransferLineDto> Lines);
 
 /// <summary>Inventory transfer line.</summary>
-public record TransferLineDto(int ProductId, string? ProductName, decimal Quantity);
+public record TransferLineDto(
+    int ProductId,
+    string? ProductName,
+    decimal Quantity,
+    decimal ShippedUnitCost = 0,
+    int? FromLocationId = null,
+    int? ToLocationId = null,
+    bool IsPicked = false,
+    int? LineId = null);
+
+/// <summary>Confirm pick before ship (Phase 15 P1).</summary>
+public record ConfirmTransferPickRequest(IReadOnlyList<ConfirmTransferPickLineRequest>? Lines = null);
+
+public record ConfirmTransferPickLineRequest(int LineId, int? FromLocationId = null, int? ToLocationId = null);

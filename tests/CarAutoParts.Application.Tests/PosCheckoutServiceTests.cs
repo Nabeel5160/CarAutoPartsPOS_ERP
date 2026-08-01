@@ -67,6 +67,7 @@ public class PosCheckoutServiceTests
             new Repository<CashierShift>(db),
             new Repository<HeldSale>(db),
             new Repository<ProductSupersession>(db),
+            new Repository<Warehouse>(db),
             inventoryMock.Object,
             fbrMock.Object,
             new UnitOfWork(db),
@@ -76,12 +77,38 @@ public class PosCheckoutServiceTests
             company,
             new CurrentUserService(),
             salesEnt.Object,
-            new AtpService(new EnterpriseDbAdapter(db)));
+            new AtpService(new EnterpriseDbAdapter(db)),
+            CreateFeatureGate());
 
         var products = await service.GetPosProductsAsync(null);
 
         products.Should().HaveCount(1);
         products[0].Name.Should().Be("Spark Plug");
         products[0].AvailableStock.Should().Be(25);
+    }
+
+    internal static IFeatureGate CreateFeatureGate(
+        bool fbr = true,
+        bool tax = true,
+        bool fitment = true,
+        bool supersession = true)
+    {
+        var gate = new Mock<IFeatureGate>();
+        gate.Setup(g => g.BehaviorEnabledAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string key, CancellationToken _) => key switch
+            {
+                Application.Config.ConfigKeys.BehFbrEnabled => fbr,
+                Application.Config.ConfigKeys.BehTaxEnabled => tax,
+                Application.Config.ConfigKeys.BehFitmentSearch => fitment,
+                Application.Config.ConfigKeys.BehSupersession => supersession,
+                _ => true
+            });
+        gate.Setup(g => g.GetFieldAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Application.Config.FieldConfigDto(true, false, "Field"));
+        gate.Setup(g => g.GetBrandAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string fb, CancellationToken __) => fb);
+        gate.Setup(g => g.ModuleEnabledAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        return gate.Object;
     }
 }

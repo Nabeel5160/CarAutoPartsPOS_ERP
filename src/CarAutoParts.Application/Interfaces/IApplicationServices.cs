@@ -8,6 +8,7 @@ using CarAutoParts.Application.DTOs.Inventory;
 using CarAutoParts.Application.DTOs.Partners;
 using CarAutoParts.Application.DTOs.Pos;
 using CarAutoParts.Application.DTOs.Products;
+using CarAutoParts.Application.DTOs.Reports;
 using CarAutoParts.Application.DTOs.Purchases;
 using CarAutoParts.Application.DTOs.Sales;
 using CarAutoParts.Application.DTOs.Settings;
@@ -20,6 +21,14 @@ namespace CarAutoParts.Application.Interfaces;
 public interface IDashboardService
 {
     Task<DashboardDto> GetDashboardAsync(CancellationToken ct = default);
+    Task<DashboardDto> GetDashboardAsync(int? branchId, CancellationToken ct = default);
+    Task<DashboardTimelineDto> GetTimelineAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        string grain = "day",
+        string groupBy = "category",
+        int? branchId = null,
+        CancellationToken ct = default);
 }
 
 public interface IProductService
@@ -30,6 +39,8 @@ public interface IProductService
     Task<Result<ProductDetailDto>> UpdateAsync(int id, ProductCreateDto dto, CancellationToken ct = default);
     Task<Result> DeleteAsync(int id, CancellationToken ct = default);
     Task<Result<int>> ImportFromExcelAsync(Stream stream, CancellationToken ct = default);
+    Task<Result<OemFitmentImportResultDto>> ImportOemFitmentCsvAsync(Stream stream, CancellationToken ct = default);
+    Task<FitmentOptionsDto> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default);
     Task<byte[]> ExportToExcelAsync(ProductQueryDto query, CancellationToken ct = default);
 }
 
@@ -44,6 +55,7 @@ public interface ICategoryService
 public interface IBrandService
 {
     Task<IReadOnlyList<BrandDto>> GetAllAsync(CancellationToken ct = default);
+    Task<PagedResult<BrandDto>> GetPagedAsync(QuerySpec query, CancellationToken ct = default);
     Task<Result<BrandDto>> CreateAsync(BrandDto dto, CancellationToken ct = default);
     Task<Result<BrandDto>> UpdateAsync(int id, BrandDto dto, CancellationToken ct = default);
     Task<Result> DeleteAsync(int id, CancellationToken ct = default);
@@ -52,9 +64,19 @@ public interface IBrandService
 public interface IWarehouseService
 {
     Task<IReadOnlyList<WarehouseDto>> GetAllAsync(CancellationToken ct = default);
+    Task<PagedResult<WarehouseDto>> GetPagedAsync(QuerySpec query, CancellationToken ct = default);
     Task<Result<WarehouseDto>> CreateAsync(WarehouseDto dto, CancellationToken ct = default);
     Task<Result<WarehouseDto>> UpdateAsync(int id, WarehouseDto dto, CancellationToken ct = default);
     Task<Result> DeleteAsync(int id, CancellationToken ct = default);
+}
+
+public interface IWarehouseLocationService
+{
+    Task<IReadOnlyList<WarehouseLocationDto>> GetByWarehouseAsync(int warehouseId, CancellationToken ct = default);
+    Task<Result<WarehouseLocationDto>> CreateAsync(int warehouseId, UpsertWarehouseLocationDto dto, CancellationToken ct = default);
+    Task<Result<WarehouseLocationDto>> UpdateAsync(int locationId, UpsertWarehouseLocationDto dto, CancellationToken ct = default);
+    Task<Result> DeleteAsync(int locationId, CancellationToken ct = default);
+    Task<IReadOnlyList<InventoryLocationBalanceDto>> GetBalancesAsync(int warehouseId, int? locationId = null, CancellationToken ct = default);
 }
 
 public interface IInventoryService
@@ -65,9 +87,15 @@ public interface IInventoryService
     Task<IReadOnlyList<LowStockAlertDto>> GetLowStockAlertsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<LowStockAlertDto>> GetOverstockAlertsAsync(CancellationToken ct = default);
     Task<Result> ReceiveStockAsync(int productId, int warehouseId, decimal quantity, decimal unitCost, string? batchNumber, CancellationToken ct = default);
-    Task<Result> DeductStockAsync(int productId, int warehouseId, decimal quantity, string referenceType, int referenceId, CancellationToken ct = default);
+    /// <summary>Deducts stock; returns issued unit cost (avg/FIFO).</summary>
+    Task<Result<decimal>> DeductStockAsync(int productId, int warehouseId, decimal quantity, string referenceType, int referenceId, CancellationToken ct = default);
+    /// <summary>Transfer out: deducts stock with Transfer movement; returns unit cost issued.</summary>
+    Task<Result<decimal>> TransferOutAsync(int productId, int warehouseId, decimal quantity, int transferId, int? fromLocationId = null, CancellationToken ct = default);
+    /// <summary>Transfer in: receives stock with Transfer movement at shipped unit cost.</summary>
+    Task<Result> TransferInAsync(int productId, int warehouseId, decimal quantity, decimal unitCost, int transferId, int? toLocationId = null, CancellationToken ct = default);
     Task<Result> ReturnStockAsync(int productId, int warehouseId, decimal quantity, string referenceType, int referenceId, CancellationToken ct = default);
     Task<decimal> GetInventoryValueAsync(CancellationToken ct = default);
+    Task<InventoryValueDto> GetInventoryValueAsync(string? method, int? warehouseId, int? branchId, CancellationToken ct = default);
 }
 
 public interface ISupplierService
@@ -111,7 +139,13 @@ public interface ISalesService
 public interface IPosCheckoutService
 {
     Task<PosCheckoutResultDto> CheckoutAsync(PosCheckoutDto dto, CancellationToken ct = default);
-    Task<IReadOnlyList<PosProductDto>> GetPosProductsAsync(string? search, CancellationToken ct = default);
+    Task<IReadOnlyList<PosProductDto>> GetPosProductsAsync(
+        string? search = null,
+        string? make = null,
+        string? model = null,
+        int? year = null,
+        CancellationToken ct = default);
+    Task<FitmentOptionsDto> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default);
     Task<string> GetReceiptHtmlAsync(int salesInvoiceId, CancellationToken ct = default);
 }
 
@@ -125,6 +159,14 @@ public interface IPosFloorService
     Task<Result<CashierShiftDto>> CloseShiftAsync(int shiftId, CloseShiftRequestDto dto, CancellationToken ct = default);
     Task<CashierShiftDto?> GetOpenShiftAsync(CancellationToken ct = default);
     Task<Result<ShiftZReportDto>> GetZReportAsync(int shiftId, CancellationToken ct = default);
+    /// <summary>Open-shift snapshot (same payload as Z) without closing the shift.</summary>
+    Task<Result<ShiftZReportDto>> GetXReportAsync(int? shiftId = null, CancellationToken ct = default);
+    Task<IReadOnlyList<ClosedShiftListItemDto>> ListClosedShiftsAsync(
+        DateTime from, DateTime to, int? tillId = null, int? branchId = null, CancellationToken ct = default);
+    Task<IReadOnlyList<TillDto>> ListTillsAsync(int? branchId = null, CancellationToken ct = default);
+    Task<Result<TillDto>> UpsertTillAsync(UpsertTillRequest dto, CancellationToken ct = default);
+    Task<Result<SafeDropDto>> RecordSafeDropAsync(int shiftId, SafeDropRequest dto, CancellationToken ct = default);
+    Task<IReadOnlyList<SafeDropDto>> ListSafeDropsAsync(int shiftId, CancellationToken ct = default);
 }
 
 public interface IReturnService
@@ -132,6 +174,8 @@ public interface IReturnService
     Task<Result<SalesReturnDto>> CreateSalesReturnAsync(SalesReturnCreateDto dto, CancellationToken ct = default);
     Task<Result<PurchaseReturnDto>> CreatePurchaseReturnAsync(PurchaseReturnCreateDto dto, CancellationToken ct = default);
     Task<PagedResult<SalesReturnDto>> GetSalesReturnsAsync(QuerySpec query, CancellationToken ct = default);
+    Task<Result> ApplySalesCreditAsync(int salesReturnId, ApplyCreditNoteRequest request, CancellationToken ct = default);
+    Task<Result> ApplyPurchaseCreditAsync(int purchaseReturnId, ApplyPurchaseCreditRequest request, CancellationToken ct = default);
 }
 
 public interface ITransferService
@@ -140,7 +184,9 @@ public interface ITransferService
     Task<TransferDetailDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<Result<TransferDetailDto>> CreateAsync(TransferCreateDto dto, CancellationToken ct = default);
     Task<Result> ApproveAsync(int id, CancellationToken ct = default);
-    /// <summary>Approved → InTransit: deduct stock from source warehouse only.</summary>
+    /// <summary>Confirm pick list lines before ship (Phase 15).</summary>
+    Task<Result<TransferDetailDto>> ConfirmPickAsync(int id, ConfirmTransferPickRequest? request = null, CancellationToken ct = default);
+    /// <summary>Approved → InTransit: deduct stock from source warehouse only. Requires pick confirmed.</summary>
     Task<Result> ShipAsync(int id, CancellationToken ct = default);
     /// <summary>InTransit → Completed: receive at destination. From Approved: ships then receives.</summary>
     Task<Result> CompleteAsync(int id, CancellationToken ct = default);
@@ -161,7 +207,12 @@ public interface ISerialNumberService
 
 public interface INotificationService
 {
+    /// <summary>Paged inbox. Prefer this for API/UI lists.</summary>
+    Task<PagedResult<NotificationDto>> GetNotificationsAsync(QuerySpec query, bool unreadOnly = false, CancellationToken ct = default);
+
+    /// <summary>Convenience: first page (size 100) — desktop / duplicate-check callers.</summary>
     Task<IReadOnlyList<NotificationDto>> GetNotificationsAsync(bool unreadOnly = false, CancellationToken ct = default);
+
     Task MarkAsReadAsync(int id, CancellationToken ct = default);
     Task CreateNotificationAsync(NotificationType type, string title, string message, string? entityType = null, int? entityId = null, CancellationToken ct = default);
     Task<int> GetUnreadCountAsync(CancellationToken ct = default);
@@ -169,20 +220,66 @@ public interface INotificationService
 
 public interface IReportService
 {
-    Task<byte[]> ExportInventoryReportAsync(string format, CancellationToken ct = default);
-    Task<byte[]> ExportSalesReportAsync(DateTime from, DateTime to, string period, string format, CancellationToken ct = default);
-    Task<byte[]> ExportPurchaseReportAsync(DateTime from, DateTime to, string format, CancellationToken ct = default);
-    Task<byte[]> ExportProfitReportAsync(DateTime from, DateTime to, string format, CancellationToken ct = default);
+    Task<byte[]> ExportInventoryReportAsync(string format, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportSalesReportAsync(DateTime from, DateTime to, string period, string format, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportPurchaseReportAsync(DateTime from, DateTime to, string format, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportProfitReportAsync(DateTime from, DateTime to, string format, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<DailySalesSummaryDto>> GetDailySalesSummaryAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportDailySalesSummaryAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<SalesReturnsReportDto>> GetSalesReturnsReportAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportSalesReturnsReportAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<SalesDimReportDto>> GetSalesDimReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportSalesDimReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<SalesStaffReportDto>> GetSalesStaffReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportSalesStaffReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<ProfitDimReportDto>> GetProfitDimReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportProfitDimReportAsync(DateTime from, DateTime to, string dimension, int? branchId = null, CancellationToken ct = default);
+
+    Task<byte[]> ExportAnalyticsAsync(DateTime? from, DateTime? to, int? branchId, int deadStockDays = 90, CancellationToken ct = default);
+
+    Task<Result<StockMovementReportDto>> GetStockMovementsReportAsync(DateTime from, DateTime to, int? warehouseId = null, string? movementType = null, CancellationToken ct = default);
+    Task<byte[]> ExportStockMovementsReportAsync(DateTime from, DateTime to, int? warehouseId = null, string? movementType = null, CancellationToken ct = default);
+
+    Task<Result<PurchasingPipelineReportDto>> GetPurchasingPipelineAsync(int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportPurchasingPipelineAsync(int? branchId = null, CancellationToken ct = default);
+
+    Task<byte[]> ExportAgingReportAsync(string kind, DateTime? asOfDate = null, CancellationToken ct = default);
+
+    Task<Result<TaxPeriodSummaryDto>> GetTaxPeriodSummaryAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportTaxPeriodSummaryAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<FbrRegisterReportDto>> GetFbrRegisterAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
+    Task<byte[]> ExportFbrRegisterAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
+
+    Task<Result<StockAgingReportDto>> GetStockAgingAsync(DateTime? asOfDate = null, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportStockAgingAsync(DateTime? asOfDate = null, int? branchId = null, CancellationToken ct = default);
+
+    Task<Result<SkuMarginReportDto>> GetSkuMarginAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+    Task<byte[]> ExportSkuMarginAsync(DateTime from, DateTime to, int? branchId = null, CancellationToken ct = default);
+
+    /// <summary>Excel for closed-shift Z archive rows (already ACL-filtered by caller).</summary>
+    byte[] ExportClosedShiftsArchive(IReadOnlyList<ClosedShiftListItemDto> shifts);
 }
 
 public interface IAnalyticsService
 {
-    Task<AnalyticsDto> GetAnalyticsAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
+    Task<AnalyticsDto> GetAnalyticsAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        int? branchId = null,
+        int deadStockDays = 90,
+        CancellationToken ct = default);
 }
 
 public interface IUserService
 {
     Task<IReadOnlyList<UserDto>> GetUsersAsync(CancellationToken ct = default);
+    Task<PagedResult<UserDto>> GetUsersPagedAsync(QuerySpec query, CancellationToken ct = default);
     Task<Result<UserDto>> CreateAsync(UserCreateDto dto, CancellationToken ct = default);
     Task<Result<UserDto>> UpdateAsync(int id, UserCreateDto dto, CancellationToken ct = default);
     Task<Result> DeleteAsync(int id, CancellationToken ct = default);

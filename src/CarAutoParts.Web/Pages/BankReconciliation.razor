@@ -1,0 +1,165 @@
+@page "/bank-reconciliation"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Bank reconciliation" Subtitle="Match statement lines to GL 1110 Bank movements" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <h5>New statement</h5>
+    <div class="row g-2">
+        <div class="col-md-2"><label class="form-label">Start</label><input type="date" class="form-control" @bind="_start" /></div>
+        <div class="col-md-2"><label class="form-label">End</label><input type="date" class="form-control" @bind="_end" /></div>
+        <div class="col-md-2"><label class="form-label">Opening</label><input type="number" class="form-control" @bind="_openBal" /></div>
+        <div class="col-md-2"><label class="form-label">Closing</label><input type="number" class="form-control" @bind="_closeBal" /></div>
+        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-cap" @onclick="CreateStmt">Create</button></div>
+    </div>
+</div>
+
+@if (_selected is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>@_selected.StatementNumber — add line</h5>
+        <div class="row g-2">
+            <div class="col-md-2"><input type="date" class="form-control" @bind="_lineDate" /></div>
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="Amount" @bind="_lineAmt" /></div>
+            <div class="col-md-2"><input class="form-control" placeholder="Ref" @bind="_lineRef" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="Description" @bind="_lineDesc" /></div>
+            <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddLine">Add</button></div>
+            <div class="col-md-1 d-flex align-items-end"><button class="btn btn-outline-info" @onclick="LoadReport">Report</button></div>
+        </div>
+        <table class="table table-cap mt-3 mb-0">
+            <thead><tr><th>Date</th><th>Amount</th><th>Ref</th><th>Cleared</th><th>Match JL#</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var l in _selected.Lines)
+            {
+                <tr>
+                    <td>@l.LineDate.ToString("yyyy-MM-dd")</td>
+                    <td>@l.Amount.ToString("N2")</td>
+                    <td>@l.Reference</td>
+                    <td>@(l.IsCleared ? "Yes" : "No")</td>
+                    <td>
+                        @if (!l.IsCleared)
+                        {
+                            <input type="number" class="form-control form-control-sm d-inline-block" style="width:6rem" @bind="_matchJl" />
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => MatchAsync(l.Id)">Match</button>
+                        }
+                        else { @l.MatchedJournalLineId }
+                    </td>
+                    <td></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_report is not null)
+{
+    <div class="cap-card mb-3">
+        <h5>Recon report</h5>
+        <p>Statement close @_report.StatementClosingBalance.ToString("N2") · GL bank @_report.GlBankBalance.ToString("N2") · Diff @_report.Difference.ToString("N2")</p>
+    </div>
+}
+
+<div class="cap-card">
+    <table class="table table-cap mb-0">
+        <thead><tr><th>Statement</th><th>Period</th><th>Close bal</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in _statements ?? [])
+        {
+            <tr>
+                <td>@s.StatementNumber</td>
+                <td>@s.PeriodStart.ToString("yyyy-MM-dd") – @s.PeriodEnd.ToString("yyyy-MM-dd")</td>
+                <td>@s.ClosingBalance.ToString("N2")</td>
+                <td><button class="btn btn-sm btn-outline-light" @onclick="() => Select(s)">Open</button></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (_uncleared is not null)
+{
+    <div class="cap-card mt-3">
+        <h5>Uncleared GL 1110</h5>
+        <table class="table table-cap mb-0">
+            <thead><tr><th>JL Id</th><th>JV</th><th>Date</th><th>Dr</th><th>Cr</th><th>Desc</th></tr></thead>
+            <tbody>
+            @foreach (var u in _uncleared)
+            {
+                <tr><td>@u.JournalLineId</td><td>@u.JournalNumber</td><td>@u.JournalDate.ToString("yyyy-MM-dd")</td><td>@u.Debit</td><td>@u.Credit</td><td>@u.Description</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private List<BankStatementDto>? _statements;
+    private BankStatementDto? _selected;
+    private BankReconReportDto? _report;
+    private List<UnclearedBankGlLineDto>? _uncleared;
+    private DateTime _start = DateTime.Today.AddDays(-30), _end = DateTime.Today, _lineDate = DateTime.Today;
+    private decimal _openBal, _closeBal, _lineAmt;
+    private string? _lineRef, _lineDesc;
+    private int _matchJl;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetBankStatementsAsync();
+        _statements = data; _error = error;
+        var (u, _, _) = await Api.GetUnclearedBankGlAsync();
+        _uncleared = u;
+        _busy = false;
+    }
+
+    private async Task CreateStmt()
+    {
+        var (data, error, _) = await Api.CreateBankStatementAsync(new
+        {
+            PeriodStart = _start, PeriodEnd = _end, OpeningBalance = _openBal, ClosingBalance = _closeBal
+        });
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess(data.StatementNumber); await ReloadAsync(); Select(data); }
+    }
+
+    private void Select(BankStatementDto s) { _selected = s; _report = null; }
+
+    private async Task AddLine()
+    {
+        if (_selected is null) return;
+        var (data, error, _) = await Api.AddBankStatementLineAsync(_selected.Id, new
+        {
+            LineDate = _lineDate, Amount = _lineAmt, Reference = _lineRef, Description = _lineDesc
+        });
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { _selected = data; Toast.ShowSuccess("Line added"); }
+    }
+
+    private async Task MatchAsync(int lineId)
+    {
+        var (ok, error, _) = await Api.MatchBankLineAsync(lineId, _matchJl);
+        if (!ok) Toast.ShowError(error ?? "Match failed");
+        else
+        {
+            Toast.ShowSuccess("Matched");
+            await ReloadAsync();
+            _selected = _statements?.FirstOrDefault(s => s.Id == _selected!.Id);
+        }
+    }
+
+    private async Task LoadReport()
+    {
+        if (_selected is null) return;
+        var (data, error, _) = await Api.GetBankReconReportAsync(_selected.Id);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else _report = data;
+    }
+}

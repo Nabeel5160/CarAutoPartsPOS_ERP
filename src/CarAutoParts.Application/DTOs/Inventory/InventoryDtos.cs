@@ -74,6 +74,13 @@ public record LowStockAlertDto(
     int ReorderLevel,
     bool IsOverstock);
 
+/// <summary>Inventory valuation result (average or FIFO batch sum).</summary>
+public record InventoryValueDto(
+    decimal Value,
+    string Method,
+    int? WarehouseId,
+    int? BranchId);
+
 /// <summary>Tracked serial number.</summary>
 public record SerialNumberDto(
     int Id,

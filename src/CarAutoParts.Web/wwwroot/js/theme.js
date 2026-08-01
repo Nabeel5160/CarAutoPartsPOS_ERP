@@ -1,7 +1,36 @@
 window.capTheme = {
+  storageKey: 'cap.theme.raw',
+
   apply: function (mode, accent) {
     document.documentElement.setAttribute('data-theme', mode || 'dark');
     document.documentElement.setAttribute('data-accent', accent || 'amber');
+  },
+
+  setStored: function (value) {
+    try { localStorage.setItem(window.capTheme.storageKey, value || 'dark:amber'); } catch (e) { /* private mode */ }
+  },
+
+  getStored: function () {
+    try { return localStorage.getItem(window.capTheme.storageKey); } catch (e) { return null; }
+  },
+
+  /** Apply saved preference before Blazor boots (no flash of wrong theme). */
+  bootFromStorage: function () {
+    try {
+      var raw = localStorage.getItem(window.capTheme.storageKey);
+      if (!raw) {
+        // Migrate legacy Blazored key if present as plain "mode:accent"
+        var legacy = localStorage.getItem('cap.theme');
+        if (legacy && legacy.indexOf(':') > 0 && legacy.indexOf('{') < 0) {
+          raw = legacy.replace(/^"|"$/g, '');
+          localStorage.setItem(window.capTheme.storageKey, raw);
+        }
+      }
+      if (raw && raw.indexOf(':') > 0) {
+        var parts = raw.replace(/^"|"$/g, '').split(':');
+        window.capTheme.apply(parts[0], parts[1] || 'amber');
+      }
+    } catch (e) { /* ignore */ }
   }
 };
 

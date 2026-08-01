@@ -12,7 +12,23 @@ public record PosProductDto(
     string? HsCode,
     decimal AvailableStock,
     string? OemNumber = null,
-    string? PartNumber = null);
+    string? PartNumber = null,
+    bool IsExactMatch = false,
+    string? SupersedesSkus = null,
+    string? SupersededBySku = null,
+    string? FitmentSummary = null);
+
+/// <summary>POS catalog search with optional fitment filters.</summary>
+public record PosProductSearchQuery(
+    string? Search = null,
+    string? Make = null,
+    string? Model = null,
+    int? Year = null);
+
+/// <summary>Distinct make/model options for fitment picker.</summary>
+public record FitmentOptionsDto(
+    IReadOnlyList<string> Makes,
+    IReadOnlyList<string> Models);
 
 /// <summary>Single tender line on checkout.</summary>
 public record PosTenderDto(string Method, decimal Amount);
@@ -88,8 +104,8 @@ public record HeldSaleLineDto(
     decimal? UnitPriceOverride,
     decimal DiscountAmount);
 
-public record OpenShiftRequestDto(decimal OpeningFloat, int? WarehouseId, string? Notes);
-public record CloseShiftRequestDto(decimal ClosingFloat, string? Notes);
+public record OpenShiftRequestDto(decimal OpeningFloat, int? WarehouseId, string? Notes, int? TillId = null);
+public record CloseShiftRequestDto(decimal ClosingFloat, string? Notes, decimal? DeclaredClosingCash = null);
 
 public record CashierShiftDto(
     int Id,
@@ -101,7 +117,15 @@ public record CashierShiftDto(
     decimal OpeningFloat,
     decimal ClosingFloat,
     DateTime OpenedAt,
-    DateTime? ClosedAt);
+    DateTime? ClosedAt,
+    int? BranchId = null,
+    decimal ExpectedCash = 0,
+    decimal DeclaredClosingCash = 0,
+    decimal CashVariance = 0,
+    int? VarianceJournalEntryId = null,
+    int? TillId = null,
+    string? TillCode = null,
+    decimal SafeDropsTotal = 0);
 
 public record ShiftZReportDto(
     int ShiftId,
@@ -116,6 +140,13 @@ public record ShiftZReportDto(
     int ReturnCount,
     int HoldCount,
     decimal SalesTotal,
-    decimal ReturnsTotal);
+    decimal ReturnsTotal,
+    decimal SafeDropsTotal = 0,
+    int? TillId = null);
 
 public record ShiftTenderTotalDto(string Method, decimal Amount);
+
+public record TillDto(int Id, int BranchId, string Code, string Name, bool IsActive, int? WarehouseId);
+public record UpsertTillRequest(int BranchId, string Code, string Name, int? WarehouseId = null, bool IsActive = true);
+public record SafeDropRequest(decimal Amount, string? Notes = null);
+public record SafeDropDto(int Id, int CashierShiftId, int TillId, decimal Amount, DateTime DroppedAt, string? Notes);

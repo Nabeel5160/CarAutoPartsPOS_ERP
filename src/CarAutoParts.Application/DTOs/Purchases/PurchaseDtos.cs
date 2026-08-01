@@ -64,30 +64,37 @@ public record ReceivePurchaseOrderDto(
 /// <summary>Line quantity to receive.</summary>
 public record ReceivePurchaseOrderLineDto(int LineId, decimal QuantityReceived, string? BatchNumber);
 
-/// <summary>Purchase return list/detail row.</summary>
+/// <summary>Purchase return / supplier credit note row.</summary>
 public record PurchaseReturnDto(
     int Id,
     string ReturnNumber,
+    string? CreditNoteNumber,
     int SupplierId,
     string SupplierName,
     ReturnStatus Status,
     DateTime ReturnDate,
     decimal GrandTotal,
+    decimal TaxAmount,
+    decimal AppliedAmount,
+    bool StockAffected,
     string? Notes,
     string ReasonCode,
     int? WarehouseId);
 
-/// <summary>Payload for creating a purchase return.</summary>
+/// <summary>Payload for creating a purchase return / supplier credit note.</summary>
 public record PurchaseReturnCreateDto(
     int SupplierId,
     int? PurchaseOrderId,
     int WarehouseId,
     string ReasonCode,
     string? Notes,
-    IReadOnlyList<PurchaseReturnLineDto> Lines);
+    IReadOnlyList<PurchaseReturnLineDto> Lines,
+    bool StockAffected = true);
 
 /// <summary>Purchase return line.</summary>
-public record PurchaseReturnLineDto(int ProductId, decimal Quantity, decimal UnitPrice);
+public record PurchaseReturnLineDto(int ProductId, decimal Quantity, decimal UnitPrice, decimal TaxRate = 0);
+
+public record ApplyPurchaseCreditRequest(int PurchaseInvoiceId, decimal Amount, string? Notes = null);
 
 public record PurchaseRequisitionLineDto(
     int Id,

@@ -1,59 +1,223 @@
 @page "/pos"
 @attribute [Authorize]
 @inject CapApiService Api
+@inject OfflineCheckoutQueue OfflineQueue
+@inject LocaleService Locale
+@inject WebAppConfigService AppConfig
 @inject IToastService Toast
 @inject IJSRuntime Js
+@inject Blazored.LocalStorage.ILocalStorageService Storage
 @implements IDisposable
 
 @if (ApiReachability.IsDown)
 {
-    <div class="alert alert-danger">API unreachable — checkout disabled. @ApiReachability.LastError</div>
+    <div class="alert alert-danger">API down — Queue sale (F9) saves for sync. @ApiReachability.LastError</div>
+}
+@if (OfflineQueue.PendingCount > 0)
+{
+    <div class="alert alert-warning py-2">
+        Offline queue: @OfflineQueue.PendingCount pending@(OfflineQueue.IsDraining ? " (syncing…)" : "")
+        <button class="btn btn-sm btn-outline-dark ms-2" disabled="@(ApiReachability.IsDown || OfflineQueue.IsDraining)" @onclick="DrainQueueAsync">Sync now</button>
+        @if (_offlineItems.Count > 0)
+        {
+            <ul class="list-unstyled small mb-0 mt-2">
+                @foreach (var item in _offlineItems)
+                {
+                    <li class="mono">
+                        @item.IdempotencyKey
+                        @if (!string.IsNullOrWhiteSpace(item.LastError))
+                        {
+                            <span class="text-danger"> — @item.LastError</span>
+                        }
+                        else
+                        {
+                            <span class="text-secondary"> · @item.Status</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
 }
 
-<PageHeader Title="POS Checkout" Subtitle="Shift · hold · multi-tender · F2 search · F9 checkout" />
+<div class="cap-pos @(_compact ? "cap-pos-compact" : null)" data-pos-contrast="@(_highContrast ? "high" : "normal")">
+<PageHeader Title="POS Checkout" Subtitle="Keyboard-first till · F2 search · Enter add · F8 qty · F9 pay · Ctrl+P reprint" />
 
-<div class="cap-card mb-3 d-flex flex-wrap gap-2 align-items-end">
-    @if (_shift is null)
+<div class="cap-pos-shortcuts mb-2 small text-secondary d-flex flex-wrap align-items-center gap-2">
+    <span>
+        <kbd>F2</kbd> Search
+        <span class="mx-1">·</span><kbd>Enter</kbd> Add
+        <span class="mx-1">·</span><kbd>Esc</kbd> Clear / close
+        <span class="mx-1">·</span><kbd>F4</kbd> Hold
+        <span class="mx-1">·</span><kbd>F8</kbd> Qty
+        <span class="mx-1">·</span><kbd>F9</kbd> Pay
+        <span class="mx-1">·</span><kbd>↑↓</kbd> Picker
+        <span class="mx-1">·</span><kbd>+/−</kbd> Qty
+        <span class="mx-1">·</span><kbd>Ctrl+P</kbd> Reprint
+    </span>
+    <button type="button" class="btn btn-sm btn-outline-light" @onclick="ToggleDensityAsync" title="Toggle density">
+        @(_compact ? "Comfortable" : "Compact")
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-light" @onclick="ToggleContrastAsync" title="Toggle high contrast">
+        @(_highContrast ? "Normal contrast" : "High contrast")
+    </button>
+    @if (_lastSaleInvoiceId is int chipId)
     {
-        <div>
-            <label class="form-label">Opening float</label>
-            <input type="number" class="form-control" style="width:8rem" @bind="_openingFloat" />
-        </div>
-        <button class="btn btn-cap" @onclick="OpenShiftAsync">Open shift</button>
+        <button type="button" class="btn btn-sm btn-warning text-dark fw-semibold" @onclick="() => PrintAsync(chipId)" title="Reprint last receipt">
+            Reprint last
+        </button>
     }
-    else
+    @if (_recentReceipts.Count > 0)
     {
-        <span class="badge badge-soft">Shift @_shift.ShiftNumber · opened @_shift.OpenedAt.ToLocalTime().ToString("t")</span>
+        <div class="d-inline-flex flex-wrap align-items-center gap-1">
+            <button type="button" class="btn btn-sm btn-outline-warning" @onclick="() => _showRecentReceipts = !_showRecentReceipts">
+                Recent receipts
+            </button>
+            @if (_showRecentReceipts)
+            {
+                @foreach (var id in _recentReceipts)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => ReprintRecentAsync(id)">Reprint #@id</button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@if (_tills.Count == 0 && _shift is null)
+{
+    <EmptyState Title="No tills" Message="Create a till before opening a shift. Finish onboarding if this shop is new.">
+        <a class="btn btn-cap" href="/onboarding">Open onboarding</a>
+    </EmptyState>
+}
+else if (_shift is null)
+{
+    <div class="cap-card cap-pos-shift-cta mb-3">
+        <div class="fw-semibold mb-2">Open shift to sell</div>
+        <p class="small text-secondary mb-3">Select a till and opening float, then open the shift to unlock search and checkout.</p>
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+            <div>
+                <label class="form-label">Till</label>
+                <select class="form-select" style="min-width:10rem" @bind="_tillIdText">
+                    <option value="">Select till…</option>
+                    @foreach (var t in _tills)
+                    {
+                        <option value="@t.Id">@t.Code — @t.Name</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Opening float</label>
+                <input type="number" class="form-control" style="width:8rem" @bind="_openingFloat" />
+            </div>
+            <button class="btn btn-cap btn-lg" @onclick="OpenShiftAsync">Open shift</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="cap-card mb-3 d-flex flex-wrap gap-2 align-items-end cap-pos-shift-bar">
+        <span class="badge badge-soft">Shift @_shift.ShiftNumber · @_shift.TillCode · opened @_shift.OpenedAt.ToLocalTime().ToString("t")</span>
+        @if (_shift.SafeDropsTotal > 0)
+        {
+            <span class="small text-secondary">Drops @_shift.SafeDropsTotal.ToString("N0")</span>
+        }
         <div>
-            <label class="form-label">Closing float</label>
+            <label class="form-label">Safe drop</label>
+            <input type="number" class="form-control" style="width:7rem" @bind="_safeDropAmount" />
+        </div>
+        <button class="btn btn-outline-light" @onclick="SafeDropAsync">Drop</button>
+        <button class="btn btn-outline-light" @onclick="XReportAsync">X-report</button>
+        <div>
+            <label class="form-label">Declared cash</label>
             <input type="number" class="form-control" style="width:8rem" @bind="_closingFloat" />
         </div>
         <button class="btn btn-outline-warning" @onclick="CloseShiftAsync">Close + Z</button>
         @if (_zReport is not null)
         {
-            <span class="small">Sales @_zReport.SalesTotal.ToString("N0") · Invoices @_zReport.InvoiceCount · Expected cash @_zReport.ExpectedCash.ToString("N0")</span>
+            <span class="small">@(_xReportMode ? "X" : "Z") Sales @_zReport.SalesTotal.ToString("N0") · Invoices @_zReport.InvoiceCount · Expected @_zReport.ExpectedCash.ToString("N0")</span>
         }
-    }
-</div>
+    </div>
+}
 
 <div class="row g-3" @onkeydown="OnKeyDown" tabindex="0">
     <div class="col-lg-7">
-        <div class="cap-card mb-3">
+        <div class="cap-card mb-3 @(_searchBusy ? "cap-pos-search-busy" : null)">
             <div class="input-group">
-                <input @ref="_searchInput" class="form-control" placeholder="Barcode / SKU / OEM / make — Enter adds"
-                       @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
-                <button class="btn btn-cap" @onclick="LoadProductsAsync">Search</button>
+                <input @ref="_searchInput" class="form-control" placeholder="@(Locale["POS_SearchPlaceholder"])"
+                       value="@_search" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" />
+                <button class="btn btn-cap" @onclick="() => LoadProductsAsync()">Search</button>
             </div>
+            @if (_fitmentEnabled)
+            {
+                <div class="row g-2 mt-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">Make</label>
+                        <select class="form-select form-select-sm" value="@_fitMake" @onchange="OnFitMakeChanged">
+                            <option value="">Any make</option>
+                            @foreach (var m in _fitMakes)
+                            {
+                                <option value="@m">@m</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">Model</label>
+                        <select class="form-select form-select-sm" @bind="_fitModel" @bind:after="OnFitFilterChanged">
+                            <option value="">Any model</option>
+                            @foreach (var m in _fitModels)
+                            {
+                                <option value="@m">@m</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-0">Year</label>
+                        <input type="number" class="form-control form-control-sm" min="1980" max="2100"
+                               @bind="_fitYearText" @bind:event="oninput" @bind:after="OnFitFilterChanged" placeholder="e.g. 2018" />
+                    </div>
+                </div>
+            }
+            @if (_searchBusy)
+            {
+                <div class="small text-secondary mt-1">Searching…</div>
+            }
         </div>
         <div class="row g-2">
-            @if (_products is not null)
+            @if (_products is null)
             {
+                <div class="col-12"><p class="cap-empty-hint text-secondary small mb-0">Warming catalog…</p></div>
+            }
+            else if (_products.Count == 0 && string.IsNullOrWhiteSpace(_search) && !_hasFitFilter)
+            {
+                <div class="col-12"><p class="cap-empty-hint text-secondary small mb-0">Scan barcode / type SKU or OEM, then <kbd>Enter</kbd>.</p></div>
+            }
+            else if (_products.Count == 0 && (!string.IsNullOrWhiteSpace(_search) || _hasFitFilter))
+            {
+                <div class="col-12"><p class="text-secondary small mb-0">No products match.</p></div>
+            }
+            else
+            {
+                var exactCandidates = BuildExactCandidates(_search);
                 @foreach (var p in _products)
                 {
+                    var isExact = IsExactProductMatch(p, exactCandidates);
                     <div class="col-md-4">
-                        <button class="cap-card w-100 text-start border-0" @onclick="() => AddToCart(p)" disabled="@(_shift is null || ApiReachability.IsDown)">
+                        <button class="cap-card w-100 text-start border-0 @(isExact ? "cap-pos-exact" : null)" @onclick="() => AddToCartAsync(p)" disabled="@(_shift is null)">
                             <div class="fw-semibold">@p.Name</div>
-                            <div class="small text-secondary">@p.Sku @(string.IsNullOrWhiteSpace(p.OemNumber) ? "" : "· " + p.OemNumber) · Stock @p.AvailableStock</div>
+                            <div class="small text-secondary">@p.Sku @(AppConfig.Field(ModuleKeys.FieldProductOem).Visible && !string.IsNullOrWhiteSpace(p.OemNumber) ? "· " + p.OemNumber : "") · Stock @p.AvailableStock</div>
+                            @if (_supersessionEnabled && !string.IsNullOrWhiteSpace(p.SupersededBySku))
+                            {
+                                <span class="badge text-bg-warning">Superseded by @p.SupersededBySku</span>
+                            }
+                            @if (_supersessionEnabled && !string.IsNullOrWhiteSpace(p.SupersedesSkus))
+                            {
+                                <div class="small text-info">Supersedes @p.SupersedesSkus</div>
+                            }
+                            @if (_fitmentEnabled && !string.IsNullOrWhiteSpace(p.FitmentSummary))
+                            {
+                                <div class="small text-secondary">@p.FitmentSummary</div>
+                            }
                             <div class="text-warning fw-bold">@p.SalePrice.ToString("N2")</div>
                         </button>
                     </div>
@@ -62,21 +226,27 @@
         </div>
     </div>
     <div class="col-lg-5">
-        <div class="cap-card">
+        <div class="cap-card @(_cartFlash ? "cap-pos-cart-flash" : null)">
             <h5>Cart</h5>
             <div class="mb-2"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_warehouseId" /></div>
-            <div class="mb-2">
-                <label class="form-label">Customer Id (required for Credit)</label>
-                <input type="number" class="form-control" @bind="_customerId" />
-            </div>
-            <div class="mb-2"><label class="form-label">Buyer</label><input class="form-control" @bind="_buyer.Name" /></div>
             <div class="mb-2"><label class="form-label">Primary tender</label>
                 <select class="form-select" @bind="_paymentMethod">
                     <option>Cash</option><option>Card</option><option>Bank</option><option>Credit</option>
                 </select>
             </div>
+            @if (string.Equals(_paymentMethod, "Cash", StringComparison.OrdinalIgnoreCase))
+            {
+                <div class="mb-2">
+                    <label class="form-label">Cash tendered</label>
+                    <input type="number" class="form-control form-control-lg" @bind="_cashTendered" />
+                    @if (_cartTotalKnown)
+                    {
+                        <div class="cap-pos-change mt-2">Change due <strong>@Math.Max(0, _cashTendered - _cartTotal).ToString("N2")</strong></div>
+                    }
+                </div>
+            }
             <div class="mb-2">
-                <label class="form-label">Split tenders (optional JSON-ish rows)</label>
+                <label class="form-label">Split tenders (optional)</label>
                 @foreach (var t in _tenders)
                 {
                     <div class="d-flex gap-1 mb-1">
@@ -87,55 +257,141 @@
                 }
                 <button class="btn btn-sm btn-outline-light" @onclick="() => _tenders.Add(new PosTenderDto())">+ tender</button>
             </div>
+            <details class="mb-2 cap-pos-buyer-details" open="@(_customerId is > 0 ? true : null)">
+                <summary class="small text-secondary">Buyer / customer / FBR</summary>
+                <div class="mt-2">
+                    <div class="mb-2">
+                        <label class="form-label">Customer Id (required for Credit)</label>
+                        <input type="number" class="form-control" @bind="_customerId" />
+                    </div>
+                    <div class="mb-2"><label class="form-label">Buyer</label><input class="form-control" @bind="_buyer.Name" /></div>
+                    <div class="mb-2"><label class="form-label">NTN / CNIC</label><input class="form-control" @bind="_buyer.NtnCnic" /></div>
+                    <div class="mb-2"><label class="form-label">Province</label><input class="form-control" @bind="_buyer.Province" /></div>
+                    <div class="mb-2"><label class="form-label">Address</label><input class="form-control" @bind="_buyer.Address" /></div>
+                </div>
+            </details>
+            @if (_cart.Count == 0)
+            {
+                <p class="small text-secondary">Cart empty — scan barcode or search, then Enter.</p>
+            }
+            else
+            {
+                <div class="small text-secondary mb-1">Cart total @_cartTotal.ToString("N2")</div>
+            }
             <ul class="list-unstyled">
                 @foreach (var c in _cart)
                 {
                     <li class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">
-                        <span class="flex-grow-1">@c.Name</span>
-                        <input type="number" class="form-control form-control-sm" style="width:4.5rem" @bind="c.Qty" />
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => _cart.Remove(c)">×</button>
+                        <span class="flex-grow-1">@c.Name <span class="text-secondary small">@c.UnitPrice.ToString("N2")</span></span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-light" @onclick="() => AdjustLineQty(c, -1)">−</button>
+                            <input @ref="c.QtyInput" type="number" class="form-control form-control-sm text-center" style="width:3.5rem" @bind="c.Qty" />
+                            <button type="button" class="btn btn-outline-light" @onclick="() => AdjustLineQty(c, 1)">+</button>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveLineAsync(c)">×</button>
                     </li>
                 }
             </ul>
             <div class="d-flex gap-2 mt-2 flex-wrap">
-                <button class="btn btn-outline-light flex-grow-1" disabled="@(!_cart.Any())" @onclick="HoldAsync">Hold</button>
-                <button class="btn btn-cap flex-grow-1" disabled="@(!_cart.Any() || _busy || _shift is null || ApiReachability.IsDown)" @onclick="CheckoutAsync">
-                    @(_busy ? "Processing…" : "Checkout")
-                </button>
+                <button class="btn btn-outline-light flex-grow-1" disabled="@(!_cart.Any())" @onclick="HoldAsync">Hold (F4)</button>
+                @if (ApiReachability.IsDown)
+                {
+                    <button class="btn btn-warning flex-grow-1" disabled="@(!_cart.Any() || _busy || _shift is null)" @onclick="QueueCheckoutAsync">
+                        Queue sale (F9)
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-cap flex-grow-1" disabled="@(!_cart.Any() || _busy || _shift is null)" @onclick="CheckoutAsync">
+                        @(_busy ? "Processing…" : Locale["POS_Checkout"] + " (F9)")
+                    </button>
+                }
             </div>
             @if (_held.Count > 0)
             {
                 <div class="mt-3">
-                    <div class="small text-secondary mb-1">Held sales</div>
+                    <div class="small text-secondary mb-1">Held sales (@_held.Count) — click to recall</div>
                     @foreach (var h in _held)
                     {
                         <button class="btn btn-sm btn-outline-warning me-1 mb-1" @onclick="() => RecallAsync(h)">@h.HoldNumber</button>
                     }
                 </div>
             }
+            else
+            {
+                <div class="mt-2 cap-empty-hint small text-secondary">No held sales — <kbd>F4</kbd> parks the cart here.</div>
+            }
             @if (_result is not null)
             {
-                <div class="alert-cap mt-3 p-3 rounded">
+                <div class="alert-cap mt-3 p-3 rounded cap-pos-result">
                     Invoice @_result.InvoiceNumber · @_result.PaymentStatus<br />
                     Total @_result.GrandTotal.ToString("N2")
                     @if (_result.ChangeDue > 0) { <span> · Change @_result.ChangeDue.ToString("N2")</span> }
-                    <div class="mt-2"><button class="btn btn-sm btn-cap" @onclick="() => PrintAsync(_result.SalesInvoiceId)">Print</button></div>
+                    @if (!string.IsNullOrWhiteSpace(_result.FbrInvoiceNumber))
+                    {
+                        <div class="small mt-1">FBR IRN @_result.FbrInvoiceNumber@(_result.FbrWasStubbed ? " (stub)" : "")</div>
+                    }
+                    else if (AppConfig.BehaviorEnabled("fbr.enabled") && !_result.FbrSuccess)
+                    {
+                        @if (!string.IsNullOrWhiteSpace(_result.FbrMessage))
+                        {
+                            <div class="small text-danger mt-1">
+                                FBR failed — @_result.FbrMessage
+                                <a href="/fbr" class="ms-1">Open FBR</a>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="small text-warning mt-1">
+                                FBR pending — reprint after outbox posts IRN
+                                <a href="/fbr" class="ms-1">Open FBR</a>
+                            </div>
+                        }
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_printError))
+                    {
+                        <div class="text-warning small mt-1">Print: @_printError</div>
+                    }
+                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-cap" @onclick="() => PrintAsync(_result.SalesInvoiceId)">@(_printError is null ? "Print" : "Retry print")</button>
+                        @if (_lastSaleInvoiceId is int lastId)
+                        {
+                            <button class="btn btn-sm btn-outline-light" @onclick="() => PrintAsync(lastId)">Reprint last</button>
+                        }
+                    </div>
+                </div>
+            }
+            else if (_lastSaleInvoiceId is int reprintId)
+            {
+                <div class="mt-3 d-flex align-items-center gap-2 flex-wrap">
+                    <span class="badge text-bg-warning text-dark">Last sale #@reprintId</span>
+                    <button class="btn btn-sm btn-warning text-dark fw-semibold" @onclick="() => PrintAsync(reprintId)">Reprint last sale</button>
                 </div>
             }
         </div>
     </div>
 </div>
+</div>
 
 @if (_picker is not null)
 {
-    <div class="modal d-block" style="background:rgba(0,0,0,.45)" @onclick="() => _picker = null">
+    <div class="modal d-block" style="background:rgba(0,0,0,.45)" @onclick="ClosePickerAsync" @onkeydown="OnPickerKeyDown">
         <div class="modal-dialog" @onclick:stopPropagation="true">
             <div class="modal-content cap-card">
-                <div class="modal-header"><h5 class="modal-title">Multiple matches</h5><button type="button" class="btn-close" @onclick="() => _picker = null"></button></div>
+                <div class="modal-header"><h5 class="modal-title">Multiple matches — ↑↓ Enter · Esc</h5><button type="button" class="btn-close" @onclick="ClosePickerAsync"></button></div>
                 <div class="modal-body">
-                    @foreach (var p in _picker)
+                    @for (var i = 0; i < _picker.Count; i++)
                     {
-                        <button class="btn btn-outline-light w-100 text-start mb-1" @onclick="() => { AddToCart(p); _picker = null; }">@p.Name · @p.Sku · @p.SalePrice.ToString("N2")</button>
+                        var p = _picker[i];
+                        var idx = i;
+                        <button class="btn w-100 text-start mb-1 @(idx == _pickerIndex ? "btn-cap" : "btn-outline-light")"
+                                @onclick="() => PickAsync(p)">
+                            @p.Name · @p.Sku · @p.SalePrice.ToString("N2")
+                            @if (_supersessionEnabled && !string.IsNullOrWhiteSpace(p.SupersededBySku))
+                            {
+                                <span class="badge text-bg-warning ms-1">→ @p.SupersededBySku</span>
+                            }
+                        </button>
                     }
                 </div>
             </div>
@@ -144,37 +400,155 @@
 }
 
 @code {
+    private const string LastTillKey = "cap.pos.lastTillId";
+    private const string DensityKey = "cap.pos.density";
+    private const string ContrastKey = "cap.pos.contrast";
+    private const string RecentReceiptsKey = "cap.pos.recentReceipts";
+
     private ElementReference _searchInput;
     private List<PosProductDto>? _products;
+    private List<PosProductDto>? _warmCatalog;
     private List<PosProductDto>? _picker;
+    private int _pickerIndex;
     private readonly List<CartLine> _cart = [];
     private readonly List<PosTenderDto> _tenders = [];
     private readonly List<HeldSaleDto> _held = [];
+    private List<TillDto> _tills = [];
+    private List<OfflineCheckoutQueue.OfflineQueueItem> _offlineItems = [];
+    private List<int> _recentReceipts = [];
     private PosBuyerDto _buyer = new() { Province = "Sindh", Address = "POS", RegistrationType = "Unregistered" };
     private int _warehouseId = 1;
     private int? _customerId;
     private string? _search;
     private string _paymentMethod = "Cash";
     private string _idempotencyKey = Guid.NewGuid().ToString();
+    private string _tillIdText = "";
     private bool _busy;
+    private bool _searchBusy;
+    private bool _fitmentEnabled;
+    private bool _supersessionEnabled;
+    private bool _compact;
+    private bool _highContrast;
+    private bool _cartFlash;
+    private bool _showRecentReceipts;
+    private string _fitMake = "";
+    private string _fitModel = "";
+    private string? _fitYearText;
+    private List<string> _fitMakes = [];
+    private List<string> _fitModels = [];
     private PosCheckoutResultDto? _result;
     private CashierShiftDto? _shift;
     private ShiftZReportDto? _zReport;
+    private bool _xReportMode;
     private decimal _openingFloat = 1000;
     private decimal _closingFloat;
+    private decimal _safeDropAmount;
+    private decimal _cashTendered;
+    private int? _heldSaleId;
+    private int? _lastSaleInvoiceId;
+    private int? _lastPrintedInvoiceId;
+    private string? _printError;
+    private CancellationTokenSource? _searchCts;
+
+    private decimal _cartTotal => _cart.Sum(c => c.UnitPrice * c.Qty);
+    private bool _cartTotalKnown => _cart.Count > 0 && _cart.All(c => c.UnitPrice > 0);
 
     protected override async Task OnInitializedAsync()
     {
         ApiReachability.Changed += OnApiChanged;
+        OfflineQueue.Changed += OnQueueChanged;
+        _fitmentEnabled = AppConfig.BehaviorEnabled("pos.fitmentSearch");
+        _supersessionEnabled = AppConfig.BehaviorEnabled("pos.supersession");
+
+        await LoadPrefsAsync();
+
+        // Warm catalog early (empty browse) so first keystroke isn't a cold API round-trip.
+        var warmCatalog = LoadProductsAsync();
+
         var wh = await Api.GetWarehousesAsync();
         if (wh.Data?.FirstOrDefault() is { } w) _warehouseId = w.Id;
+        await LoadTillsAsync();
         await RefreshShiftAsync();
+        if (_tills.Count == 1 && _shift is null)
+            await OpenShiftAsync();
         await LoadHeldAsync();
-        await LoadProductsAsync();
+        if (_fitmentEnabled) await LoadFitmentMakesAsync();
+        await warmCatalog;
+        await RefreshOfflineItemsAsync();
+        if (!ApiReachability.IsDown && OfflineQueue.PendingCount > 0)
+            await DrainQueueAsync();
     }
 
-    public void Dispose() => ApiReachability.Changed -= OnApiChanged;
-    private void OnApiChanged() => InvokeAsync(StateHasChanged);
+    private async Task LoadPrefsAsync()
+    {
+        try
+        {
+            var density = await Storage.GetItemAsync<string>(DensityKey);
+            _compact = string.Equals(density, "compact", StringComparison.OrdinalIgnoreCase);
+            var contrast = await Storage.GetItemAsync<string>(ContrastKey);
+            _highContrast = string.Equals(contrast, "high", StringComparison.OrdinalIgnoreCase);
+            var recent = await Storage.GetItemAsync<List<int>>(RecentReceiptsKey);
+            if (recent is not null) _recentReceipts = recent.Take(5).ToList();
+        }
+        catch { /* localStorage unavailable */ }
+    }
+
+    private bool _hasFitFilter =>
+        _fitmentEnabled && (
+            !string.IsNullOrWhiteSpace(_fitMake) ||
+            !string.IsNullOrWhiteSpace(_fitModel) ||
+            (int.TryParse(_fitYearText, out var y) && y is >= 1980 and <= 2100));
+
+    private async Task LoadFitmentMakesAsync()
+    {
+        var (data, _, _) = await Api.GetPosFitmentOptionsAsync();
+        _fitMakes = data?.Makes ?? [];
+    }
+
+    private async Task OnFitMakeChanged(ChangeEventArgs e)
+    {
+        _fitMake = e.Value?.ToString() ?? "";
+        _fitModel = "";
+        _fitModels = [];
+        if (!string.IsNullOrWhiteSpace(_fitMake))
+        {
+            var (data, _, _) = await Api.GetPosFitmentOptionsAsync(_fitMake);
+            _fitModels = data?.Models ?? [];
+        }
+        await OnFitFilterChanged();
+    }
+
+    private async Task OnFitFilterChanged() => await ScheduleSearchAsync();
+
+    public void Dispose()
+    {
+        ApiReachability.Changed -= OnApiChanged;
+        OfflineQueue.Changed -= OnQueueChanged;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
+
+    private void OnApiChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            if (!ApiReachability.IsDown)
+                await DrainQueueAsync();
+        });
+    }
+
+    private void OnQueueChanged() => InvokeAsync(async () =>
+    {
+        await RefreshOfflineItemsAsync();
+        StateHasChanged();
+    });
+
+    private async Task RefreshOfflineItemsAsync()
+    {
+        await OfflineQueue.RefreshCountAsync();
+        _offlineItems = (await OfflineQueue.ListAsync()).ToList();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -186,40 +560,170 @@
         try { await _searchInput.FocusAsync(); } catch { }
     }
 
+    private async Task FocusLastQtyAsync()
+    {
+        var last = _cart.LastOrDefault();
+        if (last is null) return;
+        try { await last.QtyInput.FocusAsync(); } catch { }
+    }
+
+    private async Task LoadTillsAsync()
+    {
+        var (data, _, _) = await Api.GetTillsAsync();
+        _tills = data ?? [];
+        if (string.IsNullOrEmpty(_tillIdText) && _tills.Count > 0)
+        {
+            try
+            {
+                var last = await Storage.GetItemAsync<string>(LastTillKey);
+                if (!string.IsNullOrEmpty(last) && _tills.Any(t => t.Id.ToString() == last))
+                    _tillIdText = last;
+                else
+                    _tillIdText = _tills[0].Id.ToString();
+            }
+            catch
+            {
+                _tillIdText = _tills[0].Id.ToString();
+            }
+        }
+    }
+
     private async Task RefreshShiftAsync()
     {
         var (data, _, _) = await Api.GetOpenShiftAsync();
         _shift = data;
+        if (_shift?.WarehouseId is int wh) _warehouseId = wh;
     }
 
     private async Task OpenShiftAsync()
     {
-        var (data, error, _) = await Api.OpenShiftAsync(_openingFloat, _warehouseId);
+        if (!int.TryParse(_tillIdText, out var tillId) || tillId <= 0)
+        {
+            Toast.ShowError("Select a till");
+            return;
+        }
+        var (data, error, _) = await Api.OpenShiftAsync(_openingFloat, _warehouseId, tillId);
         if (data is null) { Toast.ShowError(error ?? "Cannot open shift"); return; }
         _shift = data;
-        Toast.ShowSuccess("Shift opened");
+        if (data.WarehouseId is int wh) _warehouseId = wh;
+        try { await Storage.SetItemAsync(LastTillKey, tillId.ToString()); } catch { }
+        Toast.ShowSuccess("Shift opened on " + (data.TillCode ?? "till"));
+        await FocusSearchAsync();
+    }
+
+    private async Task SafeDropAsync()
+    {
+        if (_shift is null || _safeDropAmount <= 0) { Toast.ShowWarning("Enter drop amount"); return; }
+        var (data, error, _) = await Api.RecordSafeDropAsync(_shift.Id, _safeDropAmount);
+        if (data is null) { Toast.ShowError(error ?? "Drop failed"); return; }
+        _safeDropAmount = 0;
+        await RefreshShiftAsync();
+        Toast.ShowSuccess($"Safe drop {data.Amount:N0} recorded");
+    }
+
+    private async Task XReportAsync()
+    {
+        if (_shift is null) return;
+        var (z, error, _) = await Api.GetXReportAsync(_shift.Id);
+        if (z is null) { Toast.ShowError(error ?? "X-report failed"); return; }
+        _zReport = z;
+        _xReportMode = true;
+        Toast.ShowSuccess($"X-report · sales {z.SalesTotal:N0} · expected {z.ExpectedCash:N0}");
     }
 
     private async Task CloseShiftAsync()
     {
         if (_shift is null) return;
-        var (data, error, _) = await Api.CloseShiftAsync(_shift.Id, _closingFloat);
+        if (OfflineQueue.PendingCount > 0)
+        {
+            Toast.ShowError($"Cannot close shift: {OfflineQueue.PendingCount} offline sale(s) still pending sync.");
+            return;
+        }
+        var (data, error, _) = await Api.CloseShiftAsync(_shift.Id, _closingFloat, _closingFloat);
         if (data is null) { Toast.ShowError(error ?? "Close failed"); return; }
         var (z, _, _) = await Api.GetZReportAsync(_shift.Id);
         _zReport = z;
+        _xReportMode = false;
+        var varianceMsg = data.CashVariance != 0
+            ? $" · Variance {data.CashVariance.ToString("N0")} (exp {data.ExpectedCash.ToString("N0")})"
+            : "";
         _shift = null;
-        Toast.ShowSuccess("Shift closed");
+        Toast.ShowSuccess("Shift closed" + varianceMsg);
     }
 
-    private async Task LoadProductsAsync()
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
-        var (data, error, _) = await Api.GetPosProductsAsync(_search);
-        if (error is not null) Toast.ShowError(error);
-        _products = data;
+        _search = e.Value?.ToString();
+        await ScheduleSearchAsync();
     }
+
+    private async Task ScheduleSearchAsync()
+    {
+        ApplyWarmFilter();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+        try
+        {
+            await Task.Delay(140, ct);
+            await LoadProductsAsync(ct);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void ApplyWarmFilter()
+    {
+        if (_warmCatalog is null || _hasFitFilter) return;
+        var q = _search?.Trim() ?? "";
+        if (string.IsNullOrEmpty(q))
+        {
+            _products = _warmCatalog;
+            return;
+        }
+        _products = _warmCatalog.Where(p =>
+            StartsWithIgnore(p.Sku, q) ||
+            StartsWithIgnore(p.Name, q) ||
+            StartsWithIgnore(p.Barcode, q) ||
+            StartsWithIgnore(p.OemNumber, q) ||
+            StartsWithIgnore(p.PartNumber, q)).ToList();
+    }
+
+    private static bool StartsWithIgnore(string? value, string prefix) =>
+        !string.IsNullOrEmpty(value) && value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+    private async Task LoadProductsAsync(CancellationToken ct = default)
+    {
+        if (ApiReachability.IsDown) return;
+        _searchBusy = true;
+        try
+        {
+            int? year = int.TryParse(_fitYearText, out var y) && y is >= 1980 and <= 2100 ? y : null;
+            var (data, error, _) = await Api.GetPosProductsAsync(
+                _search?.Trim(),
+                _fitmentEnabled ? NullIfEmpty(_fitMake) : null,
+                _fitmentEnabled ? NullIfEmpty(_fitModel) : null,
+                _fitmentEnabled ? year : null,
+                ct);
+            if (ct.IsCancellationRequested) return;
+            if (error is not null && !ct.IsCancellationRequested) Toast.ShowError(error);
+            _products = data;
+            if (string.IsNullOrWhiteSpace(_search) && !_hasFitFilter && data is not null)
+                _warmCatalog = data;
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+                _searchBusy = false;
+        }
+    }
+
+    private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     private async Task LoadHeldAsync()
     {
+        if (ApiReachability.IsDown) return;
         var (data, _, _) = await Api.ListHeldSalesAsync();
         _held.Clear();
         if (data is not null) _held.AddRange(data);
@@ -227,33 +731,189 @@
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
+        if (e.Key == "Escape")
+        {
+            await ClearSearchAsync();
+            return;
+        }
         if (e.Key != "Enter") return;
+
+        // Cancel debounce and search immediately for scanner Enter.
+        _searchCts?.Cancel();
+        _search = _search?.Trim();
         await LoadProductsAsync();
         if (_products is null || _products.Count == 0) { Toast.ShowWarning("No match"); return; }
-        var exact = _products.Where(p =>
-            string.Equals(p.Barcode, _search, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(p.Sku, _search, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (exact.Count == 1) { AddToCart(exact[0]); _search = ""; await FocusSearchAsync(); }
-        else if (exact.Count > 1 || _products.Count > 1) _picker = exact.Count > 1 ? exact : _products;
-        else { AddToCart(_products[0]); _search = ""; await FocusSearchAsync(); }
+
+        var candidates = BuildExactCandidates(_search);
+        var exact = _products.Where(p => IsExactProductMatch(p, candidates)).ToList();
+
+        // Unique barcode / exact hit → add without extra click.
+        if (exact.Count == 1) await AddToCartAsync(exact[0], clearSearch: true);
+        else if (exact.Count > 1 || _products.Count > 1)
+        {
+            _picker = exact.Count > 1 ? exact : _products;
+            _pickerIndex = 0;
+        }
+        else await AddToCartAsync(_products[0], clearSearch: true);
+    }
+
+    private static bool IsExactProductMatch(PosProductDto p, List<string> candidates) =>
+        p.IsExactMatch ||
+        candidates.Any(c =>
+            string.Equals(p.Barcode, c, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Sku, c, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.OemNumber, c, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.PartNumber, c, StringComparison.OrdinalIgnoreCase));
+
+    private static List<string> BuildExactCandidates(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return [];
+        var s = raw.Trim();
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { s };
+        if (s.All(char.IsDigit))
+        {
+            var stripped = s.TrimStart('0');
+            if (string.IsNullOrEmpty(stripped)) stripped = "0";
+            set.Add(stripped);
+            foreach (var width in Enumerable.Range(stripped.Length + 1, Math.Max(0, 14 - stripped.Length)))
+            {
+                set.Add(stripped.PadLeft(width, '0'));
+            }
+        }
+        return set.ToList();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "F2") await FocusSearchAsync();
-        else if (e.Key == "F9" && _cart.Any() && !_busy && _shift is not null) await CheckoutAsync();
+        if (_picker is not null)
+        {
+            await OnPickerKeyDown(e);
+            return;
+        }
+        if (e.Key == "F2")
+        {
+            await FocusSearchAsync();
+            return;
+        }
+        if (e.Key == "Escape")
+        {
+            await ClearSearchAsync();
+            return;
+        }
+        if (e.Key == "F4" && _cart.Any())
+        {
+            await HoldAsync();
+            return;
+        }
+        if (e.Key == "F8")
+        {
+            await FocusLastQtyAsync();
+            return;
+        }
+        if (e.Key == "F9" && _cart.Any() && _shift is not null)
+        {
+            if (_busy)
+            {
+                Toast.ShowWarning("Checkout already in progress");
+                return;
+            }
+            if (ApiReachability.IsDown) await QueueCheckoutAsync();
+            else await CheckoutAsync();
+            return;
+        }
+        if (string.IsNullOrEmpty(_search) && _cart.Count > 0)
+        {
+            if (e.Key is "+" or "=") AdjustLastQty(1);
+            else if (e.Key is "-" or "_") AdjustLastQty(-1);
+        }
     }
 
-    private void AddToCart(PosProductDto p)
+    private async Task OnPickerKeyDown(KeyboardEventArgs e)
+    {
+        if (_picker is null) return;
+        if (e.Key == "Escape") { await ClosePickerAsync(); return; }
+        if (e.Key == "ArrowDown")
+        {
+            _pickerIndex = Math.Min(_picker.Count - 1, _pickerIndex + 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _pickerIndex = Math.Max(0, _pickerIndex - 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "Enter")
+        {
+            if (_pickerIndex >= 0 && _pickerIndex < _picker.Count)
+                await PickAsync(_picker[_pickerIndex]);
+        }
+    }
+
+    private void AdjustLastQty(decimal delta)
+    {
+        var last = _cart.LastOrDefault();
+        if (last is null) return;
+        AdjustLineQty(last, delta);
+    }
+
+    private void AdjustLineQty(CartLine line, decimal delta)
+    {
+        line.Qty = Math.Max(1, line.Qty + delta);
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _search = "";
+        _picker = null;
+        _searchCts?.Cancel();
+        await LoadProductsAsync();
+        await FocusSearchAsync();
+    }
+
+    private async Task ClosePickerAsync()
+    {
+        _picker = null;
+        _pickerIndex = 0;
+        await FocusSearchAsync();
+    }
+
+    private async Task PickAsync(PosProductDto p)
+    {
+        _picker = null;
+        _pickerIndex = 0;
+        await AddToCartAsync(p, clearSearch: true);
+    }
+
+    private async Task AddToCartAsync(PosProductDto p, bool clearSearch = false)
     {
         var existing = _cart.FirstOrDefault(x => x.ProductId == p.Id);
         if (existing is not null) existing.Qty += 1;
-        else _cart.Add(new CartLine(p.Id, p.Name, 1));
+        else _cart.Add(new CartLine(p.Id, p.Name, 1, p.SalePrice));
+        if (clearSearch) _search = "";
         Toast.ShowInfo($"{p.Name} added");
+        _ = FlashCartAsync();
+        await FocusSearchAsync();
+    }
+
+    private async Task FlashCartAsync()
+    {
+        _cartFlash = true;
+        StateHasChanged();
+        try { await Task.Delay(280); }
+        catch { /* ignore */ }
+        _cartFlash = false;
+        StateHasChanged();
+    }
+
+    private async Task RemoveLineAsync(CartLine c)
+    {
+        _cart.Remove(c);
+        await FocusSearchAsync();
     }
 
     private async Task HoldAsync()
     {
+        if (ApiReachability.IsDown) { Toast.ShowError("Hold requires API"); return; }
         var (data, error, _) = await Api.HoldSaleAsync(new
         {
             WarehouseId = _warehouseId,
@@ -265,34 +925,33 @@
         _cart.Clear();
         await LoadHeldAsync();
         Toast.ShowSuccess($"Held {data.HoldNumber}");
+        await FocusSearchAsync();
     }
 
     private async Task RecallAsync(HeldSaleDto h)
     {
+        if (_cart.Count > 0)
+        {
+            var ok = await Js.InvokeAsync<bool>("confirm", "Replace current cart with held sale?");
+            if (!ok) return;
+        }
         var (data, error, _) = await Api.RecallHeldSaleAsync(h.Id);
         if (data is null) { Toast.ShowError(error ?? "Recall failed"); return; }
         _cart.Clear();
         foreach (var l in data.Lines)
-            _cart.Add(new CartLine(l.ProductId, l.ProductName, l.Quantity));
+            _cart.Add(new CartLine(l.ProductId, l.ProductName, l.Quantity, l.UnitPriceOverride ?? 0m));
         _warehouseId = data.WarehouseId;
         _customerId = data.CustomerId;
         _heldSaleId = data.Id;
         await LoadHeldAsync();
         Toast.ShowSuccess($"Recalled {data.HoldNumber}");
+        await FocusSearchAsync();
     }
 
-    private int? _heldSaleId;
-
-    private async Task CheckoutAsync()
+    private PosCheckoutDto BuildCheckoutDto()
     {
-        if (_shift is null) { Toast.ShowWarning("Open a shift first"); return; }
-        if (ApiReachability.IsDown) { Toast.ShowError("API unreachable"); return; }
-        if (!_cart.Any()) { Toast.ShowWarning("Cart empty"); return; }
-
-        _busy = true;
-        _result = null;
         var tenders = _tenders.Where(t => t.Amount > 0).ToList();
-        var dto = new PosCheckoutDto
+        return new PosCheckoutDto
         {
             WarehouseId = _warehouseId,
             CustomerId = _customerId,
@@ -301,34 +960,158 @@
             ScenarioId = "SN001",
             SaleType = "Local",
             IdempotencyKey = _idempotencyKey,
-            ShiftId = _shift.Id,
+            ShiftId = _shift?.Id,
             HeldSaleId = _heldSaleId,
             Tenders = tenders.Count > 0 ? tenders : null,
             Lines = _cart.Select(c => new PosCheckoutLineDto { ProductId = c.ProductId, Quantity = c.Qty }).ToList()
         };
-        var (data, error, _) = await Api.CheckoutAsync(dto);
+    }
+
+    private async Task CheckoutAsync()
+    {
+        if (_shift is null) { Toast.ShowWarning("Open a shift first"); return; }
+        if (!_cart.Any()) { Toast.ShowWarning("Cart empty"); return; }
+
+        _busy = true;
+        _result = null;
+        _printError = null;
+        var dto = BuildCheckoutDto();
+        var (data, error, status) = await Api.CheckoutAsync(dto);
         _busy = false;
-        if (data is null) { Toast.ShowError(error ?? "Checkout failed"); return; }
+
+        if (data is null)
+        {
+            if (status == 0 || ApiReachability.IsDown)
+            {
+                await QueueCheckoutAsync();
+                return;
+            }
+            Toast.ShowError(error ?? "Checkout failed");
+            return;
+        }
+
+        await AfterSuccessfulCheckoutAsync(data);
+    }
+
+    private async Task QueueCheckoutAsync()
+    {
+        if (_shift is null) { Toast.ShowWarning("Open a shift first"); return; }
+        if (!_cart.Any()) { Toast.ShowWarning("Cart empty"); return; }
+
+        var dto = BuildCheckoutDto();
+        try
+        {
+            await OfflineQueue.EnqueueAsync(dto, _idempotencyKey, _shift.Id);
+            _cart.Clear();
+            _heldSaleId = null;
+            _idempotencyKey = Guid.NewGuid().ToString();
+            Toast.ShowWarning("Sale queued offline — will sync when API is back. Reprint after sync.");
+            await RefreshOfflineItemsAsync();
+            await FocusSearchAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+    }
+
+    private async Task AfterSuccessfulCheckoutAsync(PosCheckoutResultDto data)
+    {
         _result = data;
+        _lastSaleInvoiceId = data.SalesInvoiceId;
+        _cashTendered = 0;
         _cart.Clear();
         _heldSaleId = null;
         _idempotencyKey = Guid.NewGuid().ToString();
-        Toast.ShowSuccess(data.FbrSuccess ? "Checkout complete" : "Sale saved — FBR pending");
-        await LoadProductsAsync();
+        await RememberReceiptAsync(data.SalesInvoiceId);
+        Toast.ShowSuccess(data.FbrSuccess || !AppConfig.BehaviorEnabled("fbr.enabled") ? "Sale complete" : "Sale saved — FBR pending");
+        _ = LoadProductsAsync();
         await FocusSearchAsync();
+        // Print is best-effort — never block or undo a successful sale.
+        _ = PrintAsync(data.SalesInvoiceId, silentSuccess: true);
     }
 
-    private async Task PrintAsync(int invoiceId)
+    private async Task RememberReceiptAsync(int invoiceId)
     {
-        var (html, error, _) = await Api.GetReceiptHtmlAsync(invoiceId);
-        if (html is null) { Toast.ShowError(error ?? "Receipt failed"); return; }
-        await Js.InvokeVoidAsync("eval", $"var w=window.open('','_blank');w.document.write({System.Text.Json.JsonSerializer.Serialize(html)});w.document.close();");
+        _recentReceipts.Remove(invoiceId);
+        _recentReceipts.Insert(0, invoiceId);
+        if (_recentReceipts.Count > 5)
+            _recentReceipts = _recentReceipts.Take(5).ToList();
+        try { await Storage.SetItemAsync(RecentReceiptsKey, _recentReceipts); } catch { }
     }
 
-    private sealed class CartLine(int productId, string name, decimal qty)
+    private async Task DrainQueueAsync()
+    {
+        var before = OfflineQueue.PendingCount;
+        var failures = 0;
+        await OfflineQueue.DrainAsync(async payload =>
+        {
+            var (data, error, _) = await Api.CheckoutRawAsync(payload);
+            if (data is null)
+            {
+                failures++;
+                return (false, error);
+            }
+            _lastSaleInvoiceId = data.SalesInvoiceId;
+            _result = data;
+            await RememberReceiptAsync(data.SalesInvoiceId);
+            return (true, null);
+        });
+        await RefreshOfflineItemsAsync();
+        if (failures > 0)
+            Toast.ShowError($"{failures} offline sale(s) failed to sync — fix and Sync now. Print after successful sync.");
+        else if (before > 0 && OfflineQueue.PendingCount == 0)
+            Toast.ShowSuccess("Offline queue synced — use Reprint last if needed.");
+    }
+
+    private async Task PrintAsync(int invoiceId, bool silentSuccess = false)
+    {
+        try
+        {
+            var (html, error, _) = await Api.GetReceiptHtmlAsync(invoiceId);
+            if (html is null)
+            {
+                _printError = error ?? "Receipt unavailable";
+                Toast.ShowWarning($"Print failed — sale is still saved. {_printError}");
+                return;
+            }
+            await Js.InvokeVoidAsync("eval",
+                $"var w=window.open('','_blank');if(!w){{throw new Error('Popup blocked');}}w.document.write({System.Text.Json.JsonSerializer.Serialize(html)});w.document.close();");
+            _printError = null;
+            _lastPrintedInvoiceId = invoiceId;
+            if (!silentSuccess) Toast.ShowSuccess("Receipt opened");
+        }
+        catch (Exception ex)
+        {
+            _printError = ex.Message;
+            Toast.ShowWarning($"Print failed — sale is still saved. {ex.Message}");
+        }
+    }
+
+    private async Task ReprintRecentAsync(int invoiceId)
+    {
+        _showRecentReceipts = false;
+        await PrintAsync(invoiceId);
+    }
+
+    private async Task ToggleDensityAsync()
+    {
+        _compact = !_compact;
+        try { await Storage.SetItemAsync(DensityKey, _compact ? "compact" : "comfortable"); } catch { }
+    }
+
+    private async Task ToggleContrastAsync()
+    {
+        _highContrast = !_highContrast;
+        try { await Storage.SetItemAsync(ContrastKey, _highContrast ? "high" : "normal"); } catch { }
+    }
+
+    private sealed class CartLine(int productId, string name, decimal qty, decimal unitPrice)
     {
         public int ProductId { get; } = productId;
         public string Name { get; } = name;
         public decimal Qty { get; set; } = qty;
+        public decimal UnitPrice { get; set; } = unitPrice;
+        public ElementReference QtyInput;
     }
 }

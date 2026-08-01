@@ -34,9 +34,11 @@ public interface IEnterpriseDb
     DbSet<ProductKitComponent> ProductKitComponents { get; }
     DbSet<ProductSupersession> ProductSupersessions { get; }
     DbSet<InventoryItem> InventoryItems { get; }
+    DbSet<InventoryLocationBalance> InventoryLocationBalances { get; }
     DbSet<StockMovement> StockMovements { get; }
     DbSet<Product> Products { get; }
     DbSet<Warehouse> Warehouses { get; }
+    DbSet<WarehouseLocation> WarehouseLocations { get; }
     DbSet<Customer> Customers { get; }
     DbSet<Supplier> Suppliers { get; }
     DbSet<NumberSequence> NumberSequences { get; }
@@ -49,6 +51,14 @@ public interface IEnterpriseDb
     DbSet<Payment> Payments { get; }
     DbSet<SupplierPayment> SupplierPayments { get; }
     DbSet<FbrSubmission> FbrSubmissions { get; }
+    DbSet<OpeningBalanceBatch> OpeningBalanceBatches { get; }
+    DbSet<OpeningBalanceLine> OpeningBalanceLines { get; }
+    DbSet<BankStatement> BankStatements { get; }
+    DbSet<BankStatementLine> BankStatementLines { get; }
+    DbSet<SalesReturn> SalesReturns { get; }
+    DbSet<PurchaseReturn> PurchaseReturns { get; }
+    DbSet<CreditNoteApplication> CreditNoteApplications { get; }
+    DbSet<PurchaseCreditNoteApplication> PurchaseCreditNoteApplications { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -81,7 +91,8 @@ public record CreateGrnLineRequest(
     int? PurchaseOrderLineId = null,
     string? BatchNumber = null,
     DateTime? ExpiryDate = null,
-    IReadOnlyList<string>? SerialNumbers = null);
+    IReadOnlyList<string>? SerialNumbers = null,
+    int? WarehouseLocationId = null);
 
 public record CreateGrnRequest(
     int WarehouseId,
@@ -99,7 +110,8 @@ public record GoodsReceiptLineDto(
     decimal Quantity,
     decimal UnitCost,
     int? PurchaseOrderLineId,
-    IReadOnlyList<string>? SerialNumbers = null);
+    IReadOnlyList<string>? SerialNumbers = null,
+    int? WarehouseLocationId = null);
 
 public record GrnLandedCostLineDto(int Id, string CostType, decimal Amount, string? Notes);
 
@@ -115,20 +127,23 @@ public record GoodsReceiptNoteDto(
     IReadOnlyList<GoodsReceiptLineDto> Lines,
     IReadOnlyList<GrnLandedCostLineDto>? LandedCostLines = null);
 
-public record CreateCycleCountLineRequest(int ProductId, decimal CountedQuantity);
+public record CreateCycleCountLineRequest(int ProductId, decimal CountedQuantity, int? WarehouseLocationId = null);
 
 public record CreateCycleCountRequest(
     int WarehouseId,
     DateTime CountDate,
     string? Notes,
-    IReadOnlyList<CreateCycleCountLineRequest>? Lines = null);
+    IReadOnlyList<CreateCycleCountLineRequest>? Lines = null,
+    int? WarehouseLocationId = null);
 
 public record CycleCountLineDto(
     int Id,
     int ProductId,
     decimal SystemQuantity,
     decimal CountedQuantity,
-    decimal Variance);
+    decimal Variance,
+    int? WarehouseLocationId = null,
+    string? LocationCode = null);
 
 public record CycleCountDto(
     int Id,
@@ -137,7 +152,8 @@ public record CycleCountDto(
     DateTime CountDate,
     CycleCountStatus Status,
     string? Notes,
-    IReadOnlyList<CycleCountLineDto> Lines);
+    IReadOnlyList<CycleCountLineDto> Lines,
+    int? WarehouseLocationId = null);
 
 // —— Purchase DTOs ——
 
@@ -208,7 +224,9 @@ public record SalesQuotationLineDto(
     int ProductId,
     decimal Quantity,
     decimal UnitPrice,
-    decimal LineTotal);
+    decimal LineTotal,
+    string? PriceListName,
+    string? PriceSource);
 
 public record SalesQuotationDto(
     int Id,
@@ -219,14 +237,21 @@ public record SalesQuotationDto(
     QuotationStatus Status,
     decimal GrandTotal,
     string? Notes,
-    IReadOnlyList<SalesQuotationLineDto> Lines);
+    IReadOnlyList<SalesQuotationLineDto> Lines,
+    int? ConvertedSalesOrderId,
+    string? ConvertedOrderNumber);
 
-public record ConvertQuotationResultDto(int SalesOrderId, string OrderNumber, int QuotationId);
+public record ConvertQuotationResultDto(
+    int SalesOrderId,
+    string OrderNumber,
+    int QuotationId,
+    string QuotationNumber);
 
 public record CreateDeliveryNoteLineRequest(
     int ProductId,
     decimal QuantityOrdered,
-    decimal QuantityShipped);
+    decimal QuantityShipped,
+    int? FromLocationId = null);
 
 public record CreateDeliveryNoteRequest(
     int? SalesOrderId,
@@ -234,20 +259,68 @@ public record CreateDeliveryNoteRequest(
     DateTime DeliveryDate,
     IReadOnlyList<CreateDeliveryNoteLineRequest> Lines);
 
+public record CreateDeliveryFromSalesOrderRequest(
+    int WarehouseId,
+    DateTime? DeliveryDate);
+
 public record DeliveryNoteLineDto(
     int Id,
     int ProductId,
     decimal QuantityOrdered,
-    decimal QuantityShipped);
+    decimal QuantityShipped,
+    int? FromLocationId = null,
+    bool IsPicked = false);
 
 public record DeliveryNoteDto(
     int Id,
     string DeliveryNumber,
     int? SalesOrderId,
+    string? SalesOrderNumber,
     int WarehouseId,
     DateTime DeliveryDate,
     DeliveryStatus Status,
-    IReadOnlyList<DeliveryNoteLineDto> Lines);
+    IReadOnlyList<DeliveryNoteLineDto> Lines,
+    int? InvoiceId,
+    string? InvoiceNumber,
+    bool AllLinesPicked = false);
+
+public record ConfirmDeliveryPickRequest(IReadOnlyList<ConfirmDeliveryPickLineRequest>? Lines = null);
+
+public record ConfirmDeliveryPickLineRequest(int LineId, int? FromLocationId = null);
+
+public record WholesaleSalesOrderLineDto(
+    int Id,
+    int ProductId,
+    decimal Quantity,
+    decimal UnitPrice,
+    decimal LineTotal,
+    string? PriceListName,
+    string? PriceSource);
+
+public record WholesaleSalesOrderDto(
+    int Id,
+    string OrderNumber,
+    int? CustomerId,
+    string? CustomerName,
+    SalesOrderStatus Status,
+    DateTime OrderDate,
+    decimal GrandTotal,
+    int? QuotationId,
+    string? QuotationNumber,
+    int? DeliveryId,
+    string? DeliveryNumber,
+    DeliveryStatus? DeliveryStatus,
+    int? InvoiceId,
+    string? InvoiceNumber,
+    IReadOnlyList<WholesaleSalesOrderLineDto> Lines);
+
+public record WholesaleInvoiceResultDto(
+    int InvoiceId,
+    string InvoiceNumber,
+    int SalesOrderId,
+    string OrderNumber,
+    int? DeliveryId,
+    string? DeliveryNumber);
 
 public record PriceLookupResultDto(
     int ProductId,
@@ -302,6 +375,16 @@ public record FbrSubmissionDto(
     FbrSubmissionStatus Status,
     string? ErrorMessage,
     DateTime SubmittedAt);
+
+/// <summary>Phase 12.1 — FBR posted vs failed/retrying aggregates for ops dashboards.</summary>
+public record FbrMetricsDto(
+    int SuccessCount,
+    int StubCount,
+    int FailedCount,
+    int PendingCount,
+    int TotalCount,
+    decimal SuccessRatePercent,
+    int NeedsRetryCount);
 
 // —— Account mapping DTOs ——
 
@@ -368,7 +451,9 @@ public record ProductSupersessionDto(
     int OldProductId,
     int NewProductId,
     DateTime EffectiveFrom,
-    string? Notes);
+    string? Notes,
+    string? OldSku = null,
+    string? NewSku = null);
 
 // —— Financial report DTOs ——
 
@@ -422,7 +507,8 @@ public record GlPostingLineRequest(
     string MappingKey,
     decimal Amount,
     bool IsDebit,
-    string? Description = null);
+    string? Description = null,
+    int? CostCenterId = null);
 
 public record GlJournalDraftDto(
     int JournalId,
@@ -437,7 +523,7 @@ public record FbrSubmissionRequested(int SalesInvoiceId, string? RequestJson);
 
 public interface IEnterpriseInventoryService
 {
-    Task<IReadOnlyList<GoodsReceiptNoteDto>> GetGrnsAsync(CancellationToken ct = default);
+    Task<PagedResult<GoodsReceiptNoteDto>> GetGrnsAsync(QuerySpec? query = null, CancellationToken ct = default);
     Task<IReadOnlyList<StockReservationDto>> GetReservationsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<CycleCountDto>> GetCycleCountsAsync(CancellationToken ct = default);
     Task<Result<StockReservationDto>> ReserveStockAsync(ReserveStockRequest request, CancellationToken ct = default);
@@ -451,7 +537,7 @@ public interface IEnterpriseInventoryService
 
 public interface IEnterprisePurchaseService
 {
-    Task<IReadOnlyList<PurchaseInvoiceDto>> GetPurchaseInvoicesAsync(CancellationToken ct = default);
+    Task<PagedResult<PurchaseInvoiceDto>> GetPurchaseInvoicesAsync(QuerySpec? query = null, CancellationToken ct = default);
     Task<Result<PurchaseInvoiceDto>> CreatePurchaseInvoiceAsync(CreatePurchaseInvoiceRequest request, CancellationToken ct = default);
     Task<Result<ThreeWayMatchResultDto>> MatchThreeWayAsync(int purchaseInvoiceId, CancellationToken ct = default);
     Task<Result<PurchaseInvoiceDto>> PostPurchaseInvoiceAsync(int purchaseInvoiceId, CancellationToken ct = default);
@@ -459,14 +545,20 @@ public interface IEnterprisePurchaseService
 
 public interface IEnterpriseSalesService
 {
-    Task<IReadOnlyList<SalesQuotationDto>> GetQuotationsAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<DeliveryNoteDto>> GetDeliveriesAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<PriceListDto>> GetPriceListsAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<FbrSubmissionDto>> GetFbrSubmissionsAsync(CancellationToken ct = default);
+    Task<PagedResult<SalesQuotationDto>> GetQuotationsAsync(QuerySpec? query = null, CancellationToken ct = default);
+    Task<PagedResult<DeliveryNoteDto>> GetDeliveriesAsync(QuerySpec? query = null, CancellationToken ct = default);
+    Task<PagedResult<WholesaleSalesOrderDto>> GetWholesaleSalesOrdersAsync(QuerySpec? query = null, CancellationToken ct = default);
+    Task<PagedResult<PriceListDto>> GetPriceListsAsync(QuerySpec? query = null, CancellationToken ct = default);
+    Task<PagedResult<FbrSubmissionDto>> GetFbrSubmissionsAsync(QuerySpec? query = null, CancellationToken ct = default);
+    Task<FbrMetricsDto> GetFbrMetricsAsync(CancellationToken ct = default);
     Task<Result<SalesQuotationDto>> CreateQuotationAsync(CreateQuotationRequest request, CancellationToken ct = default);
     Task<Result<ConvertQuotationResultDto>> ConvertQuotationToSalesOrderAsync(int quotationId, CancellationToken ct = default);
     Task<Result<DeliveryNoteDto>> CreateDeliveryNoteAsync(CreateDeliveryNoteRequest request, CancellationToken ct = default);
+    Task<Result<DeliveryNoteDto>> CreateDeliveryFromSalesOrderAsync(int salesOrderId, CreateDeliveryFromSalesOrderRequest request, CancellationToken ct = default);
+    Task<Result<DeliveryNoteDto>> ConfirmDeliveryPickAsync(int deliveryNoteId, ConfirmDeliveryPickRequest? request = null, CancellationToken ct = default);
     Task<Result<DeliveryNoteDto>> ShipDeliveryAsync(int deliveryNoteId, CancellationToken ct = default);
+    Task<Result<WholesaleInvoiceResultDto>> CreateInvoiceFromSalesOrderAsync(int salesOrderId, int? warehouseId = null, CancellationToken ct = default);
+    Task<Result<WholesaleInvoiceResultDto>> CreateInvoiceFromDeliveryAsync(int deliveryNoteId, CancellationToken ct = default);
     Task<Result<PriceListDto>> CreatePriceListAsync(CreatePriceListRequest request, CancellationToken ct = default);
     Task<Result<PriceListDto>> UpdatePriceListItemsAsync(int priceListId, UpdatePriceListItemsRequest request, CancellationToken ct = default);
     Task<Result<PriceLookupResultDto>> GetPriceForProductAsync(int productId, int? customerId = null, decimal quantity = 1, CancellationToken ct = default);
@@ -477,14 +569,14 @@ public interface IMasterDataService
 {
     Task<Result<ProductKitDto>> UpsertKitAsync(UpsertKitRequest request, CancellationToken ct = default);
     Task<Result<ProductSupersessionDto>> UpsertSupersessionAsync(UpsertSupersessionRequest request, CancellationToken ct = default);
-    Task<IReadOnlyList<ProductKitDto>> GetKitsAsync(int? parentProductId = null, CancellationToken ct = default);
+    Task<PagedResult<ProductKitDto>> GetKitsAsync(QuerySpec? query = null, int? parentProductId = null, CancellationToken ct = default);
     Task<IReadOnlyList<ProductSupersessionDto>> GetSupersessionsAsync(int? productId = null, CancellationToken ct = default);
 }
 
 public interface IFinancialReportService
 {
-    Task<Result<TrialBalanceReportDto>> TrialBalanceAsync(DateTime asOfDate, CancellationToken ct = default);
-    Task<Result<ProfitAndLossReportDto>> ProfitAndLossAsync(DateTime fromDate, DateTime toDate, CancellationToken ct = default);
+    Task<Result<TrialBalanceReportDto>> TrialBalanceAsync(DateTime asOfDate, int? branchId = null, CancellationToken ct = default);
+    Task<Result<ProfitAndLossReportDto>> ProfitAndLossAsync(DateTime fromDate, DateTime toDate, int? branchId = null, CancellationToken ct = default);
     Task<Result<BalanceSheetReportDto>> BalanceSheetAsync(DateTime asOfDate, CancellationToken ct = default);
     Task<Result<PartnerAgingReportDto>> CustomerAgingAsync(DateTime? asOfDate = null, CancellationToken ct = default);
     Task<Result<PartnerAgingReportDto>> SupplierAgingAsync(DateTime? asOfDate = null, CancellationToken ct = default);

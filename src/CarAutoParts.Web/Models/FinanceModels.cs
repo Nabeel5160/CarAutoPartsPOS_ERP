@@ -115,3 +115,79 @@ public sealed class BalanceSheetReportDto
     public decimal TotalEquity { get; set; }
     public List<BalanceSheetLineDto> Lines { get; set; } = [];
 }
+
+public sealed class PeriodCloseChecklistItemDto
+{
+    public string Code { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Count { get; set; }
+    public bool IsBlocker { get; set; }
+    public string Severity { get; set; } = "";
+}
+
+public sealed class PeriodCloseChecklistDto
+{
+    public int PeriodId { get; set; }
+    public string PeriodName { get; set; } = "";
+    public bool CanClose { get; set; }
+    public bool RequiresForceClose { get; set; }
+    public List<PeriodCloseChecklistItemDto> Items { get; set; } = [];
+}
+
+public sealed class OpeningBalanceBatchDto
+{
+    public int Id { get; set; }
+    public string BatchNumber { get; set; } = "";
+    public DateTime CutoverDate { get; set; }
+    public string Status { get; set; } = "";
+    public int? JournalEntryId { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class BankStatementLineDto
+{
+    public int Id { get; set; }
+    public DateTime LineDate { get; set; }
+    public decimal Amount { get; set; }
+    public string? Reference { get; set; }
+    public string? Description { get; set; }
+    public bool IsCleared { get; set; }
+    public int? MatchedJournalLineId { get; set; }
+}
+
+public sealed class BankStatementDto
+{
+    public int Id { get; set; }
+    public string StatementNumber { get; set; } = "";
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public decimal OpeningBalance { get; set; }
+    public decimal ClosingBalance { get; set; }
+    public string Status { get; set; } = "";
+    public string? Notes { get; set; }
+    public List<BankStatementLineDto> Lines { get; set; } = [];
+}
+
+public sealed class UnclearedBankGlLineDto
+{
+    public int JournalLineId { get; set; }
+    public int JournalEntryId { get; set; }
+    public string JournalNumber { get; set; } = "";
+    public DateTime JournalDate { get; set; }
+    public decimal Debit { get; set; }
+    public decimal Credit { get; set; }
+    public string? Description { get; set; }
+}
+
+public sealed class BankReconReportDto
+{
+    public int StatementId { get; set; }
+    public string StatementNumber { get; set; } = "";
+    public decimal StatementClosingBalance { get; set; }
+    public decimal GlBankBalance { get; set; }
+    public decimal UnclearedStatementTotal { get; set; }
+    public decimal UnclearedGlTotal { get; set; }
+    public decimal Difference { get; set; }
+    public List<BankStatementLineDto> UnclearedStatementLines { get; set; } = [];
+    public List<UnclearedBankGlLineDto> UnclearedGlLines { get; set; } = [];
+}

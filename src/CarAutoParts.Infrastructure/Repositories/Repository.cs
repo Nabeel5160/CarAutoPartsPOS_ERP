@@ -36,7 +36,7 @@ public class Repository<T> : IRepository<T> where T : BaseEntity
 
         var total = await query.CountAsync(ct);
         var page = Math.Max(1, spec.Page);
-        var pageSize = Math.Clamp(spec.PageSize, 1, 500);
+        var pageSize = Math.Clamp(spec.PageSize, 1, QueryLimits.MaxPageSize);
 
         var items = await query
             .Skip((page - 1) * pageSize)

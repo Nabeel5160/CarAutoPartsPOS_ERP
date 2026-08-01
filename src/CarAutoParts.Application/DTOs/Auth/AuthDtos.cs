@@ -1,6 +1,6 @@
 namespace CarAutoParts.Application.DTOs.Auth;
 
-/// <summary>Result returned after a successful login.</summary>
+/// <summary>Result returned after a successful login (or MFA challenge prelude).</summary>
 public record LoginResultDto(
     int UserId,
     string Username,
@@ -8,7 +8,9 @@ public record LoginResultDto(
     string? Email,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions,
-    bool MustChangePassword = false);
+    bool MustChangePassword = false,
+    bool MfaEnabled = false,
+    bool MustEnrollMfa = false);
 
 /// <summary>Application user summary.</summary>
 public record UserDto(
@@ -18,7 +20,9 @@ public record UserDto(
     string? Email,
     bool IsActive,
     DateTime? LastLoginAt,
-    IReadOnlyList<string> Roles);
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<int> BranchIds,
+    int? DefaultBranchId);
 
 /// <summary>Payload for creating or updating a user.</summary>
 public record UserCreateDto(
@@ -27,7 +31,9 @@ public record UserCreateDto(
     string DisplayName,
     string? Email,
     bool IsActive,
-    IReadOnlyList<int> RoleIds);
+    IReadOnlyList<int> RoleIds,
+    IReadOnlyList<int>? BranchIds = null,
+    int? DefaultBranchId = null);
 
 /// <summary>Role definition with optional permission codes.</summary>
 public record RoleDto(

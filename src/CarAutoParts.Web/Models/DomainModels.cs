@@ -40,6 +40,9 @@ public sealed class ProductDetailDto
     public bool IsActive { get; set; } = true;
     public bool TrackSerialNumbers { get; set; }
     public bool TrackBatches { get; set; }
+    public List<VehicleCompatibilityDto> VehicleCompatibilities { get; set; } = [];
+    public string? SupersedesSkus { get; set; }
+    public string? SupersededBySku { get; set; }
 }
 
 public sealed class ProductCreateDto
@@ -63,6 +66,26 @@ public sealed class ProductCreateDto
     public bool IsActive { get; set; } = true;
     public bool TrackSerialNumbers { get; set; }
     public bool TrackBatches { get; set; }
+    public List<VehicleCompatibilityDto>? VehicleCompatibilities { get; set; }
+}
+
+public sealed class VehicleCompatibilityDto
+{
+    public int? Id { get; set; }
+    public string Make { get; set; } = string.Empty;
+    public string Model { get; set; } = string.Empty;
+    public int? YearFrom { get; set; }
+    public int? YearTo { get; set; }
+}
+
+public sealed class OemFitmentImportResultDto
+{
+    public int Processed { get; set; }
+    public int OemUpdated { get; set; }
+    public int FitmentAdded { get; set; }
+    public int Skipped { get; set; }
+    public int ErrorCount { get; set; }
+    public string? ErrorReportCsv { get; set; }
 }
 
 public sealed class CategoryDto
@@ -92,6 +115,41 @@ public sealed class WarehouseDto
     public string? ContactPerson { get; set; }
     public string? PhoneNumber { get; set; }
     public bool IsDefault { get; set; }
+    public int? BranchId { get; set; }
+}
+
+public sealed class WarehouseLocationDto
+{
+    public int Id { get; set; }
+    public int WarehouseId { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool IsReceivingDefault { get; set; }
+    public bool IsPickDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+}
+
+public sealed class UpsertWarehouseLocationDto
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool IsReceivingDefault { get; set; }
+    public bool IsPickDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+}
+
+public sealed class InventoryLocationBalanceDto
+{
+    public int Id { get; set; }
+    public int InventoryItemId { get; set; }
+    public int ProductId { get; set; }
+    public int WarehouseId { get; set; }
+    public int WarehouseLocationId { get; set; }
+    public string LocationCode { get; set; } = "";
+    public string LocationName { get; set; } = "";
+    public decimal QuantityOnHand { get; set; }
 }
 
 public sealed class InventoryItemDto
@@ -353,6 +411,16 @@ public sealed class PosProductDto
     public decimal AvailableStock { get; set; }
     public string? OemNumber { get; set; }
     public string? PartNumber { get; set; }
+    public bool IsExactMatch { get; set; }
+    public string? SupersedesSkus { get; set; }
+    public string? SupersededBySku { get; set; }
+    public string? FitmentSummary { get; set; }
+}
+
+public sealed class FitmentOptionsDto
+{
+    public List<string> Makes { get; set; } = [];
+    public List<string> Models { get; set; } = [];
 }
 
 public sealed class PosTenderDto
@@ -443,12 +511,42 @@ public sealed class CashierShiftDto
     public decimal ClosingFloat { get; set; }
     public DateTime OpenedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
+    public decimal ExpectedCash { get; set; }
+    public decimal DeclaredClosingCash { get; set; }
+    public decimal CashVariance { get; set; }
+    public int? VarianceJournalEntryId { get; set; }
+    public int? TillId { get; set; }
+    public string? TillCode { get; set; }
+    public decimal SafeDropsTotal { get; set; }
+    public int? WarehouseId { get; set; }
+}
+
+public sealed class TillDto
+{
+    public int Id { get; set; }
+    public int BranchId { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool IsActive { get; set; }
+    public int? WarehouseId { get; set; }
+}
+
+public sealed class SafeDropDto
+{
+    public int Id { get; set; }
+    public int CashierShiftId { get; set; }
+    public int TillId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime DroppedAt { get; set; }
+    public string? Notes { get; set; }
 }
 
 public sealed class ShiftZReportDto
 {
     public int ShiftId { get; set; }
     public string ShiftNumber { get; set; } = string.Empty;
+    public DateTime OpenedAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
     public decimal OpeningFloat { get; set; }
     public decimal ClosingFloat { get; set; }
     public decimal ExpectedCash { get; set; }
@@ -458,6 +556,292 @@ public sealed class ShiftZReportDto
     public int HoldCount { get; set; }
     public decimal SalesTotal { get; set; }
     public decimal ReturnsTotal { get; set; }
+    public decimal SafeDropsTotal { get; set; }
+    public int? TillId { get; set; }
+}
+
+public sealed class ClosedShiftListItemDto
+{
+    public int Id { get; set; }
+    public string ShiftNumber { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public int? BranchId { get; set; }
+    public int? TillId { get; set; }
+    public string? TillCode { get; set; }
+    public DateTime OpenedAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public decimal OpeningFloat { get; set; }
+    public decimal ClosingFloat { get; set; }
+    public decimal ExpectedCash { get; set; }
+    public decimal CashVariance { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
+public sealed class DailySalesSummaryDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public bool TaxEnabled { get; set; }
+    public int InvoiceCount { get; set; }
+    public int ReturnCount { get; set; }
+    public decimal SubTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public decimal SalesTotal { get; set; }
+    public decimal ReturnsTotal { get; set; }
+    public decimal NetSales { get; set; }
+    public List<TenderTotalDto> Tenders { get; set; } = [];
+    public List<DailySalesDayRowDto> Days { get; set; } = [];
+}
+
+public sealed class DailySalesDayRowDto
+{
+    public DateTime Date { get; set; }
+    public int InvoiceCount { get; set; }
+    public decimal SalesTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal ReturnsTotal { get; set; }
+    public decimal NetSales { get; set; }
+}
+
+public sealed class TenderTotalDto
+{
+    public string Method { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+}
+
+public sealed class SalesReturnsReportDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal TotalTax { get; set; }
+    public List<SalesReturnReportRowDto> Rows { get; set; } = [];
+}
+
+public sealed class SalesReturnReportRowDto
+{
+    public int Id { get; set; }
+    public string ReturnNumber { get; set; } = string.Empty;
+    public string? CreditNoteNumber { get; set; }
+    public DateTime ReturnDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? InvoiceNumber { get; set; }
+    public string? CustomerName { get; set; }
+    public decimal GrandTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public string ReasonCode { get; set; } = string.Empty;
+}
+
+public sealed class SalesDimReportDto
+{
+    public string Dimension { get; set; } = "product";
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public bool IncludeOem { get; set; }
+    public List<SalesDimRowDto> Rows { get; set; } = [];
+}
+
+public sealed class SalesDimRowDto
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public string? OemNumber { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Revenue { get; set; }
+    public decimal TaxAmount { get; set; }
+    public int InvoiceCount { get; set; }
+}
+
+public sealed class SalesStaffReportDto
+{
+    public string Dimension { get; set; } = "cashier";
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public List<SalesStaffRowDto> Rows { get; set; } = [];
+}
+
+public sealed class SalesStaffRowDto
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public int InvoiceCount { get; set; }
+    public decimal SalesTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal TenderCash { get; set; }
+    public decimal TenderOther { get; set; }
+}
+
+public sealed class ProfitDimReportDto
+{
+    public string Dimension { get; set; } = "category";
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public List<ProfitDimRowDto> Rows { get; set; } = [];
+}
+
+public sealed class ProfitDimRowDto
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public decimal Revenue { get; set; }
+    public decimal Cost { get; set; }
+    public decimal Profit { get; set; }
+    public decimal GrossMarginPercent { get; set; }
+}
+
+public sealed class StockMovementReportDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? WarehouseId { get; set; }
+    public string? MovementType { get; set; }
+    public List<StockMovementReportRowDto> Rows { get; set; } = [];
+}
+
+public sealed class StockMovementReportRowDto
+{
+    public int Id { get; set; }
+    public DateTime MovementDate { get; set; }
+    public string MovementType { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public string WarehouseName { get; set; } = string.Empty;
+    public decimal Quantity { get; set; }
+    public decimal UnitCost { get; set; }
+    public string? ReferenceType { get; set; }
+    public int? ReferenceId { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class PurchasingPipelineReportDto
+{
+    public List<OpenPoRowDto> OpenPurchaseOrders { get; set; } = [];
+    public List<PendingGrnRowDto> PendingGrns { get; set; } = [];
+}
+
+public sealed class OpenPoRowDto
+{
+    public int Id { get; set; }
+    public string OrderNumber { get; set; } = string.Empty;
+    public string SupplierName { get; set; } = string.Empty;
+    public DateTime OrderDate { get; set; }
+    public DateTime? ExpectedDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public decimal GrandTotal { get; set; }
+    public decimal QtyOrdered { get; set; }
+    public decimal QtyReceived { get; set; }
+    public string? WarehouseName { get; set; }
+    public int? BranchId { get; set; }
+}
+
+public sealed class PendingGrnRowDto
+{
+    public int Id { get; set; }
+    public string GrnNumber { get; set; } = string.Empty;
+    public string? PoNumber { get; set; }
+    public DateTime ReceiptDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string WarehouseName { get; set; } = string.Empty;
+    public int? BranchId { get; set; }
+    public decimal LineQty { get; set; }
+}
+
+public sealed class TaxPeriodSummaryDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public bool TaxEnabled { get; set; }
+    public bool IncludeHs { get; set; }
+    public decimal TaxableSales { get; set; }
+    public decimal OutputTax { get; set; }
+    public decimal ReturnTax { get; set; }
+    public decimal NetTax { get; set; }
+    public List<TaxRateBucketDto> ByRate { get; set; } = [];
+    public List<TaxHsRowDto> ByHsCode { get; set; } = [];
+}
+
+public sealed class TaxRateBucketDto
+{
+    public decimal TaxRate { get; set; }
+    public decimal TaxableAmount { get; set; }
+    public decimal TaxAmount { get; set; }
+}
+
+public sealed class TaxHsRowDto
+{
+    public string HsCode { get; set; } = string.Empty;
+    public decimal TaxableAmount { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+public sealed class FbrRegisterReportDto
+{
+    public DateTime? From { get; set; }
+    public DateTime? To { get; set; }
+    public List<FbrRegisterRowDto> Rows { get; set; } = [];
+}
+
+public sealed class FbrRegisterRowDto
+{
+    public int Id { get; set; }
+    public int SalesInvoiceId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? FbrInvoiceNumber { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime SubmittedAt { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public sealed class StockAgingReportDto
+{
+    public DateTime AsOfDate { get; set; }
+    public string SourceNote { get; set; } = string.Empty;
+    public List<StockAgingRowDto> Rows { get; set; } = [];
+}
+
+public sealed class StockAgingRowDto
+{
+    public int ProductId { get; set; }
+    public string Sku { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public string WarehouseName { get; set; } = string.Empty;
+    public string? BatchNumber { get; set; }
+    public DateTime AgeDate { get; set; }
+    public int AgeDays { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitCost { get; set; }
+    public decimal Value { get; set; }
+    public string Bucket { get; set; } = string.Empty;
+}
+
+public sealed class SkuMarginReportDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int? BranchId { get; set; }
+    public List<SkuMarginRowDto> Rows { get; set; } = [];
+}
+
+public sealed class SkuMarginRowDto
+{
+    public int ProductId { get; set; }
+    public string Sku { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public decimal QtySold { get; set; }
+    public decimal Revenue { get; set; }
+    public decimal Cost { get; set; }
+    public decimal Profit { get; set; }
+    public decimal GrossMarginPercent { get; set; }
 }
 
 public sealed class ShiftTenderTotalDto
@@ -470,11 +854,19 @@ public sealed class SalesReturnDto
 {
     public int Id { get; set; }
     public string ReturnNumber { get; set; } = string.Empty;
+    public string? CreditNoteNumber { get; set; }
     public int? SalesInvoiceId { get; set; }
     public string? InvoiceNumber { get; set; }
+    public int? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
     public string Status { get; set; } = string.Empty;
+    public int ReturnType { get; set; }
     public DateTime ReturnDate { get; set; }
     public decimal GrandTotal { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal AppliedAmount { get; set; }
+    public bool StockAffected { get; set; } = true;
+    public string? Notes { get; set; }
     public string ReasonCode { get; set; } = string.Empty;
 }
 
@@ -486,6 +878,7 @@ public sealed class SalesReturnCreateDto
     public string? Notes { get; set; }
     public int WarehouseId { get; set; } = 1;
     public string ReasonCode { get; set; } = "CUSTOMER";
+    public bool StockAffected { get; set; } = true;
     public List<SalesReturnLineDto> Lines { get; set; } = [];
 }
 
@@ -494,6 +887,7 @@ public sealed class SalesReturnLineDto
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal TaxRate { get; set; }
 }
 
 public sealed class PurchaseReturnCreateDto
@@ -503,6 +897,7 @@ public sealed class PurchaseReturnCreateDto
     public int WarehouseId { get; set; } = 1;
     public string ReasonCode { get; set; } = "";
     public string? Notes { get; set; }
+    public bool StockAffected { get; set; } = true;
     public List<PurchaseReturnLineDto> Lines { get; set; } = [];
 }
 
@@ -511,6 +906,7 @@ public sealed class PurchaseReturnLineDto
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal TaxRate { get; set; }
 }
 
 public sealed class TransferListDto
@@ -521,6 +917,8 @@ public sealed class TransferListDto
     public string? ToWarehouseName { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime TransferDate { get; set; }
+    public bool IsInterBranch { get; set; }
+    public bool AllLinesPicked { get; set; }
 }
 
 public sealed class TransferDetailDto
@@ -532,6 +930,8 @@ public sealed class TransferDetailDto
     public string Status { get; set; } = string.Empty;
     public DateTime TransferDate { get; set; }
     public string? Notes { get; set; }
+    public bool IsInterBranch { get; set; }
+    public bool AllLinesPicked { get; set; }
     public List<TransferLineDto> Lines { get; set; } = [];
 }
 
@@ -548,6 +948,23 @@ public sealed class TransferLineDto
     public int ProductId { get; set; }
     public string? ProductName { get; set; }
     public decimal Quantity { get; set; }
+    public decimal ShippedUnitCost { get; set; }
+    public int? FromLocationId { get; set; }
+    public int? ToLocationId { get; set; }
+    public bool IsPicked { get; set; }
+    public int? LineId { get; set; }
+}
+
+public sealed class ConfirmTransferPickRequest
+{
+    public List<ConfirmTransferPickLineRequest>? Lines { get; set; }
+}
+
+public sealed class ConfirmTransferPickLineRequest
+{
+    public int LineId { get; set; }
+    public int? FromLocationId { get; set; }
+    public int? ToLocationId { get; set; }
 }
 
 public sealed class DashboardDto
@@ -560,6 +977,72 @@ public sealed class DashboardDto
     public int PendingPurchaseOrders { get; set; }
     public int PendingTransfers { get; set; }
     public int UnreadNotifications { get; set; }
+    public int? BranchId { get; set; }
+    public decimal TodayCashVariance { get; set; }
+    public int OpenShifts { get; set; }
+    public List<MonthlySalesPointDto> MonthlySales { get; set; } = [];
+    public List<InventoryTrendPointDto> InventoryTrend { get; set; } = [];
+    public List<TopProductPointDto> TopProducts { get; set; } = [];
+    public List<CategoryDistributionPointDto> CategoryDistribution { get; set; } = [];
+}
+
+public sealed class MonthlySalesPointDto
+{
+    public string Month { get; set; } = string.Empty;
+    public decimal Sales { get; set; }
+    public decimal Purchases { get; set; }
+}
+
+public sealed class InventoryTrendPointDto
+{
+    public DateTime Date { get; set; }
+    public decimal Value { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+public sealed class TopProductPointDto
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public decimal QuantitySold { get; set; }
+    public decimal Revenue { get; set; }
+}
+
+public sealed class CategoryDistributionPointDto
+{
+    public int CategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
+    public decimal Value { get; set; }
+    public decimal Percentage { get; set; }
+}
+
+public sealed class DashboardTimelineDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public string Grain { get; set; } = "day";
+    public string GroupBy { get; set; } = "category";
+    public int? BranchId { get; set; }
+    public List<string> SeriesKeys { get; set; } = [];
+    public List<DashboardTimelineFrameDto> Frames { get; set; } = [];
+    public List<string> Months { get; set; } = [];
+    public List<DashboardBar3DPointDto> CategoryMonthSales { get; set; } = [];
+}
+
+public sealed class DashboardTimelineFrameDto
+{
+    public string Label { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public List<decimal> Values { get; set; } = [];
+    public decimal Total { get; set; }
+}
+
+public sealed class DashboardBar3DPointDto
+{
+    public string Category { get; set; } = string.Empty;
+    public string Month { get; set; } = string.Empty;
+    public decimal Sales { get; set; }
 }
 
 public sealed class AnalyticsDto
@@ -569,6 +1052,31 @@ public sealed class AnalyticsDto
     public List<AbcAnalysisItemDto> AbcAnalysis { get; set; } = [];
     public decimal TotalInventoryValue { get; set; }
     public decimal TurnoverRatio { get; set; }
+    public List<DeadStockItemDto> DeadStock { get; set; } = [];
+    public List<FastMoverItemDto> FastMovers { get; set; } = [];
+    public decimal GrossMarginAmount { get; set; }
+    public decimal GrossMarginPercent { get; set; }
+    public int? BranchId { get; set; }
+}
+
+public sealed class DeadStockItemDto
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public decimal QuantityOnHand { get; set; }
+    public decimal StockValue { get; set; }
+    public int DaysSinceLastSale { get; set; }
+}
+
+public sealed class FastMoverItemDto
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public decimal QuantitySold { get; set; }
+    public decimal Revenue { get; set; }
+    public decimal Profit { get; set; }
 }
 
 public sealed class TopProductAnalyticsDto
@@ -619,6 +1127,8 @@ public sealed class UserDto
     public bool IsActive { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public List<string> Roles { get; set; } = [];
+    public List<int> BranchIds { get; set; } = [];
+    public int? DefaultBranchId { get; set; }
 }
 
 public sealed class UserCreateDto
@@ -629,6 +1139,8 @@ public sealed class UserCreateDto
     public string? Email { get; set; }
     public bool IsActive { get; set; } = true;
     public List<int> RoleIds { get; set; } = [];
+    public List<int> BranchIds { get; set; } = [];
+    public int? DefaultBranchId { get; set; }
 }
 
 public sealed class RoleDto
@@ -649,6 +1161,31 @@ public sealed class AuditLogDto
     public string? OldValues { get; set; }
     public string? NewValues { get; set; }
     public DateTime Timestamp { get; set; }
+}
+
+public sealed class ApprovalRequestWebDto
+{
+    public int Id { get; set; }
+    public string DocumentType { get; set; } = "";
+    public int DocumentId { get; set; }
+    public string? DocumentNumber { get; set; }
+    public decimal Amount { get; set; }
+    public string Status { get; set; } = "";
+    public string RequestedByUserName { get; set; } = "";
+    public DateTime RequestedAt { get; set; }
+    public string? DecidedByUserName { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public string? DecisionNotes { get; set; }
+}
+
+public sealed class ApprovalPolicyWebDto
+{
+    public int Id { get; set; }
+    public string DocumentType { get; set; } = "";
+    public decimal MinAmount { get; set; }
+    public string RequiredPermission { get; set; } = "";
+    public bool IsActive { get; set; }
+    public string? Notes { get; set; }
 }
 
 public sealed class CompanySettingsDto
@@ -677,6 +1214,27 @@ public sealed class CompanySettingsDto
     public decimal ThreeWayQtyTolerancePercent { get; set; }
     public decimal ThreeWayPriceTolerancePercent { get; set; }
     public bool AllowNegativeStock { get; set; }
+    public string DefaultValuationMethod { get; set; } = "Average";
+    public DateTime? OpeningBalanceDate { get; set; }
+    public DateTime? SetupCompletedAt { get; set; }
+    public string VerticalKey { get; set; } = "auto-parts";
+    public string? LogoUrl { get; set; }
+}
+
+public sealed class OnboardingStatusDto
+{
+    public bool IsComplete { get; set; }
+    public DateTime? SetupCompletedAt { get; set; }
+    public List<OnboardingStepDto> Steps { get; set; } = [];
+}
+
+public sealed class OnboardingStepDto
+{
+    public string Key { get; set; } = "";
+    public string Title { get; set; } = "";
+    public bool Done { get; set; }
+    public string? Href { get; set; }
+    public string? Hint { get; set; }
 }
 
 public sealed class BackupHistoryDto
@@ -693,6 +1251,9 @@ public sealed class BackupHistoryDto
 public sealed class InventoryValueResponse
 {
     public decimal Value { get; set; }
+    public string Method { get; set; } = "Average";
+    public int? WarehouseId { get; set; }
+    public int? BranchId { get; set; }
 }
 
 public sealed class UnreadCountResponse

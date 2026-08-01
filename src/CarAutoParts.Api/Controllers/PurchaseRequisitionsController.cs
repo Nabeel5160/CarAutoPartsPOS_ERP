@@ -1,3 +1,4 @@
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Constants;
 using CarAutoParts.Application.DTOs.Purchases;
 using CarAutoParts.Application.Services;
@@ -17,7 +18,8 @@ public class PurchaseRequisitionsController : ApiControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.PurchasesRequisition)]
-    public async Task<IActionResult> GetAll(CancellationToken ct) => Ok(await _service.GetAllAsync(ct));
+    public async Task<IActionResult> GetAll([FromQuery] QuerySpec query, CancellationToken ct) =>
+        Ok(await _service.GetAllAsync(query, ct));
 
     [HttpGet("{id:int}")]
     [Authorize(Policy = Permissions.PurchasesRequisition)]

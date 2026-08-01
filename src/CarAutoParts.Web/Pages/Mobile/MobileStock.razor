@@ -1,0 +1,132 @@
+@page "/m/stock"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject PermissionService Perms
+@inject WebAppConfigService AppConfig
+
+<div class="cap-mobile">
+    <PageHeader Title="Stock check" Subtitle="Read-only lookup">
+        <a class="btn btn-sm btn-outline-light" href="m">← Mobile</a>
+    </PageHeader>
+
+    @if (!_allowed)
+    {
+        <div class="alert alert-warning">Inventory access required.</div>
+    }
+    else
+    {
+        <div class="cap-card mb-3">
+            <label class="form-label" for="m-stock-q">Search SKU or name</label>
+            <div class="cap-m-search">
+                <input id="m-stock-q" class="form-control form-control-lg" placeholder="Type SKU or product…"
+                       @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey" />
+                <button type="button" class="btn btn-cap btn-lg" disabled="@_busy" @onclick="SearchAsync">Search</button>
+            </div>
+        </div>
+
+        <LoadingState Busy="@_busy" Error="@_error" />
+
+        @if (_items is { Items.Count: > 0 })
+        {
+            <div class="cap-m-cards mb-3">
+                @foreach (var i in _items.Items)
+                {
+                    <article class="cap-m-card">
+                        <div class="cap-m-card-head">
+                            <strong>@i.ProductName</strong>
+                            <span class="mono text-secondary">@i.Sku</span>
+                        </div>
+                        <div class="cap-m-card-meta">@i.WarehouseName</div>
+                        <div class="cap-m-kpis">
+                            <div><span class="label">On hand</span><span class="value">@i.QuantityOnHand.ToString("N0")</span></div>
+                            <div><span class="label">Available</span><span class="value">@i.AvailableQuantity.ToString("N0")</span></div>
+                        </div>
+                    </article>
+                }
+            </div>
+            @if (_items.TotalCount > 0)
+            {
+                <Pager Page="_page" PageSize="_pageSize" TotalCount="_items.TotalCount" Disabled="_busy"
+                       PageChanged="OnPageChanged" PageSizeChanged="OnPageSizeChanged" />
+            }
+        }
+        else if (!_busy && _searched)
+        {
+            <div class="cap-card mb-3"><p class="mb-0 text-secondary">No matches.</p></div>
+        }
+
+        <div class="cap-card">
+            <h5 class="mb-2">Low stock</h5>
+            @if (_low is null)
+            {
+                <p class="mb-0 text-secondary">Loading alerts…</p>
+            }
+            else if (_low.Count == 0)
+            {
+                <p class="mb-0 text-secondary">No low-stock alerts.</p>
+            }
+            else
+            {
+                <ul class="cap-m-alert-list mb-0">
+                    @foreach (var a in _low.Take(40))
+                    {
+                        <li>
+                            <span class="cap-m-alert-name">@a.ProductName</span>
+                            <span class="mono text-secondary">@a.Sku</span>
+                            <span class="cap-m-alert-qty">@a.QuantityOnHand.ToString("N0") / @a.MinimumStock</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _allowed;
+    private bool _busy;
+    private bool _searched;
+    private string? _error;
+    private string _search = "";
+    private int _page = 1;
+    private int _pageSize = 10;
+    private PagedResult<InventoryItemDto>? _items;
+    private List<LowStockAlertDto>? _low;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allowed = await Perms.HasAsync(Permissions.InventoryView)
+                   && AppConfig.ModuleEnabled(ModuleKeys.InvStock);
+        if (!_allowed) return;
+
+        var low = await Api.GetLowStockAsync();
+        _low = low.Data ?? [];
+        if (low.Error is not null) _error = low.Error;
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (!_allowed) return;
+        _page = 1;
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
+    {
+        _busy = true;
+        _error = null;
+        _searched = true;
+        var (data, error, _) = await Api.GetInventoryAsync(_page, _search.Trim(), _pageSize);
+        _items = data;
+        _error = error;
+        _busy = false;
+    }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadPageAsync(); }
+    private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadPageAsync(); }
+}

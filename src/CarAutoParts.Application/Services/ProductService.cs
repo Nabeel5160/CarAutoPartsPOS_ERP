@@ -1,11 +1,13 @@
 using AutoMapper;
 using CarAutoParts.Application.Common;
+using CarAutoParts.Application.DTOs.Pos;
 using CarAutoParts.Application.DTOs.Products;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Domain.Entities;
 using ClosedXML.Excel;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
 
 namespace CarAutoParts.Application.Services;
 
@@ -15,6 +17,7 @@ public class ProductService : IProductService
     private readonly IRepository<Product> _products;
     private readonly IRepository<Category> _categories;
     private readonly IRepository<Brand> _brands;
+    private readonly IRepository<ProductSupersession> _supersessions;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly IValidator<ProductCreateDto> _validator;
@@ -23,6 +26,7 @@ public class ProductService : IProductService
         IRepository<Product> products,
         IRepository<Category> categories,
         IRepository<Brand> brands,
+        IRepository<ProductSupersession> supersessions,
         IUnitOfWork unitOfWork,
         IMapper mapper,
         IValidator<ProductCreateDto> validator)
@@ -30,6 +34,7 @@ public class ProductService : IProductService
         _products = products;
         _categories = categories;
         _brands = brands;
+        _supersessions = supersessions;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _validator = validator;
@@ -62,6 +67,20 @@ public class ProductService : IProductService
         if (query.LowStockOnly)
             q = q.Where(p => p.InventoryItems.Sum(i => i.QuantityOnHand) <= p.MinimumStock);
 
+        if (!string.IsNullOrWhiteSpace(query.FitmentMake) ||
+            !string.IsNullOrWhiteSpace(query.FitmentModel) ||
+            query.FitmentYear is >= 1980 and <= 2100)
+        {
+            var make = string.IsNullOrWhiteSpace(query.FitmentMake) ? null : query.FitmentMake.Trim();
+            var model = string.IsNullOrWhiteSpace(query.FitmentModel) ? null : query.FitmentModel.Trim();
+            var year = query.FitmentYear is >= 1980 and <= 2100 ? query.FitmentYear : null;
+            q = q.Where(p => p.VehicleCompatibilities.Any(v =>
+                !v.IsDeleted &&
+                (make == null || v.Make == make) &&
+                (model == null || v.Model == model) &&
+                (year == null || ((v.YearFrom == null || v.YearFrom <= year) && (v.YearTo == null || v.YearTo >= year)))));
+        }
+
         q = query.SortBy?.ToLowerInvariant() switch
         {
             "name" => query.SortDescending ? q.OrderByDescending(p => p.Name) : q.OrderBy(p => p.Name),
@@ -90,7 +109,23 @@ public class ProductService : IProductService
             .Include(p => p.VehicleCompatibilities)
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, ct);
 
-        return product is null ? null : _mapper.Map<ProductDetailDto>(product);
+        if (product is null) return null;
+
+        var dto = _mapper.Map<ProductDetailDto>(product);
+        var links = await _supersessions.Query()
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && (x.OldProductId == id || x.NewProductId == id))
+            .Select(x => new { x.OldProductId, x.NewProductId, OldSku = x.OldProduct.Sku, NewSku = x.NewProduct.Sku })
+            .ToListAsync(ct);
+
+        var supersedes = string.Join(", ", links.Where(l => l.NewProductId == id).Select(l => l.OldSku).Distinct());
+        var supersededBy = string.Join(", ", links.Where(l => l.OldProductId == id).Select(l => l.NewSku).Distinct());
+
+        return dto with
+        {
+            SupersedesSkus = string.IsNullOrWhiteSpace(supersedes) ? null : supersedes,
+            SupersededBySku = string.IsNullOrWhiteSpace(supersededBy) ? null : supersededBy
+        };
     }
 
     /// <inheritdoc />
@@ -264,6 +299,226 @@ public class ProductService : IProductService
 
         await _unitOfWork.SaveChangesAsync(ct);
         return Result<int>.Success(imported);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<OemFitmentImportResultDto>> ImportOemFitmentCsvAsync(Stream stream, CancellationToken ct = default)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var headerLine = await reader.ReadLineAsync(ct);
+        if (string.IsNullOrWhiteSpace(headerLine))
+            return Result<OemFitmentImportResultDto>.Failure("CSV is empty.");
+
+        var headers = ParseCsvLine(headerLine);
+        var col = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < headers.Count; i++)
+            col[headers[i].Trim()] = i;
+
+        if (!col.ContainsKey("Sku"))
+            return Result<OemFitmentImportResultDto>.Failure("CSV must include a Sku column.");
+
+        int processed = 0, oemUpdated = 0, fitmentAdded = 0, skipped = 0;
+        var errors = new StringBuilder();
+        errors.AppendLine("Row,Sku,Error");
+
+        // Cache products by SKU for ~1k row imports.
+        var products = await _products.Query()
+            .Include(p => p.VehicleCompatibilities)
+            .Where(p => !p.IsDeleted)
+            .ToListAsync(ct);
+        var bySku = products.ToDictionary(p => p.Sku, p => p, StringComparer.OrdinalIgnoreCase);
+
+        var rowNum = 1;
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            rowNum++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            processed++;
+            var cells = ParseCsvLine(line);
+            string Cell(string name) =>
+                col.TryGetValue(name, out var ix) && ix < cells.Count ? cells[ix].Trim() : string.Empty;
+
+            var sku = Cell("Sku");
+            if (string.IsNullOrWhiteSpace(sku))
+            {
+                errors.AppendLine($"{rowNum},,\"Sku is required\"");
+                continue;
+            }
+
+            if (!bySku.TryGetValue(sku, out var product))
+            {
+                errors.AppendLine($"{rowNum},{EscapeCsv(sku)},Product not found");
+                continue;
+            }
+
+            try
+            {
+                var oem = Cell("OemNumber");
+                var part = Cell("PartNumber");
+                var touchedOem = false;
+                if (!string.IsNullOrWhiteSpace(oem) && !string.Equals(product.OemNumber, oem, StringComparison.Ordinal))
+                {
+                    product.OemNumber = oem;
+                    touchedOem = true;
+                }
+                if (!string.IsNullOrWhiteSpace(part) && !string.Equals(product.PartNumber, part, StringComparison.Ordinal))
+                {
+                    product.PartNumber = part;
+                    touchedOem = true;
+                }
+                if (touchedOem)
+                {
+                    product.UpdatedAt = DateTime.UtcNow;
+                    oemUpdated++;
+                }
+
+                var make = Cell("Make");
+                var model = Cell("Model");
+                var yearFromRaw = Cell("YearFrom");
+                var yearToRaw = Cell("YearTo");
+
+                if (!string.IsNullOrWhiteSpace(make) || !string.IsNullOrWhiteSpace(model))
+                {
+                    if (string.IsNullOrWhiteSpace(make) || string.IsNullOrWhiteSpace(model))
+                    {
+                        errors.AppendLine($"{rowNum},{EscapeCsv(sku)},Make and Model are both required for fitment");
+                        continue;
+                    }
+
+                    int? yearFrom = null, yearTo = null;
+                    if (!string.IsNullOrWhiteSpace(yearFromRaw))
+                    {
+                        if (!int.TryParse(yearFromRaw, out var yf) || yf is < 1900 or > 2100)
+                        {
+                            errors.AppendLine($"{rowNum},{EscapeCsv(sku)},Invalid YearFrom");
+                            continue;
+                        }
+                        yearFrom = yf;
+                    }
+                    if (!string.IsNullOrWhiteSpace(yearToRaw))
+                    {
+                        if (!int.TryParse(yearToRaw, out var yt) || yt is < 1900 or > 2100)
+                        {
+                            errors.AppendLine($"{rowNum},{EscapeCsv(sku)},Invalid YearTo");
+                            continue;
+                        }
+                        yearTo = yt;
+                    }
+                    if (yearFrom is not null && yearTo is not null && yearFrom > yearTo)
+                    {
+                        errors.AppendLine($"{rowNum},{EscapeCsv(sku)},YearFrom cannot exceed YearTo");
+                        continue;
+                    }
+
+                    var exists = product.VehicleCompatibilities.Any(v =>
+                        !v.IsDeleted &&
+                        string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase) &&
+                        v.YearFrom == yearFrom &&
+                        v.YearTo == yearTo);
+                    if (exists)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    product.VehicleCompatibilities.Add(new ProductVehicleCompatibility
+                    {
+                        Make = make,
+                        Model = model,
+                        YearFrom = yearFrom,
+                        YearTo = yearTo,
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = "csv-import"
+                    });
+                    product.UpdatedAt = DateTime.UtcNow;
+                    fitmentAdded++;
+                }
+                else if (!touchedOem)
+                {
+                    skipped++;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.AppendLine($"{rowNum},{EscapeCsv(sku)},{EscapeCsv(ex.Message)}");
+            }
+        }
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        var errorCount = errors.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Length - 1;
+        return Result<OemFitmentImportResultDto>.Success(new OemFitmentImportResultDto(
+            processed, oemUpdated, fitmentAdded, skipped, errorCount,
+            errorCount > 0 ? errors.ToString() : null));
+    }
+
+    /// <inheritdoc />
+    public async Task<FitmentOptionsDto> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default)
+    {
+        var compat = _products.Query()
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.IsActive)
+            .SelectMany(p => p.VehicleCompatibilities.Where(v => !v.IsDeleted));
+
+        var makes = await compat
+            .Select(v => v.Make)
+            .Distinct()
+            .OrderBy(m => m)
+            .Take(500)
+            .ToListAsync(ct);
+
+        IReadOnlyList<string> models = Array.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(make))
+        {
+            var m = make.Trim();
+            models = await compat
+                .Where(v => v.Make == m)
+                .Select(v => v.Model)
+                .Distinct()
+                .OrderBy(x => x)
+                .Take(500)
+                .ToListAsync(ct);
+        }
+
+        return new FitmentOptionsDto(makes, models);
+    }
+
+    private static List<string> ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        var sb = new StringBuilder();
+        var inQuotes = false;
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    sb.Append('"');
+                    i++;
+                }
+                else inQuotes = !inQuotes;
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                result.Add(sb.ToString());
+                sb.Clear();
+            }
+            else sb.Append(c);
+        }
+        result.Add(sb.ToString());
+        return result;
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.Contains('"') || value.Contains(',') || value.Contains('\n'))
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        return value;
     }
 
     /// <inheritdoc />

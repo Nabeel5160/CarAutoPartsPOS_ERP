@@ -18,7 +18,11 @@ public class MappingProfile : Profile
     public MappingProfile()
     {
         CreateMap<AppUser, UserDto>()
-            .ForCtorParam(nameof(UserDto.Roles), o => o.MapFrom(s => s.UserRoles.Select(ur => ur.Role.Name).ToList()));
+            .ForCtorParam(nameof(UserDto.Roles), o => o.MapFrom(s => s.UserRoles.Select(ur => ur.Role.Name).ToList()))
+            .ForCtorParam(nameof(UserDto.BranchIds), o => o.MapFrom(s =>
+                s.UserBranches.Where(ub => !ub.IsDeleted).Select(ub => ub.BranchId).ToList()))
+            .ForCtorParam(nameof(UserDto.DefaultBranchId), o => o.MapFrom(s =>
+                s.UserBranches.Where(ub => !ub.IsDeleted && ub.IsDefault).Select(ub => (int?)ub.BranchId).FirstOrDefault()));
 
         CreateMap<Role, RoleDto>()
             .ForCtorParam(nameof(RoleDto.PermissionCodes), o => o.MapFrom(s => s.RolePermissions.Select(rp => rp.Permission.Code).ToList()));
@@ -38,7 +42,9 @@ public class MappingProfile : Profile
             .ForCtorParam(nameof(ProductDetailDto.CategoryName), o => o.MapFrom(s => s.Category.Name))
             .ForCtorParam(nameof(ProductDetailDto.BrandName), o => o.MapFrom(s => s.Brand.Name))
             .ForCtorParam(nameof(ProductDetailDto.ImagePaths), o => o.MapFrom(s => s.Images.OrderBy(i => i.SortOrder).Select(i => i.FilePath).ToList()))
-            .ForCtorParam(nameof(ProductDetailDto.VehicleCompatibilities), o => o.MapFrom(s => s.VehicleCompatibilities));
+            .ForCtorParam(nameof(ProductDetailDto.VehicleCompatibilities), o => o.MapFrom(s => s.VehicleCompatibilities))
+            .ForCtorParam(nameof(ProductDetailDto.SupersedesSkus), o => o.MapFrom(_ => (string?)null))
+            .ForCtorParam(nameof(ProductDetailDto.SupersededBySku), o => o.MapFrom(_ => (string?)null));
 
         CreateMap<ProductVehicleCompatibility, VehicleCompatibilityDto>();
         CreateMap<VehicleCompatibilityDto, ProductVehicleCompatibility>()
@@ -137,26 +143,42 @@ public class MappingProfile : Profile
 
         CreateMap<InventoryTransfer, TransferListDto>()
             .ForCtorParam(nameof(TransferListDto.FromWarehouseName), o => o.MapFrom(s => s.FromWarehouse.Name))
-            .ForCtorParam(nameof(TransferListDto.ToWarehouseName), o => o.MapFrom(s => s.ToWarehouse.Name));
+            .ForCtorParam(nameof(TransferListDto.ToWarehouseName), o => o.MapFrom(s => s.ToWarehouse.Name))
+            .ForCtorParam(nameof(TransferListDto.IsInterBranch), o => o.MapFrom(s =>
+                s.FromWarehouse.BranchId != null && s.ToWarehouse.BranchId != null
+                && s.FromWarehouse.BranchId != s.ToWarehouse.BranchId));
 
         CreateMap<InventoryTransfer, TransferDetailDto>()
             .ForCtorParam(nameof(TransferDetailDto.FromWarehouseName), o => o.MapFrom(s => s.FromWarehouse.Name))
             .ForCtorParam(nameof(TransferDetailDto.ToWarehouseName), o => o.MapFrom(s => s.ToWarehouse.Name))
+            .ForCtorParam(nameof(TransferDetailDto.IsInterBranch), o => o.MapFrom(s =>
+                s.FromWarehouse.BranchId != null && s.ToWarehouse.BranchId != null
+                && s.FromWarehouse.BranchId != s.ToWarehouse.BranchId))
             .ForCtorParam(nameof(TransferDetailDto.Lines), o => o.MapFrom(s => s.Lines));
 
         CreateMap<InventoryTransferLine, TransferLineDto>()
             .ForCtorParam(nameof(TransferLineDto.ProductName), o => o.MapFrom(s => s.Product.Name));
 
-        CreateMap<CompanySettings, CompanySettingsDto>();
+        CreateMap<CompanySettings, CompanySettingsDto>()
+            .ForCtorParam(nameof(CompanySettingsDto.DefaultValuationMethod),
+                o => o.MapFrom(s => s.DefaultValuationMethod.ToString()));
         CreateMap<CompanySettingsDto, CompanySettings>()
             .ForMember(d => d.FbrBearerToken, o => o.Ignore())
             .ForMember(d => d.DatabaseConnectionString, o => o.Ignore())
+            .ForMember(d => d.DefaultValuationMethod, o => o.Ignore())
             .ForMember(d => d.CreatedAt, o => o.Ignore())
             .ForMember(d => d.UpdatedAt, o => o.Ignore())
             .ForMember(d => d.CreatedBy, o => o.Ignore())
             .ForMember(d => d.UpdatedBy, o => o.Ignore())
             .ForMember(d => d.IsDeleted, o => o.Ignore())
-            .ForMember(d => d.RowVersion, o => o.Ignore());
+            .ForMember(d => d.RowVersion, o => o.Ignore())
+            .AfterMap((src, dest) =>
+            {
+                dest.DefaultValuationMethod =
+                    Enum.TryParse<Domain.Enums.ValuationMethod>(src.DefaultValuationMethod, true, out var vm)
+                        ? vm
+                        : Domain.Enums.ValuationMethod.Average;
+            });
 
         CreateMap<BackupHistory, BackupHistoryDto>()
             .ForCtorParam(nameof(BackupHistoryDto.BackupType), o => o.MapFrom(s => s.BackupType.ToString()));

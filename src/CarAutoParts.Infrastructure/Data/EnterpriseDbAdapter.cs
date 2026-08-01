@@ -38,9 +38,11 @@ public sealed class EnterpriseDbAdapter : IEnterpriseDb
     public DbSet<ProductKitComponent> ProductKitComponents => _db.ProductKitComponents;
     public DbSet<ProductSupersession> ProductSupersessions => _db.ProductSupersessions;
     public DbSet<InventoryItem> InventoryItems => _db.InventoryItems;
+    public DbSet<InventoryLocationBalance> InventoryLocationBalances => _db.InventoryLocationBalances;
     public DbSet<StockMovement> StockMovements => _db.StockMovements;
     public DbSet<Product> Products => _db.Products;
     public DbSet<Warehouse> Warehouses => _db.Warehouses;
+    public DbSet<WarehouseLocation> WarehouseLocations => _db.WarehouseLocations;
     public DbSet<Customer> Customers => _db.Customers;
     public DbSet<Supplier> Suppliers => _db.Suppliers;
     public DbSet<NumberSequence> NumberSequences => _db.NumberSequences;
@@ -53,6 +55,14 @@ public sealed class EnterpriseDbAdapter : IEnterpriseDb
     public DbSet<Payment> Payments => _db.Payments;
     public DbSet<SupplierPayment> SupplierPayments => _db.SupplierPayments;
     public DbSet<FbrSubmission> FbrSubmissions => _db.FbrSubmissions;
+    public DbSet<OpeningBalanceBatch> OpeningBalanceBatches => _db.OpeningBalanceBatches;
+    public DbSet<OpeningBalanceLine> OpeningBalanceLines => _db.OpeningBalanceLines;
+    public DbSet<BankStatement> BankStatements => _db.BankStatements;
+    public DbSet<BankStatementLine> BankStatementLines => _db.BankStatementLines;
+    public DbSet<SalesReturn> SalesReturns => _db.SalesReturns;
+    public DbSet<PurchaseReturn> PurchaseReturns => _db.PurchaseReturns;
+    public DbSet<CreditNoteApplication> CreditNoteApplications => _db.CreditNoteApplications;
+    public DbSet<PurchaseCreditNoteApplication> PurchaseCreditNoteApplications => _db.PurchaseCreditNoteApplications;
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

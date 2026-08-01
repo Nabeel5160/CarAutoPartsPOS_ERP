@@ -1,16 +1,31 @@
 @page "/financial-reports"
 @attribute [Authorize]
 @inject CapApiService Api
+@inject AuthApiService Auth
 @inject IJSRuntime Js
 @inject IToastService Toast
 
 <PageHeader Title="Financial reports" Subtitle="Trial balance, P&amp;L, balance sheet" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
-<div class="cap-card mb-3 d-flex flex-wrap gap-2">
-    <button class="btn btn-cap" @onclick="LoadTbAsync">Trial balance</button>
-    <button class="btn btn-outline-light" @onclick="LoadPlAsync">Profit &amp; loss</button>
-    <button class="btn btn-outline-light" @onclick="LoadBsAsync">Balance sheet</button>
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Branch (TB / P&amp;L)</label>
+            <select class="form-select" @bind="_branchId">
+                <option value="">All cost centers</option>
+                @foreach (var b in _branches)
+                {
+                    <option value="@b">Branch @b</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-9 d-flex flex-wrap gap-2">
+            <button class="btn btn-cap" @onclick="LoadTbAsync">Trial balance</button>
+            <button class="btn btn-outline-light" @onclick="LoadPlAsync">Profit &amp; loss</button>
+            <button class="btn btn-outline-light" @onclick="LoadBsAsync">Balance sheet</button>
+        </div>
+    </div>
 </div>
 
 @if (_tb is not null)
@@ -35,6 +50,9 @@
 
 @if (_pl is not null)
 {
+    <div class="cap-card mb-3">
+        <CapChart Title="P&amp;L amounts" Spec="@_plChartSpec" Height="260" />
+    </div>
     <div class="cap-card mb-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0">P&amp;L @_pl.FromDate.ToString("yyyy-MM-dd") – @_pl.ToDate.ToString("yyyy-MM-dd")</h5>
@@ -77,13 +95,28 @@
     private TrialBalanceReportDto? _tb;
     private ProfitAndLossReportDto? _pl;
     private BalanceSheetReportDto? _bs;
+    private CapChartSpec? _plChartSpec;
+    private List<int> _branches = [];
+    private string _branchId = "";
     private bool _busy;
     private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var me = await Auth.MeAsync();
+        if (me.Data?.AllowedBranchIds is { Count: > 0 } ids)
+            _branches = ids;
+        else if (me.Data?.BranchId is int b)
+            _branches = [b];
+    }
+
+    private int? SelectedBranch => int.TryParse(_branchId, out var b) ? b : null;
 
     private async Task LoadTbAsync()
     {
         _busy = true; _error = null;
-        var (data, error, _) = await Api.GetTrialBalanceAsync();
+        _plChartSpec = null;
+        var (data, error, _) = await Api.GetTrialBalanceAsync(branchId: SelectedBranch);
         _tb = data; _error = error; _busy = false;
     }
 
@@ -92,15 +125,34 @@
         _busy = true; _error = null;
         var to = DateTime.Today;
         var from = to.AddMonths(-1);
-        var (data, error, _) = await Api.GetProfitLossAsync(from, to);
-        _pl = data; _error = error; _busy = false;
+        var (data, error, _) = await Api.GetProfitLossAsync(from, to, SelectedBranch);
+        _pl = data; _error = error;
+        BuildPlChart();
+        _busy = false;
     }
 
     private async Task LoadBsAsync()
     {
         _busy = true; _error = null;
+        _plChartSpec = null;
         var (data, error, _) = await Api.GetBalanceSheetAsync();
         _bs = data; _error = error; _busy = false;
+    }
+
+    private void BuildPlChart()
+    {
+        _plChartSpec = null;
+        if (_pl is null) return;
+        var rows = _pl.Lines
+            .Where(l => Math.Abs(l.Amount) > 0)
+            .OrderByDescending(l => Math.Abs(l.Amount))
+            .Take(12)
+            .ToList();
+        if (rows.Count == 0) return;
+        _plChartSpec = CapChartFactory.HorizontalBar(
+            rows.Select(r => r.Name.Length > 28 ? r.Name[..27] + "…" : r.Name),
+            "Amount",
+            rows.Select(r => r.Amount));
     }
 
     private async Task ExportTbCsvAsync()

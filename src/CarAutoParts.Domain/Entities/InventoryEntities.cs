@@ -15,6 +15,20 @@ public class InventoryItem : BaseEntity
     public decimal AverageCost { get; set; }
     public ICollection<StockMovement> Movements { get; set; } = new List<StockMovement>();
     public ICollection<StockBatch> Batches { get; set; } = new List<StockBatch>();
+    public ICollection<InventoryLocationBalance> LocationBalances { get; set; } = new List<InventoryLocationBalance>();
+}
+
+/// <summary>
+/// Bin-level quantity dimension. Warehouse rollup remains on <see cref="InventoryItem"/> for ATP.
+/// Location balances should stay in sync with warehouse on-hand for putaway/pick.
+/// </summary>
+public class InventoryLocationBalance : BaseEntity
+{
+    public int InventoryItemId { get; set; }
+    public InventoryItem InventoryItem { get; set; } = null!;
+    public int WarehouseLocationId { get; set; }
+    public WarehouseLocation WarehouseLocation { get; set; } = null!;
+    public decimal QuantityOnHand { get; set; }
 }
 
 public class StockMovement : BaseEntity

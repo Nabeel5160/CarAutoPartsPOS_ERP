@@ -1,0 +1,49 @@
+@page "/m"
+@attribute [Authorize]
+@inject PermissionService Perms
+@inject WebAppConfigService AppConfig
+
+<div class="cap-mobile">
+    <PageHeader Title="Mobile" Subtitle="Stock check & approvals on phone" />
+
+    <div class="cap-m-hub">
+        @if (_canStock)
+        {
+            <a class="cap-m-tile" href="m/stock">
+                <span class="cap-m-tile-ico" aria-hidden="true">▤</span>
+                <span class="cap-m-tile-title">Stock check</span>
+                <span class="cap-m-tile-sub">Search SKU / name · low stock</span>
+            </a>
+        }
+        @if (_canApprovals)
+        {
+            <a class="cap-m-tile" href="m/approvals">
+                <span class="cap-m-tile-ico" aria-hidden="true">✓</span>
+                <span class="cap-m-tile-title">Approvals</span>
+                <span class="cap-m-tile-sub">Approve or reject pending requests</span>
+            </a>
+        }
+        @if (!_canStock && !_canApprovals)
+        {
+            <div class="cap-card">
+                <p class="mb-0 text-secondary">No mobile tools available for your role.</p>
+            </div>
+        }
+    </div>
+
+    <p class="cap-m-footnote mt-3 mb-0">
+        Full desktop ERP remains primary. <a href="">Open dashboard</a>
+    </p>
+</div>
+
+@code {
+    private bool _canStock;
+    private bool _canApprovals;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canStock = await Perms.HasAsync(Permissions.InventoryView)
+                    && AppConfig.ModuleEnabled(ModuleKeys.InvStock);
+        _canApprovals = await Perms.HasAsync(Permissions.ApprovalsView);
+    }
+}

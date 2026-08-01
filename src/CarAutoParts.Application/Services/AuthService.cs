@@ -73,6 +73,9 @@ public class AuthService : IAuthService
 
         _currentUser.SetUser(user, permissions);
 
+        // Counter cashiers with pos.checkout are not forced to MFA enroll before first sale.
+        var mustEnroll = MfaEnrollmentPolicy.MustEnroll(user.MfaEnabled, user.MfaEnforced, permissions);
+
         return new AuthLoginOutcome(
             new LoginResultDto(
                 user.Id,
@@ -81,7 +84,9 @@ public class AuthService : IAuthService
                 user.Email,
                 roles,
                 permissions,
-                user.MustChangePassword),
+                user.MustChangePassword,
+                user.MfaEnabled,
+                mustEnroll),
             false,
             null);
     }

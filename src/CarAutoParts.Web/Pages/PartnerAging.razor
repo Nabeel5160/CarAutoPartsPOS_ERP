@@ -1,6 +1,8 @@
 @page "/partner-aging"
 @attribute [Authorize]
 @inject CapApiService Api
+@inject IToastService Toast
+@inject IJSRuntime Js
 
 <PageHeader Title="Partner Aging" Subtitle="Customer and supplier AR/AP buckets" />
 <LoadingState Busy="@_busy" Error="@_error" />
@@ -8,6 +10,9 @@
 <div class="cap-card mb-3 d-flex flex-wrap gap-2">
     <button class="btn btn-cap" @onclick="LoadCustomersAsync">Customer aging</button>
     <button class="btn btn-outline-light" @onclick="LoadSuppliersAsync">Supplier aging</button>
+    <button class="btn btn-outline-light" @onclick='() => ExportAsync("customers")' disabled="@_exporting">AR Excel</button>
+    <button class="btn btn-outline-light" @onclick='() => ExportAsync("suppliers")' disabled="@_exporting">AP Excel</button>
+    <a class="btn btn-outline-light" href="reports?type=aging">Reports aging</a>
 </div>
 
 @if (_customers is not null)
@@ -60,6 +65,7 @@
     private PartnerAgingReportDto? _customers;
     private PartnerAgingReportDto? _suppliers;
     private bool _busy;
+    private bool _exporting;
     private string? _error;
 
     private async Task LoadCustomersAsync()
@@ -74,5 +80,19 @@
         _busy = true; _error = null;
         var (data, error, _) = await Api.GetSupplierAgingAsync();
         _suppliers = data; _error = error; _busy = false;
+    }
+
+    private async Task ExportAsync(string kind)
+    {
+        _exporting = true;
+        try
+        {
+            var (bytes, error) = await Api.ExportReportAsync("aging", $"?kind={kind}");
+            if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+            await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), $"aging-{kind}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Toast.ShowSuccess("Download started");
+        }
+        finally { _exporting = false; }
     }
 }

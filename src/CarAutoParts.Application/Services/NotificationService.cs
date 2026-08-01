@@ -1,4 +1,5 @@
 using AutoMapper;
+using CarAutoParts.Application.Common;
 using CarAutoParts.Application.DTOs.System;
 using CarAutoParts.Application.Interfaces;
 using CarAutoParts.Domain.Entities;
@@ -25,14 +26,37 @@ public class NotificationService : INotificationService
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<NotificationDto>> GetNotificationsAsync(bool unreadOnly = false, CancellationToken ct = default)
+    public async Task<PagedResult<NotificationDto>> GetNotificationsAsync(
+        QuerySpec query,
+        bool unreadOnly = false,
+        CancellationToken ct = default)
     {
         var q = _notifications.Query().Where(n => !n.IsDeleted);
         if (unreadOnly)
             q = q.Where(n => !n.IsRead);
 
-        var items = await q.OrderByDescending(n => n.CreatedAt).Take(100).ToListAsync(ct);
-        return _mapper.Map<List<NotificationDto>>(items);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim();
+            q = q.Where(n => n.Title.Contains(s) || n.Message.Contains(s));
+        }
+
+        q = q.OrderByDescending(n => n.CreatedAt);
+        var paged = await q.ToPagedResultAsync(query.Page, query.PageSize, ct);
+        return new PagedResult<NotificationDto>
+        {
+            Items = _mapper.Map<List<NotificationDto>>(paged.Items),
+            TotalCount = paged.TotalCount,
+            Page = paged.Page,
+            PageSize = paged.PageSize
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<NotificationDto>> GetNotificationsAsync(bool unreadOnly = false, CancellationToken ct = default)
+    {
+        var paged = await GetNotificationsAsync(new QuerySpec { Page = 1, PageSize = 100 }, unreadOnly, ct);
+        return paged.Items;
     }
 
     /// <inheritdoc />

@@ -51,6 +51,12 @@ public sealed class GlPostingService : IGlPostingService
         if (lines.Count < 2)
             return Result<GlJournalDraftDto>.Failure("Journal must have at least two lines.");
 
+        var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        if (settings?.OpeningBalanceDate is DateTime cutover
+            && journalDate.Date < cutover.Date
+            && !string.Equals(documentType, "OpeningBalance", StringComparison.OrdinalIgnoreCase))
+            return Result<GlJournalDraftDto>.Failure("Journal date is before opening balance cutover.");
+
         var periodResult = await _periods.EnsureOpenAsync(journalDate, ct);
         if (!periodResult.Succeeded)
             return Result<GlJournalDraftDto>.Failure(periodResult.Error ?? "Period locked.");
@@ -86,7 +92,8 @@ public sealed class GlPostingService : IGlPostingService
                 AccountId = mapping.AccountId,
                 Description = line.Description,
                 Debit = line.IsDebit ? line.Amount : 0,
-                Credit = line.IsDebit ? 0 : line.Amount
+                Credit = line.IsDebit ? 0 : line.Amount,
+                CostCenterId = line.CostCenterId
             });
         }
 

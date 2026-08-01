@@ -1,48 +1,1038 @@
 @page "/reports"
 @attribute [Authorize]
 @inject CapApiService Api
+@inject AuthApiService Auth
 @inject IToastService Toast
 @inject IJSRuntime Js
+@inject NavigationManager Nav
+@inject WebAppConfigService AppConfig
+@implements IDisposable
 
-<PageHeader Title="Reports" Subtitle="Download Excel/PDF exports from the API" />
+<PageHeader Title="@_title" Subtitle="@_subtitle" />
 
-<div class="row g-3">
-    <div class="col-md-6"><div class="cap-card"><h5>Inventory</h5><button class="btn btn-cap" @onclick='() => DownloadAsync("inventory", "?format=xlsx", "inventory.xlsx")'>Export XLSX</button></div></div>
-    <div class="col-md-6">
-        <div class="cap-card">
-            <h5>Sales / Purchases / Profit</h5>
-            <div class="row g-2 mb-2">
-                <div class="col"><input type="date" class="form-control" @bind="_from" /></div>
-                <div class="col"><input type="date" class="form-control" @bind="_to" /></div>
-            </div>
-            <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-cap" @onclick="ExportSales">Sales</button>
-                <button class="btn btn-outline-light" @onclick="ExportPurchases">Purchases</button>
-                <button class="btn btn-outline-light" @onclick="ExportProfit">Profit</button>
-            </div>
-        </div>
+<div class="cap-card mb-3">
+    <div class="d-flex flex-wrap gap-2">
+        @foreach (var tab in VisibleTabs)
+        {
+            <button type="button"
+                    class="btn @(_type == tab.Type ? "btn-cap" : "btn-outline-light")"
+                    @onclick="() => SelectType(tab.Type)">
+                @tab.Label
+            </button>
+        }
     </div>
 </div>
 
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        @if (NeedsDateRange)
+        {
+            <div class="col-md-2">
+                <label class="form-label">From</label>
+                <input type="date" class="form-control" @bind="_from" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">To</label>
+                <input type="date" class="form-control" @bind="_to" />
+            </div>
+        }
+        @if (NeedsBranch)
+        {
+            <div class="col-md-2">
+                <label class="form-label">Branch</label>
+                <select class="form-select" @bind="_branchId">
+                    <option value="">All allowed</option>
+                    @foreach (var b in _branches)
+                    {
+                        <option value="@b">Branch @b</option>
+                    }
+                </select>
+            </div>
+        }
+        @if (_type == "sales-dim")
+        {
+            <div class="col-md-2">
+                <label class="form-label">Dimension</label>
+                <select class="form-select" @bind="_dimension">
+                    <option value="product">Product</option>
+                    <option value="category">Category</option>
+                    <option value="brand">Brand</option>
+                </select>
+            </div>
+        }
+        @if (_type == "sales-staff")
+        {
+            <div class="col-md-2">
+                <label class="form-label">By</label>
+                <select class="form-select" @bind="_dimension">
+                    <option value="cashier">Cashier</option>
+                    <option value="till">Till</option>
+                    <option value="branch">Branch</option>
+                </select>
+            </div>
+        }
+        @if (_type is "profit" or "profit-dim")
+        {
+            <div class="col-md-2">
+                <label class="form-label">Profit by</label>
+                <select class="form-select" @bind="_dimension">
+                    <option value="product">Product (Excel)</option>
+                    <option value="category">Category</option>
+                    <option value="branch">Branch</option>
+                </select>
+            </div>
+        }
+        @if (_type == "movements")
+        {
+            <div class="col-md-2">
+                <label class="form-label">Type</label>
+                <select class="form-select" @bind="_movementType">
+                    <option value="">All</option>
+                    <option value="Purchase">Purchase</option>
+                    <option value="Sale">Sale</option>
+                    <option value="Return">Return</option>
+                    <option value="Adjustment">Adjustment</option>
+                    <option value="Transfer">Transfer</option>
+                </select>
+            </div>
+        }
+        @if (_type == "z-shifts")
+        {
+            <div class="col-md-2">
+                <label class="form-label">Till id</label>
+                <input type="number" class="form-control" @bind="_tillId" />
+            </div>
+        }
+        <div class="col-md-auto d-flex flex-wrap gap-2">
+            @if (HasGrid)
+            {
+                <button class="btn btn-outline-light" @onclick="LoadAsync" disabled="@_busy">@(_busy ? "Loading…" : "Refresh")</button>
+            }
+            <button class="btn btn-cap" @onclick="ExportAsync" disabled="@_busy">
+                @(_busy ? "Working…" : "Export XLSX")
+            </button>
+            @if (_type is "daily-sales" or "sales" or "inventory")
+            {
+                <button class="btn btn-outline-light" @onclick="ExportPdfAsync" disabled="@_busy">PDF</button>
+            }
+            @if (_type == "z-shifts" && _selectedZ is not null)
+            {
+                <button class="btn btn-outline-light" @onclick="PrintZAsync">Print Z</button>
+            }
+        </div>
+    </div>
+    <p class="text-muted mb-0 mt-2">@_hint</p>
+</div>
+
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_type == "daily-sales" && _daily is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Net sales</span><span class="value">@_daily.NetSales.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Invoices</span><span class="value">@_daily.InvoiceCount</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Returns</span><span class="value">@_daily.ReturnsTotal.ToString("N0")</span></div></div>
+        @if (_daily.TaxEnabled)
+        {
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Tax</span><span class="value">@_daily.TaxAmount.ToString("N0")</span></div></div>
+        }
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-lg-8">
+            <div class="cap-card">
+                <CapChartPlayer Title="Daily net sales" Spec="@_dailyLineSpec" Height="280" />
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="cap-card">
+                <CapChart Title="Tenders" Spec="@_dailyTenderSpec" Height="280" />
+            </div>
+        </div>
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <div class="cap-card">
+                <h5>Tenders</h5>
+                <ul class="mb-0">@foreach (var t in _daily.Tenders) { <li>@t.Method — @t.Amount.ToString("N2")</li> }</ul>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="cap-card table-responsive">
+                <table class="table table-cap table-striped mb-0">
+                    <thead><tr><th>Date</th><th>Inv</th><th>Sales</th><th>Tax</th><th>Returns</th><th>Net</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in FilteredDailyDays)
+                    {
+                        <tr>
+                            <td>@d.Date.ToString("yyyy-MM-dd")</td>
+                            <td>@d.InvoiceCount</td>
+                            <td>@d.SalesTotal.ToString("N2")</td>
+                            <td>@d.TaxAmount.ToString("N2")</td>
+                            <td>@d.ReturnsTotal.ToString("N2")</td>
+                            <td>@d.NetSales.ToString("N2")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_type == "z-shifts")
+{
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="cap-card table-responsive">
+                <table class="table table-cap table-striped mb-0">
+                    <thead><tr><th>Shift</th><th>Cashier</th><th>Till</th><th>Closed</th><th>Expected</th><th>Var</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var s in _shifts)
+                    {
+                        <tr>
+                            <td>@s.ShiftNumber</td>
+                            <td>@s.UserName</td>
+                            <td>@(s.TillCode ?? s.TillId?.ToString())</td>
+                            <td>@s.ClosedAt?.ToLocalTime().ToString("g")</td>
+                            <td>@s.ExpectedCash.ToString("N2")</td>
+                            <td>@s.CashVariance.ToString("N2")</td>
+                            <td><button class="btn btn-sm btn-outline-light" @onclick="() => ViewZAsync(s.Id)">Z</button></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            @if (_selectedZ is not null)
+            {
+                <div class="cap-card" id="z-print-area">
+                    <h5>Z @_selectedZ.ShiftNumber</h5>
+                    <p class="mb-1">Opened @_selectedZ.OpenedAt.ToLocalTime().ToString("g") · Closed @_selectedZ.ClosedAt?.ToLocalTime().ToString("g")</p>
+                    <p class="mb-1">Sales @_selectedZ.SalesTotal.ToString("N2") · Invoices @_selectedZ.InvoiceCount · Returns @_selectedZ.ReturnsTotal.ToString("N2")</p>
+                    <p class="mb-1">Opening @_selectedZ.OpeningFloat.ToString("N2") · Expected @_selectedZ.ExpectedCash.ToString("N2") · Drops @_selectedZ.SafeDropsTotal.ToString("N2")</p>
+                    <ul class="mb-0">@foreach (var t in _selectedZ.TenderTotals) { <li>@t.Method — @t.Amount.ToString("N2")</li> }</ul>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_type == "sales-returns" && _returns is not null)
+{
+    <div class="cap-card table-responsive">
+        <p class="mb-2">Total @_returns.TotalAmount.ToString("N2") · Tax @_returns.TotalTax.ToString("N2")</p>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Return</th><th>Date</th><th>Invoice</th><th>Customer</th><th>Status</th><th>Total</th><th>Reason</th></tr></thead>
+            <tbody>
+            @foreach (var r in _returns.Rows)
+            {
+                <tr>
+                    <td>@r.ReturnNumber</td>
+                    <td>@r.ReturnDate.ToString("yyyy-MM-dd")</td>
+                    <td>@r.InvoiceNumber</td>
+                    <td>@r.CustomerName</td>
+                    <td>@r.Status</td>
+                    <td>@r.GrandTotal.ToString("N2")</td>
+                    <td>@r.ReasonCode</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "sales-dim" && _salesDim is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Revenue mix"
+                          Spec="@_salesDimDonutSpec"
+                          Height="280"
+                          EnableClick="true"
+                          OnSegmentClick="OnSalesDimSegmentClick" />
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="cap-card">
+                <CapChart Title="Top revenue (stacked qty proxy)" Spec="@_salesDimBarSpec" Height="280" />
+            </div>
+        </div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(_salesDimFilter))
+    {
+        <div class="mb-2">
+            <button type="button" class="btn btn-sm btn-outline-light" @onclick="ClearSalesDimFilter">Clear chart filter: @_salesDimFilter</button>
+        </div>
+    }
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead>
+            <tr>
+                <th>Label</th>
+                @if (_dimension == "product") { <th>SKU</th> }
+                @if (_salesDim.IncludeOem) { <th>OEM</th> }
+                <th>Qty</th><th>Revenue</th><th>Tax</th><th>Invoices</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in FilteredSalesDimRows.Take(200))
+            {
+                <tr>
+                    <td>@r.Label</td>
+                    @if (_dimension == "product") { <td>@r.Sku</td> }
+                    @if (_salesDim.IncludeOem) { <td>@r.OemNumber</td> }
+                    <td>@r.Quantity.ToString("0.##")</td>
+                    <td>@r.Revenue.ToString("N2")</td>
+                    <td>@r.TaxAmount.ToString("N2")</td>
+                    <td>@r.InvoiceCount</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "sales-staff" && _salesStaff is not null)
+{
+    <div class="cap-card mb-3">
+        <CapChart Title="Staff sales race" Spec="@_salesStaffSpec" Height="300" />
+    </div>
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Label</th><th>Invoices</th><th>Sales</th><th>Tax</th><th>Cash</th><th>Other</th></tr></thead>
+            <tbody>
+            @foreach (var r in _salesStaff.Rows)
+            {
+                <tr>
+                    <td>@r.Label</td>
+                    <td>@r.InvoiceCount</td>
+                    <td>@r.SalesTotal.ToString("N2")</td>
+                    <td>@r.TaxAmount.ToString("N2")</td>
+                    <td>@r.TenderCash.ToString("N2")</td>
+                    <td>@r.TenderOther.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type is "profit-dim" && _profitDim is not null)
+{
+    <div class="cap-card mb-3">
+        <CapChart Title="Revenue vs profit" Spec="@_profitDimSpec" Height="300" />
+    </div>
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Label</th><th>Qty</th><th>Revenue</th><th>COGS</th><th>Profit</th><th>GM%</th></tr></thead>
+            <tbody>
+            @foreach (var r in _profitDim.Rows)
+            {
+                <tr>
+                    <td>@r.Label</td>
+                    <td>@r.Quantity.ToString("0.##")</td>
+                    <td>@r.Revenue.ToString("N2")</td>
+                    <td>@r.Cost.ToString("N2")</td>
+                    <td>@r.Profit.ToString("N2")</td>
+                    <td>@r.GrossMarginPercent.ToString("N1")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "movements" && _movements is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Date</th><th>Type</th><th>SKU</th><th>Product</th><th>WH</th><th>Qty</th><th>Cost</th></tr></thead>
+            <tbody>
+            @foreach (var r in _movements.Rows.Take(300))
+            {
+                <tr>
+                    <td>@r.MovementDate.ToString("g")</td>
+                    <td>@r.MovementType</td>
+                    <td>@r.Sku</td>
+                    <td>@r.ProductName</td>
+                    <td>@r.WarehouseName</td>
+                    <td>@r.Quantity.ToString("0.##")</td>
+                    <td>@r.UnitCost.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "purchasing-pipeline" && _pipeline is not null)
+{
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="cap-card table-responsive">
+                <h5>Open POs</h5>
+                <table class="table table-cap table-striped mb-0">
+                    <thead><tr><th>PO</th><th>Supplier</th><th>Status</th><th>Total</th><th>Recv</th></tr></thead>
+                    <tbody>
+                    @foreach (var o in _pipeline.OpenPurchaseOrders)
+                    {
+                        <tr>
+                            <td>@o.OrderNumber</td>
+                            <td>@o.SupplierName</td>
+                            <td>@o.Status</td>
+                            <td>@o.GrandTotal.ToString("N2")</td>
+                            <td>@o.QtyReceived.ToString("0.##") / @o.QtyOrdered.ToString("0.##")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="cap-card table-responsive">
+                <h5>Pending GRN</h5>
+                <table class="table table-cap table-striped mb-0">
+                    <thead><tr><th>GRN</th><th>PO</th><th>Status</th><th>Qty</th></tr></thead>
+                    <tbody>
+                    @foreach (var g in _pipeline.PendingGrns)
+                    {
+                        <tr>
+                            <td>@g.GrnNumber</td>
+                            <td>@g.PoNumber</td>
+                            <td>@g.Status</td>
+                            <td>@g.LineQty.ToString("0.##")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_type == "tax" && _tax is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Output tax</span><span class="value">@_tax.OutputTax.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Return tax</span><span class="value">@_tax.ReturnTax.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Net tax</span><span class="value">@_tax.NetTax.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Taxable</span><span class="value">@_tax.TaxableSales.ToString("N0")</span></div></div>
+    </div>
+    <div class="cap-card mb-3">
+        <CapChart Title="Tax by rate" Spec="@_taxSpec" Height="260" />
+    </div>
+    <div class="cap-card table-responsive mb-3">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Rate %</th><th>Taxable</th><th>Tax</th></tr></thead>
+            <tbody>
+            @foreach (var r in _tax.ByRate)
+            {
+                <tr><td>@r.TaxRate.ToString("0.##")</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @if (_tax.IncludeHs && _tax.ByHsCode.Count > 0)
+    {
+        <div class="cap-card table-responsive">
+            <h5>By HS code</h5>
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>HS</th><th>Taxable</th><th>Tax</th><th>Qty</th></tr></thead>
+                <tbody>
+                @foreach (var r in _tax.ByHsCode.Take(100))
+                {
+                    <tr><td>@r.HsCode</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td><td>@r.Quantity.ToString("0.##")</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@if (_type == "fbr" && _fbr is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Invoice</th><th>FBR #</th><th>Status</th><th>Submitted</th><th>Error</th></tr></thead>
+            <tbody>
+            @foreach (var r in _fbr.Rows)
+            {
+                <tr>
+                    <td>@r.InvoiceNumber</td>
+                    <td>@r.FbrInvoiceNumber</td>
+                    <td>@r.Status</td>
+                    <td>@r.SubmittedAt.ToLocalTime().ToString("g")</td>
+                    <td>@r.ErrorMessage</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "stock-aging" && _stockAging is not null)
+{
+    <p class="text-muted">@_stockAging.SourceNote</p>
+    <div class="cap-card mb-3">
+        <CapChart Title="Aging buckets" Spec="@_stockAgingSpec" Height="280" />
+    </div>
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>SKU</th><th>Product</th><th>WH</th><th>Batch</th><th>Days</th><th>Bucket</th><th>Qty</th><th>Value</th></tr></thead>
+            <tbody>
+            @foreach (var r in _stockAging.Rows.Take(300))
+            {
+                <tr>
+                    <td>@r.Sku</td>
+                    <td>@r.ProductName</td>
+                    <td>@r.WarehouseName</td>
+                    <td>@r.BatchNumber</td>
+                    <td>@r.AgeDays</td>
+                    <td>@r.Bucket</td>
+                    <td>@r.Quantity.ToString("0.##")</td>
+                    <td>@r.Value.ToString("N2")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "sku-margin" && _skuMargin is not null)
+{
+    <div class="cap-card table-responsive">
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>SKU</th><th>Product</th><th>Qty</th><th>Revenue</th><th>COGS</th><th>Profit</th><th>GM%</th></tr></thead>
+            <tbody>
+            @foreach (var r in _skuMargin.Rows.Take(200))
+            {
+                <tr>
+                    <td>@r.Sku</td>
+                    <td>@r.ProductName</td>
+                    <td>@r.QtySold.ToString("0.##")</td>
+                    <td>@r.Revenue.ToString("N2")</td>
+                    <td>@r.Cost.ToString("N2")</td>
+                    <td>@r.Profit.ToString("N2")</td>
+                    <td>@r.GrossMarginPercent.ToString("N1")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_type == "aging")
+{
+    <div class="cap-card">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button class="btn btn-outline-light" @onclick='() => ExportAgingAsync("customers")'>AR aging Excel</button>
+            <button class="btn btn-outline-light" @onclick='() => ExportAgingAsync("suppliers")'>AP aging Excel</button>
+            <a class="btn btn-outline-light" href="partner-aging">Open aging screen</a>
+        </div>
+    </div>
+}
+
 @code {
+    private static readonly ReportTab[] AllTabs =
+    [
+        new("daily-sales", "Daily sales", "Daily sales summary", "Invoices, tenders, tax, returns for the period.", true, true, true),
+        new("z-shifts", "Z shifts", "Shift Z archive", "Closed shifts by date / till / branch.", true, true, true),
+        new("sales-returns", "Returns", "Sales returns", "Returns period report.", true, true, true),
+        new("sales", "Sales", "Sales report", "Invoice list Excel / PDF.", true, true, false),
+        new("inventory", "Stock", "Stock report", "On-hand by product and warehouse.", false, true, false),
+        new("purchases", "Purchases", "Purchase report", "Purchase orders Excel / PDF.", true, true, false),
+        new("profit", "Profit", "Profit report", "Product profit Excel; category/branch via profit-dim.", true, true, false),
+        new("sales-dim", "Sales dim", "Sales by product / category / brand", "Dimensional sales.", true, true, true),
+        new("sales-staff", "Staff", "Sales by cashier / till / branch", "Staff dimensional sales.", true, true, true),
+        new("profit-dim", "Profit dim", "Profit by category / branch", "Dimensional profit.", true, true, true),
+        new("movements", "Movements", "Stock movements", "Movement history.", true, false, true),
+        new("purchasing-pipeline", "PO / GRN", "Purchasing pipeline", "Open POs and pending GRNs.", false, true, true),
+        new("aging", "AR/AP", "Aging Excel", "Export customer/supplier aging.", false, false, false),
+        new("tax", "Tax", "Tax / GST summary", "Period tax by rate and HS.", true, true, true),
+        new("fbr", "FBR", "FBR submission register", "FBR submissions (module gated).", true, false, true),
+        new("stock-aging", "Stock age", "Stock aging", "Batch / receipt age (best-effort).", false, true, true),
+        new("sku-margin", "SKU margin", "Purchase vs sales margin", "Margin by SKU.", true, true, true),
+    ];
+
+    private IEnumerable<ReportTab> VisibleTabs =>
+        AllTabs.Where(t => t.Type != "fbr" || AppConfig.ModuleEnabled(ModuleKeys.SalesFbr) || AppConfig.BehaviorEnabled("fbr.enabled"));
+
+    private string _type = "daily-sales";
     private DateTime _from = DateTime.Today.AddDays(-30);
     private DateTime _to = DateTime.Today;
+    private string _branchId = "";
+    private string _dimension = "product";
+    private string _movementType = "";
+    private int? _tillId;
+    private List<int> _branches = [];
+    private bool _busy;
+    private bool _suppressLocationLoad;
+    private string? _error;
+    private string _title = "Daily sales summary";
+    private string _subtitle = "Shop-floor and management reports";
+    private string _hint = "";
 
-    private async Task ExportSales() =>
-        await DownloadAsync("sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&period=daily&format=xlsx", "sales.xlsx");
+    private DailySalesSummaryDto? _daily;
+    private List<ClosedShiftListItemDto> _shifts = [];
+    private ShiftZReportDto? _selectedZ;
+    private SalesReturnsReportDto? _returns;
+    private SalesDimReportDto? _salesDim;
+    private SalesStaffReportDto? _salesStaff;
+    private ProfitDimReportDto? _profitDim;
+    private StockMovementReportDto? _movements;
+    private PurchasingPipelineReportDto? _pipeline;
+    private TaxPeriodSummaryDto? _tax;
+    private FbrRegisterReportDto? _fbr;
+    private StockAgingReportDto? _stockAging;
+    private SkuMarginReportDto? _skuMargin;
 
-    private async Task ExportPurchases() =>
-        await DownloadAsync("purchases", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx", "purchases.xlsx");
+    private CapChartSpec? _dailyLineSpec;
+    private CapChartSpec? _dailyTenderSpec;
+    private CapChartSpec? _salesDimDonutSpec;
+    private CapChartSpec? _salesDimBarSpec;
+    private CapChartSpec? _salesStaffSpec;
+    private CapChartSpec? _profitDimSpec;
+    private CapChartSpec? _taxSpec;
+    private CapChartSpec? _stockAgingSpec;
+    private string? _salesDimFilter;
+    private string? _dailyDayFilter;
 
-    private async Task ExportProfit() =>
-        await DownloadAsync("profit", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx", "profit.xlsx");
+    private IEnumerable<DailySalesDayRowDto> FilteredDailyDays =>
+        _daily is null ? [] :
+        string.IsNullOrWhiteSpace(_dailyDayFilter)
+            ? _daily.Days
+            : _daily.Days.Where(d => d.Date.ToString("dd MMM").Equals(_dailyDayFilter, StringComparison.OrdinalIgnoreCase)
+                                     || d.Date.ToString("yyyy-MM-dd").Equals(_dailyDayFilter, StringComparison.OrdinalIgnoreCase));
 
-    private async Task DownloadAsync(string kind, string query, string fileName)
+    private IEnumerable<SalesDimRowDto> FilteredSalesDimRows =>
+        _salesDim is null ? [] :
+        string.IsNullOrWhiteSpace(_salesDimFilter)
+            ? _salesDim.Rows
+            : _salesDim.Rows.Where(r => r.Label.Contains(_salesDimFilter, StringComparison.OrdinalIgnoreCase));
+
+    private bool NeedsDateRange => Current?.NeedsDates != false && _type is not "inventory" and not "purchasing-pipeline" and not "aging" and not "stock-aging";
+    private bool NeedsBranch => Current?.NeedsBranch == true;
+    private bool HasGrid => Current?.HasGrid == true;
+    private ReportTab? Current => AllTabs.FirstOrDefault(t => t.Type == _type);
+    private int? BranchOpt => int.TryParse(_branchId, out var b) ? b : null;
+
+    protected override async Task OnInitializedAsync()
     {
-        var (bytes, error) = await Api.ExportReportAsync(kind, query);
-        if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+        Nav.LocationChanged += OnLocationChanged;
+        var me = await Auth.MeAsync();
+        if (me.Data?.AllowedBranchIds is { Count: > 0 } ids)
+            _branches = ids;
+        else if (me.Data?.BranchId is int b)
+            _branches = [b];
+        var uriBefore = Nav.Uri;
+        ApplyTypeFromUri();
+        // Defaulting ?type=… navigates; skip the LocationChanged reload — we load below.
+        if (!string.Equals(uriBefore, Nav.Uri, StringComparison.Ordinal))
+            _suppressLocationLoad = true;
+        if (HasGrid) await LoadAsync();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        ApplyTypeFromUri();
+        _ = InvokeAsync(async () =>
+        {
+            if (_suppressLocationLoad)
+            {
+                _suppressLocationLoad = false;
+                StateHasChanged();
+                return;
+            }
+            if (HasGrid) await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void ApplyTypeFromUri()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri);
+        var q = relative.IndexOf('?', StringComparison.Ordinal);
+        string? type = null;
+        if (q >= 0)
+        {
+            var query = relative[(q + 1)..];
+            var hash = query.IndexOf('#', StringComparison.Ordinal);
+            if (hash >= 0) query = query[..hash];
+            foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eq = part.IndexOf('=');
+                if (eq < 0) continue;
+                if (part[..eq].Equals("type", StringComparison.OrdinalIgnoreCase))
+                {
+                    type = Uri.UnescapeDataString(part[(eq + 1)..]);
+                    break;
+                }
+            }
+        }
+
+        var normalized = NormalizeType(type);
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            SetType(normalized, updateUrl: true);
+            return;
+        }
+        SetType(normalized, updateUrl: false);
+    }
+
+    private string NormalizeType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return "daily-sales";
+        type = type.Trim().ToLowerInvariant();
+        if (type == "product") return "sales-dim";
+        if (!VisibleTabs.Any(t => t.Type == type)) return "daily-sales";
+        return type;
+    }
+
+    private void SelectType(string type) => SetType(type, updateUrl: true);
+
+    private void SetType(string type, bool updateUrl)
+    {
+        _type = NormalizeType(type);
+        var tab = AllTabs.First(t => t.Type == _type);
+        _title = tab.Title;
+        _hint = tab.Hint;
+        if (_type == "sales-dim") _dimension = "product";
+        if (_type == "sales-staff") _dimension = "cashier";
+        if (_type is "profit" or "profit-dim") _dimension = _type == "profit" ? "product" : "category";
+        _selectedZ = null;
+        _error = null;
+        ClearChartSpecs();
+        _salesDimFilter = null;
+        _dailyDayFilter = null;
+
+        if (!updateUrl) return;
+        var target = $"reports?type={_type}";
+        var current = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/');
+        if (!current.Equals(target, StringComparison.OrdinalIgnoreCase))
+            Nav.NavigateTo(target);
+    }
+
+    private string BranchQuery => BranchOpt is int b ? $"&branchId={b}" : "";
+
+    private async Task LoadAsync()
+    {
+        _busy = true; _error = null;
+        ClearChartSpecs();
+        _salesDimFilter = null;
+        _dailyDayFilter = null;
+        try
+        {
+            switch (_type)
+            {
+                case "daily-sales":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<DailySalesSummaryDto>("daily-sales",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{BranchQuery}");
+                    _daily = d; _error = e;
+                    BuildDailyCharts();
+                    break;
+                }
+                case "z-shifts":
+                {
+                    var (d, e, _) = await Api.GetClosedShiftsAsync(_from, _to, _tillId, BranchOpt);
+                    _shifts = d ?? []; _error = e;
+                    break;
+                }
+                case "sales-returns":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<SalesReturnsReportDto>("sales-returns",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{BranchQuery}");
+                    _returns = d; _error = e;
+                    break;
+                }
+                case "sales-dim":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<SalesDimReportDto>("sales-dim",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}{BranchQuery}");
+                    _salesDim = d; _error = e;
+                    BuildSalesDimCharts();
+                    break;
+                }
+                case "sales-staff":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<SalesStaffReportDto>("sales-staff",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}{BranchQuery}");
+                    _salesStaff = d; _error = e;
+                    BuildSalesStaffCharts();
+                    break;
+                }
+                case "profit-dim":
+                {
+                    var dim = _dimension is "category" or "branch" ? _dimension : "category";
+                    var (d, e, _) = await Api.GetReportJsonAsync<ProfitDimReportDto>("profit-dim",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={dim}{BranchQuery}");
+                    _profitDim = d; _error = e;
+                    BuildProfitDimCharts();
+                    break;
+                }
+                case "movements":
+                {
+                    var mt = string.IsNullOrWhiteSpace(_movementType) ? "" : $"&movementType={_movementType}";
+                    var (d, e, _) = await Api.GetReportJsonAsync<StockMovementReportDto>("movements",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{mt}");
+                    _movements = d; _error = e;
+                    break;
+                }
+                case "purchasing-pipeline":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<PurchasingPipelineReportDto>("purchasing-pipeline",
+                        $"?{BranchQuery.TrimStart('&')}");
+                    _pipeline = d; _error = e;
+                    break;
+                }
+                case "tax":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<TaxPeriodSummaryDto>("tax",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{BranchQuery}");
+                    _tax = d; _error = e;
+                    BuildTaxCharts();
+                    break;
+                }
+                case "fbr":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<FbrRegisterReportDto>("fbr",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}");
+                    _fbr = d; _error = e;
+                    break;
+                }
+                case "stock-aging":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<StockAgingReportDto>("stock-aging",
+                        $"?asOf={_to:yyyy-MM-dd}{BranchQuery}");
+                    _stockAging = d; _error = e;
+                    BuildStockAgingCharts();
+                    break;
+                }
+                case "sku-margin":
+                {
+                    var (d, e, _) = await Api.GetReportJsonAsync<SkuMarginReportDto>("sku-margin",
+                        $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{BranchQuery}");
+                    _skuMargin = d; _error = e;
+                    break;
+                }
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private void ClearChartSpecs()
+    {
+        _dailyLineSpec = _dailyTenderSpec = _salesDimDonutSpec = _salesDimBarSpec = null;
+        _salesStaffSpec = _profitDimSpec = _taxSpec = _stockAgingSpec = null;
+    }
+
+    private void BuildDailyCharts()
+    {
+        if (_daily is null) return;
+        var days = _daily.Days.OrderBy(d => d.Date).ToList();
+        if (days.Count > 0)
+        {
+            var frames = days.Select((_, i) =>
+            {
+                var slice = days.Take(i + 1).ToList();
+                return new CapChartFrame
+                {
+                    Label = days[i].Date.ToString("dd MMM"),
+                    Labels = slice.Select(d => d.Date.ToString("dd MMM")).ToList(),
+                    Datasets =
+                    [
+                        new CapChartDataset
+                        {
+                            Label = "Net sales",
+                            Data = slice.Select(d => d.NetSales).ToList(),
+                            ColorRole = "accent",
+                            Fill = true
+                        }
+                    ]
+                };
+            }).ToList();
+            _dailyLineSpec = CapChartFactory.Timeline(frames, "line", autoPlay: false);
+            _dailyLineSpec.Type = "line";
+        }
+
+        if (_daily.Tenders.Count > 0)
+            _dailyTenderSpec = CapChartFactory.Doughnut(
+                _daily.Tenders.Select(t => t.Method),
+                "Tenders",
+                _daily.Tenders.Select(t => t.Amount));
+    }
+
+    private void BuildSalesDimCharts()
+    {
+        if (_salesDim is null) return;
+        var top = _salesDim.Rows.OrderByDescending(r => r.Revenue).Take(12).ToList();
+        if (top.Count == 0) return;
+        _salesDimDonutSpec = CapChartFactory.Doughnut(top.Select(r => r.Label), "Revenue", top.Select(r => r.Revenue));
+        _salesDimBarSpec = CapChartFactory.StackedBar(
+            top.Select(r => Truncate(r.Label, 18)),
+            ("Revenue", top.Select(r => r.Revenue), "accent"),
+            ("Tax", top.Select(r => r.TaxAmount), "accent2"));
+    }
+
+    private void BuildSalesStaffCharts()
+    {
+        if (_salesStaff is null) return;
+        var rows = _salesStaff.Rows.OrderBy(r => r.SalesTotal).Take(15).ToList();
+        if (rows.Count == 0) return;
+        _salesStaffSpec = CapChartFactory.HorizontalBar(
+            rows.Select(r => Truncate(r.Label, 24)),
+            "Sales",
+            rows.Select(r => r.SalesTotal));
+    }
+
+    private void BuildProfitDimCharts()
+    {
+        if (_profitDim is null) return;
+        var rows = _profitDim.Rows.OrderByDescending(r => r.Revenue).Take(12).ToList();
+        if (rows.Count == 0) return;
+        _profitDimSpec = CapChartFactory.DualBar(
+            rows.Select(r => Truncate(r.Label, 18)),
+            "Revenue", rows.Select(r => r.Revenue),
+            "Profit", rows.Select(r => r.Profit));
+    }
+
+    private void BuildTaxCharts()
+    {
+        if (_tax is null || _tax.ByRate.Count == 0) return;
+        _taxSpec = CapChartFactory.Doughnut(
+            _tax.ByRate.Select(r => $"{r.TaxRate:0.##}%"),
+            "Tax",
+            _tax.ByRate.Select(r => r.TaxAmount));
+    }
+
+    private void BuildStockAgingCharts()
+    {
+        if (_stockAging is null || _stockAging.Rows.Count == 0) return;
+        var buckets = _stockAging.Rows
+            .GroupBy(r => string.IsNullOrWhiteSpace(r.Bucket) ? "Unknown" : r.Bucket)
+            .Select(g => new { Bucket = g.Key, Value = g.Sum(x => x.Value), Qty = g.Sum(x => x.Quantity) })
+            .OrderBy(x => x.Bucket)
+            .ToList();
+        _stockAgingSpec = CapChartFactory.StackedBar(
+            buckets.Select(b => b.Bucket),
+            ("Value", buckets.Select(b => b.Value), "accent"),
+            ("Qty", buckets.Select(b => b.Qty), "accent2"));
+    }
+
+    private Task OnSalesDimSegmentClick((string Name, string Series, decimal Value) args)
+    {
+        _salesDimFilter = string.IsNullOrWhiteSpace(args.Name) ? null : args.Name;
+        return Task.CompletedTask;
+    }
+
+    private void ClearSalesDimFilter() => _salesDimFilter = null;
+
+    private static string Truncate(string value, int max)
+        => string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..(max - 1)] + "…";
+
+    private async Task ViewZAsync(int shiftId)
+    {
+        var (z, error, _) = await Api.GetZReportAsync(shiftId);
+        if (z is null) { Toast.ShowError(error ?? "Z failed"); return; }
+        _selectedZ = z;
+    }
+
+    private async Task PrintZAsync()
+    {
+        await Js.InvokeVoidAsync("eval", "window.print()");
+    }
+
+    private async Task ExportAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (_type == "aging")
+            {
+                await ExportAgingAsync("customers");
+                return;
+            }
+
+            if (_type == "profit" && _dimension is "category" or "branch")
+            {
+                var (pb, pe) = await Api.ExportReportAsync("profit-dim",
+                    $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}{BranchQuery}&format=xlsx");
+                if (pb is null) { Toast.ShowError(pe ?? "Export failed"); return; }
+                await Download(pb, "profit-dim.xlsx");
+                return;
+            }
+
+            var (kind, query, fileName) = _type switch
+            {
+                "inventory" => ("inventory", $"?format=xlsx{BranchQuery}", "inventory.xlsx"),
+                "purchases" => ("purchases", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "purchases.xlsx"),
+                "profit" => ("profit", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "profit.xlsx"),
+                "sales" => ("sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&period=daily&format=xlsx{BranchQuery}", "sales.xlsx"),
+                "daily-sales" => ("daily-sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "daily-sales.xlsx"),
+                "sales-returns" => ("sales-returns", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "sales-returns.xlsx"),
+                "sales-dim" => ("sales-dim", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}&format=xlsx{BranchQuery}", "sales-dim.xlsx"),
+                "sales-staff" => ("sales-staff", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}&format=xlsx{BranchQuery}", "sales-staff.xlsx"),
+                "profit-dim" => ("profit-dim", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&dimension={_dimension}&format=xlsx{BranchQuery}", "profit-dim.xlsx"),
+                "movements" => ("movements", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{(string.IsNullOrWhiteSpace(_movementType) ? "" : $"&movementType={_movementType}")}", "movements.xlsx"),
+                "purchasing-pipeline" => ("purchasing-pipeline", $"?format=xlsx{BranchQuery}", "purchasing-pipeline.xlsx"),
+                "tax" => ("tax", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "tax.xlsx"),
+                "fbr" => ("fbr", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx", "fbr.xlsx"),
+                "stock-aging" => ("stock-aging", $"?asOf={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "stock-aging.xlsx"),
+                "sku-margin" => ("sku-margin", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=xlsx{BranchQuery}", "sku-margin.xlsx"),
+                "z-shifts" => ("z-shifts",
+                    $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}{BranchQuery}{(_tillId is int tid ? $"&tillId={tid}" : "")}&format=xlsx",
+                    "z-shifts.xlsx"),
+                _ => ("sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&period=daily&format=xlsx{BranchQuery}", "sales.xlsx"),
+            };
+
+            var (bytes, error) = await Api.ExportReportAsync(kind, query);
+            if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+            await Download(bytes, fileName);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        _busy = true;
+        try
+        {
+            var (kind, query, fileName) = _type switch
+            {
+                "inventory" => ("inventory", $"?format=pdf{BranchQuery}", "inventory.pdf"),
+                "daily-sales" => ("daily-sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&format=pdf{BranchQuery}", "daily-sales.pdf"),
+                _ => ("sales", $"?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&period=daily&format=pdf{BranchQuery}", "sales.pdf"),
+            };
+            var (bytes, error) = await Api.ExportReportAsync(kind, query);
+            if (bytes is null) { Toast.ShowError(error ?? "PDF failed"); return; }
+            await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), fileName, "application/pdf");
+            Toast.ShowSuccess("PDF download started");
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportAgingAsync(string kind)
+    {
+        _busy = true;
+        try
+        {
+            var (bytes, error) = await Api.ExportReportAsync("aging", $"?kind={kind}&format=xlsx");
+            if (bytes is null) { Toast.ShowError(error ?? "Export failed"); return; }
+            await Download(bytes, $"aging-{kind}.xlsx");
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Download(byte[] bytes, string fileName)
+    {
         await Js.InvokeVoidAsync("capDownload", Convert.ToBase64String(bytes), fileName,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         Toast.ShowSuccess("Download started");
     }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private sealed record ReportTab(string Type, string Label, string Title, string Hint, bool NeedsDates, bool NeedsBranch, bool HasGrid);
 }

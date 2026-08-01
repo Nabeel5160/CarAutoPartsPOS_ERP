@@ -13,6 +13,8 @@ using CarAutoParts.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 namespace CarAutoParts.Infrastructure;
@@ -70,11 +72,33 @@ public static class DependencyInjection
     public static async Task InitializeDatabaseAsync(this IServiceProvider serviceProvider, CancellationToken ct = default)
     {
         using var scope = serviceProvider.CreateScope();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var env = scope.ServiceProvider.GetRequiredService<IHostEnvironment>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInit");
+
         var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
         await seeder.SeedAsync(ct);
         var enterprise = scope.ServiceProvider.GetRequiredService<EnterprisePlatformSeeder>();
         await enterprise.SeedAsync(ct);
-        var demoSeeder = scope.ServiceProvider.GetRequiredService<DemoDataSeeder>();
-        await demoSeeder.SeedAsync(ct);
+
+        // Production hard-blocks demo seed unless CAP_ALLOW_DEMO_SEED=true (explicit escape hatch).
+        var allowDemoOverride = string.Equals(
+            Environment.GetEnvironmentVariable("CAP_ALLOW_DEMO_SEED"), "true", StringComparison.OrdinalIgnoreCase);
+        var seedDemo = configuration.GetValue("Seed:DemoData", !env.IsProduction());
+        if (env.IsProduction() && !allowDemoOverride)
+        {
+            if (seedDemo)
+                logger.LogWarning("Seed:DemoData was true but Production hard-blocks demo seed. Set CAP_ALLOW_DEMO_SEED=true to override.");
+            seedDemo = false;
+        }
+
+        if (seedDemo)
+        {
+            logger.LogInformation("Seeding demo data (Seed:DemoData=true).");
+            var demoSeeder = scope.ServiceProvider.GetRequiredService<DemoDataSeeder>();
+            await demoSeeder.SeedAsync(ct);
+        }
+        else
+            logger.LogInformation("Skipping demo seed (Production guard or Seed:DemoData=false).");
     }
 }
