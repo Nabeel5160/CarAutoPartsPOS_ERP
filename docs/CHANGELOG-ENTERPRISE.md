@@ -36,7 +36,7 @@ Program C (multi-quarter remainder) starts with **C1**. See [MASTER-ROADMAP.md](
 - Customer 360 (`/crm/customers/{id}`): "Service tickets" card showing that customer's tickets, link to full list
 
 ### Mobile
-- `/m/service` — mobile ticket list (status/priority filter) + quick status update / resolve with notes; tile added to `MobileHub` gated by `service.view`
+- `/m/service` — mobile ticket list (Closed tickets hidden) + quick status update / resolve with notes; tile added to `MobileHub` gated by `service.view`
 - `/m/stock` camera barcode scan: "Scan barcode" button using the browser `BarcodeDetector` API (`barcode-scanner.js`) to fill SKU search — graceful no-op on unsupported browsers (no iOS Safari support yet)
 
 ### Tests

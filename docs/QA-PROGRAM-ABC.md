@@ -86,13 +86,20 @@ None found in Programs A/B/C1 feature code. The only fixes needed were in test s
 
 ## Remaining known gaps
 
-- **11 pre-existing failures** in `CarAutoParts.Application.Tests`, all `System.InvalidOperationException: No open accounting period for document date.`, in:
-  `Phase2ProcurementTests.{Qc_hold_blocks_three_way_match_until_release, Three_way_match_allows_qty_within_tolerance}`,
-  `Phase3InventoryTests.Transfer_ship_then_receive_moves_stock`,
-  `Phase4FinanceTests.Sales_credit_note_apply_to_invoice`,
-  `Phase5MultiBranchTests.{ShipAsync_SameBranch_SkipsGl, ShipAsync_InterBranch_PostsGitGl_AndPreservesCost}`,
-  `Phase6GovernanceTests.VoidJournal_creates_reversing_entry_and_audit`,
-  `DocumentPostingIntegrationTests.{Pos_checkout_posts_stock_payment_and_journal, Pos_idempotency_returns_same_invoice, Fbr_failure_enqueues_outbox, Fbr_throw_does_not_roll_back_sale}`.
-  These fixtures open an accounting period for a fixed calendar date/range that no longer contains "today" as the real clock advances. They are unrelated to Programs A/B/C1 and were left as-is per the task's constraint (fix only if touched or blocking the owned suite — they do not block CRM/Service/RFQ/SalesTarget/WHT coverage, which runs independently).
+- **11 pre-existing failures** in `CarAutoParts.Application.Tests` — re-confirmed on a later re-run (system date had advanced further, same failures reproduce), root-caused into **two distinct, unrelated classes**, both unrelated to Programs A/B/C1:
+  - **8 — accounting-period date drift** (`System.InvalidOperationException: No open accounting period for document date.`, or an equivalent `Result.Failure` from a GL-posting call inside a period that has closed): `Phase2ProcurementTests.{Qc_hold_blocks_three_way_match_until_release, Three_way_match_allows_qty_within_tolerance}`, `Phase4FinanceTests.Sales_credit_note_apply_to_invoice`, `Phase6GovernanceTests.VoidJournal_creates_reversing_entry_and_audit`, `DocumentPostingIntegrationTests.{Pos_checkout_posts_stock_payment_and_journal, Pos_idempotency_returns_same_invoice, Fbr_failure_enqueues_outbox, Fbr_throw_does_not_roll_back_sale}`. These fixtures seed a fixed `AccountingPeriod` (e.g. "Jul 2026") but post documents dated `DateTime.UtcNow`, which has since rolled into a month the fixture never opened.
+  - **3 — pick-list gate regression, unrelated to periods**: `Phase3InventoryTests.Transfer_ship_then_receive_moves_stock`, `Phase5MultiBranchTests.{ShipAsync_SameBranch_SkipsGl, ShipAsync_InterBranch_PostsGitGl_AndPreservesCost}`. `TransferService.ShipAsync` (added in commit `41f8c7e`, Phase 15 warehouse locations) now requires every transfer line to have `IsPicked = true` before shipping ("Confirm pick list before shipping."); these three tests predate that gate (written in `351ef38`/Phase 3) and call `CreateAsync` → `ApproveAsync` → `ShipAsync` directly without a pick step, so they now fail on the gate, not on GL/periods. `Phase15WarehouseLocationsTests.Transfer_RequiresPick_BeforeShip_AndMovesBinStock` already covers the pick-gate behavior correctly with an up-to-date test.
+  - Confirmed via `git log` that both root causes predate Program A/CRM (commit `41f8c7e`, before `00e9687`/`41f6d31`) — genuinely pre-existing, not introduced or touched by Programs A/B/C1. Left as-is per the task's constraint (fix only if touched or blocking the owned suite — they do not block CRM/Service/RFQ/SalesTarget/WHT coverage, which runs independently).
 - Program B items not covered by automated tests in this pass: cash flow report correctness (`FinanceController`), bank reconciliation UX (manual/UI-level, no Blazor component test harness in this repo), commission calculation (if distinct from `SalesTargetService`) — flagged for a future pass if/when a Blazor component test harness (bUnit) or a dedicated cash-flow service test target is prioritized.
 - `CarAutoParts.Presentation.csproj` / full-solution build was not exercised (locked DLL from a concurrently running process, and out of scope for A/B/C1).
+
+## Re-verification pass (C1 completeness check)
+
+A follow-up pass re-verified Program C1 completeness against the checklist in `MASTER-ROADMAP.md` (entity, migration, module, permissions, DI, `ServiceController`, Web list/detail, nav, Customer 360 card, mobile hub tile, barcode scan, tests, docs) and re-ran the full suite:
+
+- `dotnet build CarAutoParts.sln` (full solution, incl. `CarAutoParts.Presentation.csproj`) → **0 errors**.
+- `dotnet test` on all four test projects reproduced identical counts: `Domain.Tests` 8/8, `Infrastructure.Tests` 2/2, `Api.Tests` 13/13, `Application.Tests` 137/148 (same 11 pre-existing failures, now root-caused into two classes — see above).
+- **C1 was already essentially complete** from the prior pass; two small gaps were closed:
+  - `MASTER-ROADMAP.md` documented the Customer 360 tickets endpoint as `GET /api/service/customer/{id}` — the real route is `GET /api/service/customers/{id}/tickets`. Fixed.
+  - `/service/tickets` create form had a Customer picker but **no Product picker**, even though `CHANGELOG-ENTERPRISE.md` already claimed one and the API/DTO fully support `ProductId`. Added a Product `<select>` to `Tickets.razor` (same pattern as the existing Customer/Assignee pickers) so the doc claim is now true.
+  - `CHANGELOG-ENTERPRISE.md` claimed `/m/service` has a status/priority filter — it doesn't (only excludes Closed tickets client-side). Corrected the wording rather than adding mobile filter UI, since that's a documentation accuracy fix, not a missing checklist item.

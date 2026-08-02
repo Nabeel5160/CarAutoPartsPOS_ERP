@@ -76,6 +76,15 @@
                     }
                 </select>
             </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_formProductId">
+                    <option value="0">Product (optional)</option>
+                    @foreach (var p in _products)
+                    {
+                        <option value="@p.Id">@p.Name</option>
+                    }
+                </select>
+            </div>
             <div class="col-md-2"><button class="btn btn-cap w-100" disabled="@_saving" @onclick="CreateAsync">Add</button></div>
             <div class="col-md-6">
                 <div class="form-check mt-2">
@@ -140,11 +149,13 @@
     private PagedResult<ServiceTicketDto>? _items;
     private ServiceTicketCreateDto _form = new() { Priority = 1 };
     private int _formAssignee;
+    private int _formProductId;
     private string _filterStatus = "";
     private string _filterPriority = "";
     private int _filterCustomer;
     private List<CustomerDto> _customers = new();
     private List<UserDto> _users = new();
+    private List<ProductListDto> _products = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -153,6 +164,8 @@
         _customers = customers?.Items.ToList() ?? new();
         var (users, _, _) = await Api.GetUsersAsync();
         _users = users ?? new();
+        var (products, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 500 });
+        _products = products?.Items.ToList() ?? new();
         await LoadAsync();
     }
 
@@ -186,6 +199,7 @@
         try
         {
             _form.AssignedToUserId = _formAssignee > 0 ? _formAssignee : null;
+            _form.ProductId = _formProductId > 0 ? _formProductId : null;
             var (data, error, _) = await Api.CreateServiceTicketAsync(_form);
             if (error is not null || data is null)
             {
@@ -196,6 +210,7 @@
             Toast.ShowSuccess($"Ticket '{data.Subject}' created.");
             _form = new ServiceTicketCreateDto { Priority = 1 };
             _formAssignee = 0;
+            _formProductId = 0;
             await LoadAsync();
         }
         finally { _saving = false; }
