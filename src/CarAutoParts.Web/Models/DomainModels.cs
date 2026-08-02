@@ -1221,6 +1221,12 @@ public sealed class CompanySettingsDto
     public string? LogoUrl { get; set; }
 }
 
+public sealed class LogoUploadResultDto
+{
+    public string? LogoUrl { get; set; }
+    public string? LogoPath { get; set; }
+}
+
 public sealed class OnboardingStatusDto
 {
     public bool IsComplete { get; set; }

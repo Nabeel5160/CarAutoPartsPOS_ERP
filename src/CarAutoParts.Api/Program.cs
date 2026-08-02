@@ -137,6 +137,17 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseRateLimiter();
+
+// Shop logos and other uploads under wwwroot/uploads (e.g. /uploads/company/logo.png).
+var webRoot = app.Environment.WebRootPath;
+if (string.IsNullOrWhiteSpace(webRoot))
+{
+    webRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+    Directory.CreateDirectory(webRoot);
+}
+Directory.CreateDirectory(Path.Combine(webRoot, "uploads", "company"));
+app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseMiddleware<CurrentUserMiddleware>();
 app.UseAuthorization();

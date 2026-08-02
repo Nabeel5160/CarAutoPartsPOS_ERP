@@ -22,6 +22,7 @@ public class DataSeeder
         await EnforceDefaultAdminPasswordChangeAsync(ct);
         await ClearDemoUserForcePasswordAsync(ct);
         await EnsureDefaultUserBranchesAsync(ct);
+        await EnsureDemoCompanyIdentityAsync(ct);
 
         if (await _db.Users.AnyAsync(ct))
         {
@@ -222,30 +223,133 @@ public class DataSeeder
     private async Task SeedCompanySettingsAsync(CancellationToken ct)
     {
         var vertical = Environment.GetEnvironmentVariable("CAP_VERTICAL") ?? "auto-parts";
-        _db.CompanySettings.Add(new CompanySettings
+        _db.CompanySettings.Add(BuildDemoCompanySettings(vertical));
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Ensures demo shop logo + company identity exist even on already-seeded databases
+    /// (fills empty logo / placeholder contact fields only — does not overwrite real client data).
+    /// </summary>
+    private async Task EnsureDemoCompanyIdentityAsync(CancellationToken ct)
+    {
+        var settings = await _db.CompanySettings.FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        if (settings is null)
+            return;
+
+        var changed = false;
+        const string demoLogo = "/uploads/company/logo.svg";
+
+        if (string.IsNullOrWhiteSpace(settings.LogoUrl) && string.IsNullOrWhiteSpace(settings.LogoPath))
         {
-            CompanyName = VerticalSeedPacks.DefaultCompanyName(vertical),
+            settings.LogoUrl = demoLogo;
+            settings.LogoPath = demoLogo;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.CompanyName) || settings.CompanyName == "Car Auto Parts")
+        {
+            // Keep vertical-aware demo trading name when still on default seed name.
+            var vertical = settings.VerticalKey ?? "auto-parts";
+            settings.CompanyName = VerticalSeedPacks.DefaultCompanyName(vertical) switch
+            {
+                "Car Auto Parts" => "CAP Demo Motors",
+                var n => n + " (Demo)"
+            };
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.Address) || string.IsNullOrWhiteSpace(settings.Address))
+        {
+            settings.Address = "Shop 12-B, Main Boulevard, Gulberg III";
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.City) || string.IsNullOrWhiteSpace(settings.City))
+        {
+            settings.City = "Lahore";
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.Phone) || string.IsNullOrWhiteSpace(settings.Phone))
+        {
+            settings.Phone = "+92-42-35789012";
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.Email) || string.IsNullOrWhiteSpace(settings.Email) || settings.Email == "info@local")
+        {
+            settings.Email = "sales@cap-demo.local";
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.Ntn) || string.IsNullOrWhiteSpace(settings.Ntn))
+        {
+            settings.Ntn = "1234567-8";
+            changed = true;
+        }
+
+        if (IsPlaceholder(settings.Strn) || string.IsNullOrWhiteSpace(settings.Strn))
+        {
+            settings.Strn = "3277876123456";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.InvoiceFooter) || settings.InvoiceFooter == "Thank you for your business!")
+        {
+            settings.InvoiceFooter = "CAP Demo Motors — Genuine parts • Warranty supported • WhatsApp +92-300-1234567";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.PosId))
+        {
+            settings.PosId = "POS-DEMO-01";
+            changed = true;
+        }
+
+        if (changed)
+        {
+            settings.UpdatedAt = DateTime.UtcNow;
+            settings.UpdatedBy = "system-demo";
+            await _db.SaveChangesAsync(ct);
+            _logger.LogInformation("Applied demo company identity (logo/contact details).");
+        }
+    }
+
+    private static CompanySettings BuildDemoCompanySettings(string vertical) =>
+        new()
+        {
+            CompanyName = vertical.ToLowerInvariant() switch
+            {
+                "bike-parts" => "Bike Auto Parts (Demo)",
+                "general-retail" => "Retail POS (Demo)",
+                _ => "CAP Demo Motors"
+            },
             VerticalKey = vertical,
-            Address = "Main Boulevard, Gulberg III",
+            LogoUrl = "/uploads/company/logo.svg",
+            LogoPath = "/uploads/company/logo.svg",
+            Address = "Shop 12-B, Main Boulevard, Gulberg III",
             City = "Lahore",
-            Phone = "+92-42-0000000",
-            Email = "info@local",
-            Ntn = "0000000-0",
-            Strn = "0000000000000",
-            PosId = "POS-001",
+            Phone = "+92-42-35789012",
+            Email = "sales@cap-demo.local",
+            Ntn = "1234567-8",
+            Strn = "3277876123456",
+            PosId = "POS-DEMO-01",
             DefaultTaxRate = 18m,
             InvoicePrefix = "INV",
-            InvoiceFooter = "Thank you for your business!",
-            Theme = "Light",
+            InvoiceFooter = "CAP Demo Motors — Genuine parts • Warranty supported • WhatsApp +92-300-1234567",
+            Theme = "Dark",
             AutoBackupEnabled = true,
             AutoBackupIntervalHours = 24,
             FbrUseSandbox = true,
             FbrTimeoutSeconds = 60,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = "system"
-        });
-        await _db.SaveChangesAsync(ct);
-    }
+        };
+
+    private static bool IsPlaceholder(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+        || value is "Main Boulevard, Gulberg III" or "+92-42-0000000" or "0000000-0" or "0000000000000";
 
     private async Task SeedCategoriesAsync(CancellationToken ct)
     {

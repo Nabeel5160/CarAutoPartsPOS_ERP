@@ -1,0 +1,39 @@
+@*
+  Segmented Graphs | Numbers control for chart-enabled pages.
+  Matches Reports tab style (btn-cap / btn-outline-light).
+*@
+<div class="d-flex flex-wrap gap-2 @CssClass" role="group" aria-label="@(AriaLabel ?? "View mode")">
+    <button type="button"
+            class="btn @(_mode == CapViewMode.Numbers ? "btn-cap" : "btn-outline-light")"
+            aria-pressed="@(_mode == CapViewMode.Numbers)"
+            @onclick="() => SetModeAsync(CapViewMode.Numbers)">
+        @NumbersLabel
+    </button>
+    <button type="button"
+            class="btn @(_mode == CapViewMode.Graphs ? "btn-cap" : "btn-outline-light")"
+            aria-pressed="@(_mode == CapViewMode.Graphs)"
+            @onclick="() => SetModeAsync(CapViewMode.Graphs)">
+        @GraphsLabel
+    </button>
+</div>
+
+@code {
+    private CapViewMode _mode;
+
+    [Parameter] public CapViewMode Mode { get; set; } = CapViewMode.Numbers;
+    [Parameter] public EventCallback<CapViewMode> ModeChanged { get; set; }
+    [Parameter] public string GraphsLabel { get; set; } = "Graphs";
+    [Parameter] public string NumbersLabel { get; set; } = "Numbers";
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    protected override void OnParametersSet() => _mode = Mode;
+
+    private async Task SetModeAsync(CapViewMode mode)
+    {
+        if (_mode == mode) return;
+        _mode = mode;
+        if (ModeChanged.HasDelegate)
+            await ModeChanged.InvokeAsync(mode);
+    }
+}

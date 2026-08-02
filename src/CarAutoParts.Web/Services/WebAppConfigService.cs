@@ -17,6 +17,10 @@ public sealed class WebAppConfigService
 
     public AppConfigClientDto? Current { get; private set; }
     public BrandingClientDto Branding => Current?.Branding ?? BrandingClientDto.Default;
+
+    /// <summary>Logo URL resolved against the API base when relative (e.g. /uploads/company/logo.png).</summary>
+    public string? ResolvedLogoUrl => ResolveLogoUrl(Branding.LogoUrl);
+
     public event Action? Changed;
 
     public WebAppConfigService(HttpClient http, ILocalStorageService storage, IJSRuntime js, LocaleService locale)
@@ -140,10 +144,28 @@ public sealed class WebAppConfigService
                 Branding.AppName,
                 Branding.ShortName,
                 Branding.AccentWord,
-                Branding.LogoUrl,
+                ResolvedLogoUrl,
                 null,
                 null);
         }
         catch { /* JS may not be ready */ }
+    }
+
+    private string? ResolveLogoUrl(string? logoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(logoUrl)) return null;
+        var value = logoUrl.Trim();
+        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+            return value;
+        if (value.StartsWith('/'))
+        {
+            var baseUri = _http.BaseAddress;
+            if (baseUri is null) return value;
+            return new Uri(baseUri, value).ToString();
+        }
+        return value;
     }
 }

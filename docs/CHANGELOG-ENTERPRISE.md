@@ -1,5 +1,39 @@
 # Enterprise Mid-Market Hardening — Changelog
 
+## 2026-08-02 — Analytics Graphs tab (4D charts)
+
+### Web UI (`Analytics.razor` + `CapViewToggle`)
+- Filters + Export stay above tabs; toggle order **Numbers | Graphs** (default Numbers)
+- **Numbers**: KPI cards + list cards only (empty-state hints)
+- **Graphs**: chart-focused — top-seller CapChartPlayer race, ABC doughnut, dead/fast bars, slow/dead bubble (grouped-bar fallback), GM vs inventory, **4D stock insight** CapChartPlayer timeline (progressive Top N / ABC / dead / fast frames from existing `AnalyticsDto`)
+
+## 2026-08-02 — Shell sidebar layout & fullscreen
+
+### Web UI (`MainLayout` + `cap-theme.css` + `shell.js`)
+- Topbar **Sidebar** toggle: expanded (default) vs boxed/compact icon rail (`cap-shell--sidebar-boxed`); preference persisted as `cap.shell.sidebarBoxed`
+- Desktop-only boxed layout with hover/focus expand overlay; mobile Menu drawer unchanged
+- Topbar **Full** / **Exit** fullscreen via Fullscreen API (`.cap-scene`); Escape/browser exit syncs button state (`cap-shell--fullscreen`)
+
+## 2026-08-01 — Shop logo & identity
+
+### Settings / API
+- `POST /api/settings/logo` (multipart png/jpg/jpeg/webp, max 2MB) and `DELETE /api/settings/logo` — requires `settings.manage`
+- Files stored at API `wwwroot/uploads/company/logo.{ext}`; served via `UseStaticFiles`
+- **LogoUrl** (canonical) kept in sync with **LogoPath**; relative URL shape: `/uploads/company/logo.png` (resolve against API base, e.g. `http://host:5280/uploads/...`)
+- Settings UI: preview, upload/replace, remove; Invoice footer field; branding Logo URL read-only when from upload (advanced edit optional)
+
+### Branding surfaces
+- Sidebar (`.cap-brand`), login, and `capBrand.apply` show logo `<img>` when set
+- POS receipt header: logo + company name/address/city/phone/NTN; footer uses `InvoiceFooter` or “Thank you”
+
+## 2026-08-01 — Graphs / Numbers view toggle
+
+### Web UI
+- `CapViewToggle` + `CapViewMode` — Numbers | Graphs segmented control (`btn-cap` / `btn-outline-light`)
+- **Dashboard** defaults to Graphs (charts); Numbers shows KPI cards only
+- **Reports** / **Analytics** / **Financial P&amp;L** default to Numbers (tables/lists); Graphs shows chart overlays
+- Excel/PDF/CSV export controls remain available in both modes
+
 ## 2026-08-01 — 4D animated graphs (Apache ECharts)
 
 ### Charts

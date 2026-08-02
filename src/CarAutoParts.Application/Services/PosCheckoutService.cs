@@ -541,7 +541,7 @@ public class PosCheckoutService : IPosCheckoutService
             invoice.ChangeDue, invoice.PaymentStatus.ToString());
     }
 
-    public async Task<string> GetReceiptHtmlAsync(int salesInvoiceId, CancellationToken ct = default)
+    public async Task<string> GetReceiptHtmlAsync(int salesInvoiceId, string? publicBaseUrl = null, CancellationToken ct = default)
     {
         var invoice = await _invoices.Query()
             .Include(i => i.Lines).Include(i => i.Payments).Include(i => i.Customer)
@@ -549,7 +549,17 @@ public class PosCheckoutService : IPosCheckoutService
             .FirstOrDefaultAsync(i => i.Id == salesInvoiceId && !i.IsDeleted, ct)
             ?? throw new InvalidOperationException("Invoice not found.");
 
-        var brandName = await _features.GetBrandAsync(ConfigKeys.BrandAppName, "Car Auto Parts", ct);
+        var settings = await _settings.Query().AsNoTracking().FirstOrDefaultAsync(s => !s.IsDeleted, ct);
+        var brandName = !string.IsNullOrWhiteSpace(settings?.CompanyName)
+            ? settings!.CompanyName
+            : await _features.GetBrandAsync(ConfigKeys.BrandAppName, "Car Auto Parts", ct);
+        var logoUrl = ResolveAbsoluteLogoUrl(
+            !string.IsNullOrWhiteSpace(settings?.LogoUrl) ? settings!.LogoUrl : settings?.LogoPath,
+            publicBaseUrl);
+        var footer = !string.IsNullOrWhiteSpace(settings?.InvoiceFooter)
+            ? settings!.InvoiceFooter!
+            : "Thank you";
+
         var fbr = invoice.FbrSubmission;
         var fbrPosted = fbr is not null &&
             fbr.Status is FbrSubmissionStatus.Success or FbrSubmissionStatus.Stub &&
@@ -561,8 +571,28 @@ public class PosCheckoutService : IPosCheckoutService
 
         var sb = new StringBuilder();
         sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'><title>").Append(invoice.InvoiceNumber)
-            .Append("</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:320px;margin:1rem auto;font-size:13px}h1{font-size:16px;margin:0 0 .5rem}table{width:100%;border-collapse:collapse}td{padding:.2rem 0}.r{text-align:right}.muted{color:#666;font-size:11px}.fbr{margin-top:.75rem;text-align:center}.warn{color:#a60;font-size:11px}</style></head><body>");
-        sb.Append("<h1>").Append(System.Net.WebUtility.HtmlEncode(brandName)).Append("</h1><div class='muted'>").Append(invoice.InvoiceNumber).Append(" · ")
+            .Append("</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:320px;margin:1rem auto;font-size:13px}h1{font-size:16px;margin:0 0 .35rem}table{width:100%;border-collapse:collapse}td{padding:.2rem 0}.r{text-align:right}.muted{color:#666;font-size:11px}.shop{text-align:center;margin-bottom:.6rem}.shop img{max-height:48px;max-width:180px;object-fit:contain;display:block;margin:0 auto .35rem}.fbr{margin-top:.75rem;text-align:center}.warn{color:#a60;font-size:11px}</style></head><body>");
+        sb.Append("<div class='shop'>");
+        if (!string.IsNullOrWhiteSpace(logoUrl))
+            sb.Append("<img src='").Append(System.Net.WebUtility.HtmlEncode(logoUrl)).Append("' alt='' />");
+        sb.Append("<h1>").Append(System.Net.WebUtility.HtmlEncode(brandName)).Append("</h1>");
+        if (!string.IsNullOrWhiteSpace(settings?.Address))
+            sb.Append("<div class='muted'>").Append(System.Net.WebUtility.HtmlEncode(settings!.Address)).Append("</div>");
+        if (!string.IsNullOrWhiteSpace(settings?.City) || !string.IsNullOrWhiteSpace(settings?.Phone))
+        {
+            sb.Append("<div class='muted'>");
+            if (!string.IsNullOrWhiteSpace(settings?.City))
+                sb.Append(System.Net.WebUtility.HtmlEncode(settings!.City));
+            if (!string.IsNullOrWhiteSpace(settings?.City) && !string.IsNullOrWhiteSpace(settings?.Phone))
+                sb.Append(" · ");
+            if (!string.IsNullOrWhiteSpace(settings?.Phone))
+                sb.Append(System.Net.WebUtility.HtmlEncode(settings!.Phone));
+            sb.Append("</div>");
+        }
+        if (!string.IsNullOrWhiteSpace(settings?.Ntn))
+            sb.Append("<div class='muted'>NTN: ").Append(System.Net.WebUtility.HtmlEncode(settings!.Ntn)).Append("</div>");
+        sb.Append("</div>");
+        sb.Append("<div class='muted'>").Append(invoice.InvoiceNumber).Append(" · ")
             .Append(invoice.InvoiceDate.ToLocalTime().ToString("g")).Append("</div><div>")
             .Append(System.Net.WebUtility.HtmlEncode(invoice.BuyerName ?? invoice.Customer?.Name ?? "Walk-in"))
             .Append("</div><hr/><table>");
@@ -597,8 +627,22 @@ public class PosCheckoutService : IPosCheckoutService
             sb.Append("<p class='warn'>FBR pending / failed — reprint after outbox retry posts IRN.</p>");
         }
 
-        sb.Append("<p class='muted'>Thank you</p><script>window.onload=()=>window.print()</script></body></html>");
+        sb.Append("<p class='muted'>").Append(System.Net.WebUtility.HtmlEncode(footer))
+            .Append("</p><script>window.onload=()=>window.print()</script></body></html>");
         return sb.ToString();
+    }
+
+    private static string? ResolveAbsoluteLogoUrl(string? logo, string? publicBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(logo)) return null;
+        var value = logo.Trim();
+        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return value;
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+            return value.StartsWith('/') ? null : value;
+        return publicBaseUrl.TrimEnd('/') + (value.StartsWith('/') ? value : "/" + value);
     }
 
     private static List<PosTenderDto> BuildTenders(PosCheckoutDto dto, decimal grandTotal)

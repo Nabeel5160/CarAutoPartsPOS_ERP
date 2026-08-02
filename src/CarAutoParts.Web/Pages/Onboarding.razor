@@ -44,7 +44,11 @@
                     <option value="general-retail">General Retail / Stationery</option>
                 </select>
             </div>
-            <div class="col-md-4"><label class="form-label">Company name</label><input class="form-control" @bind="_form.CompanyName" /></div>
+            <div class="col-md-4">
+                <label class="form-label">Company name</label>
+                <input class="form-control" @bind="_form.CompanyName" />
+                <div class="form-text">After finish, add a shop logo under Settings → Company.</div>
+            </div>
             <div class="col-md-2"><label class="form-label">NTN</label><input class="form-control" @bind="_form.Ntn" /></div>
             <div class="col-md-2"><label class="form-label">STRN</label><input class="form-control" @bind="_form.Strn" /></div>
             <div class="col-md-2"><label class="form-label">City</label><input class="form-control" @bind="_form.City" /></div>

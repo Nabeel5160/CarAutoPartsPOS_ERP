@@ -147,7 +147,11 @@ public sealed class AppConfigService : IAppConfigService, IFeatureGate
                 if (key.Equals(ConfigKeys.BrandAppName, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(value))
                     settings.CompanyName = value;
                 if (key.Equals(ConfigKeys.BrandLogoUrl, StringComparison.OrdinalIgnoreCase))
-                    settings.LogoUrl = string.IsNullOrWhiteSpace(value) ? null : value;
+                {
+                    var logo = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+                    settings.LogoUrl = logo;
+                    settings.LogoPath = logo;
+                }
             }
         }
 
@@ -229,8 +233,6 @@ public sealed class AppConfigService : IAppConfigService, IFeatureGate
         var brand = VerticalProfiles.DefaultBrand(vertical, settings?.CompanyName);
         var labels = VerticalProfiles.DefaultLabels(vertical);
 
-        if (!string.IsNullOrWhiteSpace(settings?.LogoUrl))
-            brand[ConfigKeys.BrandLogoUrl] = settings.LogoUrl!;
         if (!string.IsNullOrWhiteSpace(settings?.CompanyName))
             brand[ConfigKeys.BrandAppName] = settings.CompanyName;
 
@@ -268,6 +270,18 @@ public sealed class AppConfigService : IAppConfigService, IFeatureGate
                 }
             }
         }
+
+        // CompanySettings.LogoUrl is canonical shop identity (wins over brand overrides).
+        var companyLogo = !string.IsNullOrWhiteSpace(settings?.LogoUrl)
+            ? settings!.LogoUrl!
+            : (!string.IsNullOrWhiteSpace(settings?.LogoPath)
+                && (settings!.LogoPath!.StartsWith('/')
+                    || settings.LogoPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    || settings.LogoPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                ? settings.LogoPath
+                : null);
+        if (!string.IsNullOrWhiteSpace(companyLogo))
+            brand[ConfigKeys.BrandLogoUrl] = companyLogo;
 
         var branding = new BrandingDto(
             brand.GetValueOrDefault(ConfigKeys.BrandAppName, "Car Auto Parts"),

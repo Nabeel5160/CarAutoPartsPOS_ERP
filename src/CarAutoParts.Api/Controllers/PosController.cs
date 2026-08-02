@@ -44,7 +44,8 @@ public class PosController : ApiControllerBase
     [Authorize(Policy = Permissions.PosCheckout)]
     public async Task<IActionResult> Receipt(int invoiceId, CancellationToken ct)
     {
-        var html = await _pos.GetReceiptHtmlAsync(invoiceId, ct);
+        var publicBase = $"{Request.Scheme}://{Request.Host}{Request.PathBase}".TrimEnd('/');
+        var html = await _pos.GetReceiptHtmlAsync(invoiceId, publicBase, ct);
         return Content(html, "text/html");
     }
 

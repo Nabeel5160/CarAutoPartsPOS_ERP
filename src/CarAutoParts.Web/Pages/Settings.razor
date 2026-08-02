@@ -55,7 +55,30 @@
                 <label class="form-check-label" for="negStock">Allow negative stock</label>
             </div>
             <div class="col-12"><label class="form-label">Address</label><textarea class="form-control" @bind="_settings.Address"></textarea></div>
+            <div class="col-12"><label class="form-label">Invoice footer</label><input class="form-control" @bind="_settings.InvoiceFooter" placeholder="Thank you" /></div>
         </div>
+
+        <h6 class="mt-3">Shop logo</h6>
+        <p class="cap-section-sub mb-2">Shown in the sidebar, login screen, and POS receipt. PNG / JPG / WebP, max 2&nbsp;MB.</p>
+        <div class="d-flex flex-wrap align-items-end gap-3 mb-2">
+            @if (!string.IsNullOrWhiteSpace(_logoPreviewUrl))
+            {
+                <img class="cap-logo-preview" src="@_logoPreviewUrl" alt="Shop logo" />
+            }
+            else
+            {
+                <div class="text-secondary small">No logo uploaded</div>
+            }
+            <div>
+                <InputFile class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                           OnChange="OnLogoSelectedAsync" disabled="@_logoBusy" />
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_settings.LogoUrl) || !string.IsNullOrWhiteSpace(_settings.LogoPath))
+            {
+                <button type="button" class="btn btn-sm btn-outline-danger" disabled="@_logoBusy" @onclick="RemoveLogoAsync">Remove logo</button>
+            }
+        </div>
+
         <button class="btn btn-cap mt-3" @onclick="SaveAsync">Save settings</button>
     </div>
 }
@@ -86,9 +109,18 @@
             <div class="col-md-3"><label class="form-label">App name</label><input class="form-control" @bind="_brandAppName" /></div>
             <div class="col-md-2"><label class="form-label">Short name</label><input class="form-control" @bind="_brandShort" /></div>
             <div class="col-md-2"><label class="form-label">Accent word</label><input class="form-control" @bind="_brandAccentWord" /></div>
-            <div class="col-md-3"><label class="form-label">Logo URL</label><input class="form-control" @bind="_brandLogo" /></div>
+            <div class="col-md-3">
+                <label class="form-label">Logo URL <span class="text-secondary fw-normal">(from upload; optional external)</span></label>
+                <input class="form-control" @bind="_brandLogo" readonly="@_logoFromUpload" title="@(_logoFromUpload ? "Synced from shop logo upload — clear upload or paste an external URL as advanced fallback" : "Optional external URL")" />
+            </div>
             <div class="col-md-1"><label class="form-label">Theme</label><input class="form-control" @bind="_brandTheme" /></div>
             <div class="col-md-1"><label class="form-label">Accent</label><input class="form-control" @bind="_brandAccent" /></div>
+            @if (_logoFromUpload)
+            {
+                <div class="col-12">
+                    <button type="button" class="btn btn-link btn-sm px-0" @onclick="() => _logoFromUpload = false">Allow editing Logo URL (advanced)</button>
+                </div>
+            }
         </div>
 
         <h6>Modules</h6>
@@ -184,6 +216,9 @@
     private string _currentPassword = "";
     private string _newPassword = "";
     private bool _forcePassword;
+    private bool _logoBusy;
+    private bool _logoFromUpload;
+    private string? _logoPreviewUrl;
 
     private string _selectedVertical = "auto-parts";
     private string _brandAppName = "", _brandShort = "", _brandAccentWord = "", _brandLogo = "", _brandTheme = "dark", _brandAccent = "amber";
@@ -209,6 +244,7 @@
             _error = error;
             await AppConfig.RefreshFullAsync();
             LoadConfigEditor(AppConfig.Current);
+            SyncLogoPreviewFromSettings();
         }
         _busy = false;
     }
@@ -224,6 +260,7 @@
         _brandLogo = cfg.Branding.LogoUrl ?? "";
         _brandTheme = cfg.Branding.Theme;
         _brandAccent = cfg.Branding.Accent;
+        _logoFromUpload = IsUploadedLogoPath(_brandLogo);
         _modules.Clear();
         foreach (var kv in cfg.Modules) _modules[kv.Key] = kv.Value;
         _moduleKeys = _modules.Keys.OrderBy(k => k).ToList();
@@ -243,11 +280,110 @@
         }
     }
 
+    private void SyncLogoPreviewFromSettings()
+    {
+        var raw = _settings?.LogoUrl ?? _settings?.LogoPath ?? AppConfig.Branding.LogoUrl;
+        _logoPreviewUrl = AppConfig.ResolvedLogoUrl;
+        if (string.IsNullOrWhiteSpace(_logoPreviewUrl) && !string.IsNullOrWhiteSpace(raw))
+        {
+            if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || raw.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                _logoPreviewUrl = raw;
+            else
+                _logoPreviewUrl = AppConfig.ResolvedLogoUrl ?? raw;
+        }
+        _logoFromUpload = IsUploadedLogoPath(raw);
+        if (!string.IsNullOrWhiteSpace(raw))
+            _brandLogo = raw;
+    }
+
+    private static bool IsUploadedLogoPath(string? url) =>
+        !string.IsNullOrWhiteSpace(url)
+        && url.Contains("/uploads/company/", StringComparison.OrdinalIgnoreCase);
+
     private async Task SaveAsync()
     {
         if (_settings is null) return;
         var (ok, error, _) = await Api.UpdateSettingsAsync(_settings);
-        if (!ok) Toast.ShowError(error ?? Locale["Toast_Error"]); else Toast.ShowSuccess(Locale["Toast_Saved"]);
+        if (!ok) Toast.ShowError(error ?? Locale["Toast_Error"]);
+        else
+        {
+            Toast.ShowSuccess(Locale["Toast_Saved"]);
+            await AppConfig.RefreshFullAsync();
+            LoadConfigEditor(AppConfig.Current);
+            SyncLogoPreviewFromSettings();
+        }
+    }
+
+    private async Task OnLogoSelectedAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || _settings is null) return;
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            Toast.ShowError("Logo must be 2 MB or smaller.");
+            return;
+        }
+
+        _logoBusy = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            var (logoUrl, error) = await Api.UploadLogoAsync(stream, file.Name);
+            if (logoUrl is null)
+            {
+                Toast.ShowError(error ?? "Logo upload failed.");
+                return;
+            }
+
+            _settings.LogoUrl = logoUrl;
+            _settings.LogoPath = logoUrl;
+            _brandLogo = logoUrl;
+            _logoFromUpload = true;
+            await AppConfig.RefreshFullAsync();
+            LoadConfigEditor(AppConfig.Current);
+            SyncLogoPreviewFromSettings();
+            Toast.ShowSuccess("Logo uploaded");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError(ex.Message);
+        }
+        finally
+        {
+            _logoBusy = false;
+        }
+    }
+
+    private async Task RemoveLogoAsync()
+    {
+        if (_settings is null) return;
+        if (!await ConfirmAsync("Remove the shop logo?")) return;
+
+        _logoBusy = true;
+        try
+        {
+            var (ok, error, _) = await Api.DeleteLogoAsync();
+            if (!ok)
+            {
+                Toast.ShowError(error ?? "Could not remove logo.");
+                return;
+            }
+
+            _settings.LogoUrl = null;
+            _settings.LogoPath = null;
+            _brandLogo = "";
+            _logoPreviewUrl = null;
+            _logoFromUpload = false;
+            await AppConfig.RefreshFullAsync();
+            LoadConfigEditor(AppConfig.Current);
+            Toast.ShowSuccess("Logo removed");
+        }
+        finally
+        {
+            _logoBusy = false;
+        }
     }
 
     private async Task ApplyPresetAsync()
@@ -295,6 +431,12 @@
         });
         if (error is not null) { Toast.ShowError(error); return; }
         LoadConfigEditor(data);
+        if (_settings is not null)
+        {
+            _settings.LogoUrl = string.IsNullOrWhiteSpace(_brandLogo) ? null : _brandLogo;
+            _settings.LogoPath = _settings.LogoUrl;
+        }
+        SyncLogoPreviewFromSettings();
         Toast.ShowSuccess(Locale["Toast_Saved"]);
     }
 

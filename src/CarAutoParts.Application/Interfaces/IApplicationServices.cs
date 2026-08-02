@@ -146,7 +146,8 @@ public interface IPosCheckoutService
         int? year = null,
         CancellationToken ct = default);
     Task<FitmentOptionsDto> GetFitmentOptionsAsync(string? make = null, CancellationToken ct = default);
-    Task<string> GetReceiptHtmlAsync(int salesInvoiceId, CancellationToken ct = default);
+    /// <param name="publicBaseUrl">API origin (e.g. http://host:5280) used to absolutize relative LogoUrl in receipt HTML.</param>
+    Task<string> GetReceiptHtmlAsync(int salesInvoiceId, string? publicBaseUrl = null, CancellationToken ct = default);
 }
 
 public interface IPosFloorService
@@ -295,6 +296,10 @@ public interface ISettingsService
 {
     Task<CompanySettingsDto> GetSettingsAsync(CancellationToken ct = default);
     Task<Result> UpdateSettingsAsync(CompanySettingsDto dto, CancellationToken ct = default);
+    /// <summary>Persist shop logo URL/path after the API has stored the file. Returns the public LogoUrl.</summary>
+    Task<Result<string>> SetLogoAsync(string logoUrl, string? logoPath, CancellationToken ct = default);
+    /// <summary>Clear LogoUrl/LogoPath. Returns the previous LogoPath (if any) so the API can delete the file.</summary>
+    Task<Result<string?>> ClearLogoAsync(CancellationToken ct = default);
 }
 
 public interface IBackupService

@@ -1,4 +1,6 @@
 @using CarAutoParts.Web.Navigation
+@using Blazored.LocalStorage
+@using Microsoft.JSInterop
 @inherits LayoutComponentBase
 @inject ThemeService Theme
 @inject LocaleService Locale
@@ -9,7 +11,9 @@
 @inject WebAppConfigService AppConfig
 @inject NavigationManager Nav
 @inject JwtAuthStateProvider AuthState
-@implements IDisposable
+@inject ILocalStorageService Storage
+@inject IJSRuntime Js
+@implements IAsyncDisposable
 
 <div class="cap-scene">
     <BlazoredToasts Position="Blazored.Toast.Configuration.ToastPosition.BottomRight" Timeout="4" />
@@ -19,20 +23,26 @@
     }
     <AuthorizeView>
         <Authorized>
-            <div class="cap-shell @(_sidebarOpen ? "cap-nav-open" : null)">
+            <div class="cap-shell @(_sidebarOpen ? "cap-nav-open" : null) @(_sidebarBoxed ? "cap-shell--sidebar-boxed" : null) @(_fullscreen ? "cap-shell--fullscreen" : null)">
                 @if (_sidebarOpen)
                 {
                     <button type="button" class="cap-nav-backdrop d-lg-none" aria-label="Close menu" @onclick="CloseSidebar"></button>
                 }
                 <aside class="cap-sidebar @(_sidebarOpen ? "open" : null)">
-                    <div class="cap-brand">@AppConfig.Branding.ShortName <span>@AppConfig.Branding.AccentWord</span></div>
+                    <div class="cap-brand">
+                        @if (!string.IsNullOrWhiteSpace(AppConfig.ResolvedLogoUrl))
+                        {
+                            <img class="cap-brand-logo" src="@AppConfig.ResolvedLogoUrl" alt="" />
+                        }
+                        <span class="cap-brand-text">@AppConfig.Branding.ShortName <span>@AppConfig.Branding.AccentWord</span></span>
+                    </div>
                     <nav class="cap-nav" @onclick="OnNavClick">
                         @foreach (var group in _groups.Where(g => g.Visible))
                         {
                             @if (group.IsLeaf)
                             {
                                 var leaf = group.Children[0];
-                                <NavLink href="@leaf.Href" Match="@(leaf.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" class="cap-nav-link">
+                                <NavLink href="@leaf.Href" Match="@(leaf.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" class="cap-nav-link" title="@leaf.Title">
                                     <span class="cap-nav-ico">@leaf.Icon</span>
                                     <span>@leaf.Title</span>
                                 </NavLink>
@@ -41,7 +51,7 @@
                             {
                                 var open = _expanded.Contains(group.Id);
                                 <div class="cap-nav-group @(open ? "open" : null) @(IsGroupActive(group) ? "has-active" : null)">
-                                    <button type="button" class="cap-nav-parent" @onclick="() => ToggleGroup(group.Id)" @onclick:stopPropagation="true" aria-expanded="@open">
+                                    <button type="button" class="cap-nav-parent" title="@group.Title" @onclick="() => ToggleGroup(group.Id)" @onclick:stopPropagation="true" aria-expanded="@open">
                                         <span class="cap-nav-ico">@group.Icon</span>
                                         <span class="cap-nav-parent-label">@group.Title</span>
                                         <span class="cap-nav-chevron" aria-hidden="true">▾</span>
@@ -50,7 +60,7 @@
                                         <div class="cap-nav-children-inner">
                                             @foreach (var child in group.Children.Where(c => c.Visible))
                                             {
-                                                <NavLink href="@child.Href" Match="@(child.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" class="cap-nav-link cap-nav-child" tabindex="@(open ? 0 : -1)">
+                                                <NavLink href="@child.Href" Match="@(child.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" class="cap-nav-link cap-nav-child" title="@child.Title" tabindex="@(open ? 0 : -1)">
                                                     <span class="cap-nav-ico">@child.Icon</span>
                                                     <span>@child.Title</span>
                                                 </NavLink>
@@ -62,6 +72,14 @@
                         }
                     </nav>
                 </aside>
+                <button type="button"
+                        class="cap-sidebar-collapse"
+                        title="@(_sidebarBoxed ? "Expand sidebar" : "Collapse sidebar")"
+                        aria-label="@(_sidebarBoxed ? "Expand sidebar" : "Collapse sidebar")"
+                        aria-pressed="@_sidebarBoxed"
+                        @onclick="ToggleSidebarLayoutAsync">
+                    @(_sidebarBoxed ? "›" : "‹")
+                </button>
                 <div class="cap-main">
                     <header class="cap-topbar">
                         <div class="d-flex align-items-center gap-2 min-w-0">
@@ -79,7 +97,21 @@
                             }
                             <a class="badge badge-soft text-decoration-none d-lg-none" href="m" title="Mobile tools">Mobile</a>
                         </div>
-                        <div class="d-flex align-items-center gap-2 cap-topbar-tools">
+                        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end cap-topbar-tools">
+                            <button type="button"
+                                    class="btn btn-sm btn-cap-ghost d-none d-lg-inline-flex cap-touch-btn"
+                                    title="@(_sidebarBoxed ? "Expand sidebar" : "Collapse sidebar")"
+                                    aria-pressed="@_sidebarBoxed"
+                                    @onclick="ToggleSidebarLayoutAsync">
+                                @(_sidebarBoxed ? "Expand" : "Collapse")
+                            </button>
+                            <button type="button"
+                                    class="btn btn-sm btn-cap-ghost cap-touch-btn"
+                                    title="@(_fullscreen ? "Exit fullscreen" : "Fullscreen")"
+                                    aria-pressed="@_fullscreen"
+                                    @onclick="ToggleFullscreenAsync">
+                                @(_fullscreen ? "Exit full" : "Fullscreen")
+                            </button>
                             <select class="form-select form-select-sm cap-topbar-dense" style="width:auto" value="@Locale.Culture" @onchange="OnCultureChanged">
                                 <option value="en">EN</option>
                                 <option value="ur">UR</option>
@@ -94,7 +126,7 @@
                                 <option value="emerald">Emerald</option>
                                 <option value="rose">Rose</option>
                             </select>
-                            <button type="button" class="btn btn-sm btn-cap-outline cap-touch-btn" @onclick="LogoutAsync">Logout</button>
+                            <button type="button" class="btn btn-sm btn-cap-ghost cap-touch-btn" @onclick="LogoutAsync">Logout</button>
                         </div>
                     </header>
                     <main class="cap-content">
@@ -110,7 +142,13 @@
 </div>
 
 @code {
+    private const string SidebarBoxedStorageKey = "cap.shell.sidebarBoxed";
+
     private bool _sidebarOpen;
+    private bool _sidebarBoxed;
+    private bool _fullscreen;
+    private bool _shellJsBound;
+    private DotNetObjectReference<MainLayout>? _selfRef;
     private string _displayName = "User";
     private int _unread;
     private List<NavGroup> _groups = [];
@@ -127,6 +165,7 @@
         {
             await Theme.InitializeAsync();
             await Locale.InitializeAsync();
+            await RestoreSidebarLayoutAsync();
             await AppConfig.RefreshFullAsync();
             // Branding refresh must not leave company theme on the DOM — restore user preference.
             await Theme.ReapplyAsync();
@@ -149,8 +188,71 @@
             System.Diagnostics.Debug.WriteLine("MainLayout init: " + ex);
             Locale.Changed += OnLocaleChanged;
             AppConfig.Changed += OnAppConfigChanged;
+            try { await RestoreSidebarLayoutAsync(); } catch { /* ignore */ }
             try { await BuildNavAsync(); } catch { /* ignore */ }
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shellJsBound) return;
+        try
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("capShell.bind", _selfRef);
+            _shellJsBound = true;
+        }
+        catch
+        {
+            // JS interop may not be ready on first unauthorized paint.
+        }
+    }
+
+    private async Task RestoreSidebarLayoutAsync()
+    {
+        try
+        {
+            var saved = await Storage.GetItemAsync<bool?>(SidebarBoxedStorageKey);
+            _sidebarBoxed = saved == true;
+        }
+        catch
+        {
+            _sidebarBoxed = false;
+        }
+    }
+
+    private async Task ToggleSidebarLayoutAsync()
+    {
+        _sidebarBoxed = !_sidebarBoxed;
+        try
+        {
+            await Storage.SetItemAsync(SidebarBoxedStorageKey, _sidebarBoxed);
+        }
+        catch { /* private mode */ }
+    }
+
+    private async Task ToggleFullscreenAsync()
+    {
+        try
+        {
+            _fullscreen = await Js.InvokeAsync<bool>("capShell.toggleFullscreen", ".cap-scene");
+        }
+        catch
+        {
+            try
+            {
+                _fullscreen = await Js.InvokeAsync<bool>("capShell.toggleFullscreen");
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    [JSInvokable]
+    public void OnFullscreenChanged(bool isFullscreen)
+    {
+        if (_fullscreen == isFullscreen) return;
+        _fullscreen = isFullscreen;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void OnAppConfigChanged() => InvokeAsync(async () =>
@@ -368,7 +470,7 @@
     private void OnThemeChanged() => InvokeAsync(StateHasChanged);
     private void OnLocaleChanged() => InvokeAsync(async () => { await BuildNavAsync(); StateHasChanged(); });
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         ApiReachability.Changed -= OnApiReachabilityChanged;
         OfflineQueue.Changed -= OnOfflineQueueChanged;
@@ -376,6 +478,15 @@
         Locale.Changed -= OnLocaleChanged;
         AppConfig.Changed -= OnAppConfigChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        try
+        {
+            if (_shellJsBound)
+                await Js.InvokeVoidAsync("capShell.unbind");
+        }
+        catch { /* ignore */ }
+        _selfRef?.Dispose();
+        _selfRef = null;
+        _shellJsBound = false;
         _navBuildLock.Dispose();
     }
 

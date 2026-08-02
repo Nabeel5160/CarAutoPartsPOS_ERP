@@ -87,7 +87,7 @@ public sealed class OnboardingService : IOnboardingService
         var steps = new List<OnboardingStepDto>
         {
             new("vertical", "Business type", verticalSet, "/onboarding", "Auto parts, bike parts, or general retail"),
-            new("company", "Company profile", !string.IsNullOrWhiteSpace(settings?.CompanyName) && !string.IsNullOrWhiteSpace(settings?.Ntn), "/onboarding", "Name, NTN, city, tax rate"),
+            new("company", "Company profile", !string.IsNullOrWhiteSpace(settings?.CompanyName) && !string.IsNullOrWhiteSpace(settings?.Ntn), "/onboarding", "Name, NTN, city, tax rate — then add logo under Settings"),
             new("fiscal", "Fiscal year / periods", hasFy, "/periods", "Jul–Jun FY seeded by platform"),
             new("warehouse", "Default warehouse", hasWarehouse, "/warehouses", "At least one warehouse"),
             new("till", "First till", hasTill, "/onboarding", "Counter till for open shift (created on finish if missing)"),

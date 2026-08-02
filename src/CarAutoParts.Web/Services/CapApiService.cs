@@ -460,6 +460,17 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> UpdateSettingsAsync(CompanySettingsDto dto) =>
         _api.PutAsync("/api/settings", dto);
 
+    public async Task<(string? LogoUrl, string? Error)> UploadLogoAsync(Stream file, string fileName)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(file), "file", fileName);
+        var (data, error, _) = await _api.PostMultipartAsync<LogoUploadResultDto>("/api/settings/logo", content);
+        return (data?.LogoUrl, error);
+    }
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteLogoAsync() =>
+        _api.DeleteAsync("/api/settings/logo");
+
     public Task<(List<BackupHistoryDto>? Data, string? Error, int Status)> GetBackupsAsync() =>
         _api.GetAsync<List<BackupHistoryDto>>("/api/backups");
 

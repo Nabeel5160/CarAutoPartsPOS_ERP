@@ -116,17 +116,17 @@ public class DemoDataSeeder
 
     private async Task<List<Customer>> SeedCustomersAsync(CancellationToken ct)
     {
-        var defs = new[]
+        var defs = new (string Name, CustomerType Type, string? Phone, string? Email, string? Province, string? Address, string? NtnCnic, decimal CreditLimit)[]
         {
-            ("Ali Auto Workshop", CustomerType.Regular, "+92-300-1111111", "ali@workshop.local", "Lahore", 50000m),
-            ("City Motors Garage", CustomerType.Regular, "+92-300-2222222", "citymotors@example.com", "Karachi", 75000m),
-            ("Fast Fit Service Center", CustomerType.Regular, "+92-300-3333333", null, "Islamabad", 30000m),
-            ("Hassan Fleet Services", CustomerType.Regular, "+92-300-4444444", "fleet@hassan.local", "Lahore", 100000m),
-            ("Walk-in Customer", CustomerType.WalkIn, null, null, null, 0m)
+            ("Ali Auto Workshop", CustomerType.Regular, "+92-300-1111111", "ali@workshop.local", "Punjab", "Plot 8, Industrial Area, Township", "35202-1234567-1", 50000m),
+            ("City Motors Garage", CustomerType.Regular, "+92-300-2222222", "citymotors@example.com", "Sindh", "Shop 22, Saddar Auto Market", "42101-7654321-2", 75000m),
+            ("Fast Fit Service Center", CustomerType.Regular, "+92-300-3333333", "fastfit@demo.local", "Islamabad", "I-9 Markaz, Service Lane 3", "61101-1122334-5", 30000m),
+            ("Hassan Fleet Services", CustomerType.Regular, "+92-300-4444444", "fleet@hassan.local", "Punjab", "Km 12, Multan Road", "35401-9988776-3", 100000m),
+            ("Walk-in Customer", CustomerType.WalkIn, "+92-300-0000000", null, "Punjab", "Counter / cash sale", null, 0m)
         };
 
         var customers = new List<Customer>();
-        foreach (var (name, type, phone, email, province, creditLimit) in defs)
+        foreach (var (name, type, phone, email, province, address, ntn, creditLimit) in defs)
         {
             var customer = new Customer
             {
@@ -135,6 +135,8 @@ public class DemoDataSeeder
                 Phone = phone,
                 Email = email,
                 Province = province,
+                Address = address,
+                NtnCnic = ntn,
                 CreditLimit = creditLimit,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,

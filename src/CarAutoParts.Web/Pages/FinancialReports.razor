@@ -50,25 +50,45 @@
 
 @if (_pl is not null)
 {
-    <div class="cap-card mb-3">
-        <CapChart Title="P&amp;L amounts" Spec="@_plChartSpec" Height="260" />
-    </div>
-    <div class="cap-card mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <h5 class="mb-0">P&amp;L @_pl.FromDate.ToString("yyyy-MM-dd") – @_pl.ToDate.ToString("yyyy-MM-dd")</h5>
+    <CapViewToggle Mode="_view" ModeChanged="OnViewChanged" CssClass="mb-3" />
+
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="cap-card mb-3">
+            <CapChart Title="P&amp;L amounts" Spec="@_plChartSpec" Height="260" />
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-4"><div class="cap-card cap-kpi"><span class="label">Revenue</span><span class="value">@_pl.TotalRevenue.ToString("N0")</span></div></div>
+            <div class="col-md-4"><div class="cap-card cap-kpi"><span class="label">Expense</span><span class="value">@_pl.TotalExpenses.ToString("N0")</span></div></div>
+            <div class="col-md-4"><div class="cap-card cap-kpi"><span class="label">Net</span><span class="value">@_pl.NetProfit.ToString("N0")</span></div></div>
+        </div>
+    }
+
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="cap-card mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">P&amp;L @_pl.FromDate.ToString("yyyy-MM-dd") – @_pl.ToDate.ToString("yyyy-MM-dd")</h5>
+                <button class="btn btn-sm btn-outline-light" @onclick="ExportPlCsvAsync">Export CSV</button>
+            </div>
+            <p>Revenue @_pl.TotalRevenue.ToString("N2") · Expense @_pl.TotalExpenses.ToString("N2") · Net @_pl.NetProfit.ToString("N2")</p>
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Code</th><th>Name</th><th>Amount</th></tr></thead>
+                <tbody>
+                @foreach (var l in _pl.Lines)
+                {
+                    <tr><td>@l.Code</td><td>@l.Name</td><td>@l.Amount.ToString("N2")</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="mb-3">
             <button class="btn btn-sm btn-outline-light" @onclick="ExportPlCsvAsync">Export CSV</button>
         </div>
-        <p>Revenue @_pl.TotalRevenue.ToString("N2") · Expense @_pl.TotalExpenses.ToString("N2") · Net @_pl.NetProfit.ToString("N2")</p>
-        <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Code</th><th>Name</th><th>Amount</th></tr></thead>
-            <tbody>
-            @foreach (var l in _pl.Lines)
-            {
-                <tr><td>@l.Code</td><td>@l.Name</td><td>@l.Amount.ToString("N2")</td></tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    }
 }
 
 @if (_bs is not null)
@@ -100,6 +120,9 @@
     private string _branchId = "";
     private bool _busy;
     private string? _error;
+    private CapViewMode _view = CapViewMode.Numbers;
+
+    private void OnViewChanged(CapViewMode mode) => _view = mode;
 
     protected override async Task OnInitializedAsync()
     {

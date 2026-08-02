@@ -29,68 +29,137 @@
 
 @if (_data is not null)
 {
-    <div class="row g-3 mb-3">
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.TotalInventoryValue.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Turnover</span><span class="value">@_data.TurnoverRatio.ToString("N2")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Gross margin</span><span class="value">@_data.GrossMarginAmount.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">GM%</span><span class="value">@_data.GrossMarginPercent.ToString("N1")%</span></div></div>
-    </div>
-    <div class="row g-3 mb-3">
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <CapChart Title="Top selling revenue" Spec="@_topSpec" Height="240" />
+    <CapViewToggle Mode="_view" ModeChanged="OnViewChanged" CssClass="mb-3" AriaLabel="Analytics view" />
+
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.TotalInventoryValue.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Turnover</span><span class="value">@_data.TurnoverRatio.ToString("N2")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Gross margin</span><span class="value">@_data.GrossMarginAmount.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">GM%</span><span class="value">@_data.GrossMarginPercent.ToString("N1")%</span></div></div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <h5>Top selling (with profit)</h5>
+                    @if (_data.TopSellingProducts.Count == 0)
+                    {
+                        <p class="text-muted mb-0 small">No top sellers in this range.</p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">@foreach (var p in _data.TopSellingProducts.Take(8)) { <li>@p.ProductName — @p.Revenue.ToString("N0") / GM @p.Profit.ToString("N0")</li> }</ul>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <h5>Fast movers</h5>
+                    @if (_data.FastMovers.Count == 0)
+                    {
+                        <p class="text-muted mb-0 small">No fast movers in this range.</p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">@foreach (var p in _data.FastMovers.Take(8)) { <li>@p.ProductName — qty @p.QuantitySold.ToString("0.##")</li> }</ul>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <h5>Dead stock (≥ @_deadDays d)</h5>
+                    @if (_data.DeadStock.Count == 0)
+                    {
+                        <p class="text-muted mb-0 small">No dead stock for this threshold.</p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">@foreach (var p in _data.DeadStock.Take(8)) { <li>@p.ProductName — @p.StockValue.ToString("N0") (@p.DaysSinceLastSale d)</li> }</ul>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <h5>Slow moving</h5>
+                    @if (_data.SlowMovingProducts.Count == 0)
+                    {
+                        <p class="text-muted mb-0 small">No slow movers in this range.</p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">@foreach (var p in _data.SlowMovingProducts.Take(8)) { <li>@p.ProductName (@p.DaysSinceLastSale d)</li> }</ul>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <h5>ABC</h5>
+                    @if (_data.AbcAnalysis.Count == 0)
+                    {
+                        <p class="text-muted mb-0 small">No ABC rows for this range.</p>
+                    }
+                    else
+                    {
+                        <ul class="mb-0">@foreach (var p in _data.AbcAnalysis.Take(8)) { <li>@p.AbcClass — @p.ProductName</li> }</ul>
+                    }
+                </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <CapChart Title="ABC class mix" Spec="@_abcSpec" Height="240" />
+    }
+
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChartPlayer Title="Top selling revenue" Spec="@_topRaceSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="ABC class mix" Spec="@_abcSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Dead stock value" Spec="@_deadSpec" Height="260" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Fast movers (qty)" Spec="@_fastSpec" Height="260" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Slow / dead health" Spec="@_healthSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="GM vs inventory" Spec="@_gmInvSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="cap-card">
+                    <CapChartPlayer Title="4D stock insight" Spec="@_pulseSpec" Height="300" ShowSkeleton="@_busy" />
+                </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <CapChart Title="Dead stock value" Spec="@_deadSpec" Height="240" />
-            </div>
-        </div>
-    </div>
-    <div class="row g-3">
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <h5>Top selling (with profit)</h5>
-                <ul class="mb-0">@foreach (var p in _data.TopSellingProducts.Take(8)) { <li>@p.ProductName — @p.Revenue.ToString("N0") / GM @p.Profit.ToString("N0")</li> }</ul>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <h5>Fast movers</h5>
-                <ul class="mb-0">@foreach (var p in _data.FastMovers.Take(8)) { <li>@p.ProductName — qty @p.QuantitySold.ToString("0.##")</li> }</ul>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <h5>Dead stock (≥ @_deadDays d)</h5>
-                <ul class="mb-0">@foreach (var p in _data.DeadStock.Take(8)) { <li>@p.ProductName — @p.StockValue.ToString("N0") (@p.DaysSinceLastSale d)</li> }</ul>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <h5>Slow moving</h5>
-                <ul class="mb-0">@foreach (var p in _data.SlowMovingProducts.Take(8)) { <li>@p.ProductName (@p.DaysSinceLastSale d)</li> }</ul>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <h5>ABC</h5>
-                <ul class="mb-0">@foreach (var p in _data.AbcAnalysis.Take(8)) { <li>@p.AbcClass — @p.ProductName</li> }</ul>
-            </div>
-        </div>
-    </div>
+    }
 }
 
 @code {
     private AnalyticsDto? _data;
-    private CapChartSpec? _topSpec;
+    private CapChartSpec? _topRaceSpec;
     private CapChartSpec? _abcSpec;
     private CapChartSpec? _deadSpec;
+    private CapChartSpec? _fastSpec;
+    private CapChartSpec? _healthSpec;
+    private CapChartSpec? _gmInvSpec;
+    private CapChartSpec? _pulseSpec;
     private DateTime? _from = DateTime.Today.AddDays(-30);
     private DateTime? _to = DateTime.Today;
     private string _branchId = "";
@@ -99,6 +168,9 @@
     private bool _busy = true;
     private bool _exporting;
     private string? _error;
+    private CapViewMode _view = CapViewMode.Numbers;
+
+    private void OnViewChanged(CapViewMode mode) => _view = mode;
 
     protected override async Task OnInitializedAsync()
     {
@@ -122,32 +194,241 @@
 
     private void BuildCharts()
     {
-        _topSpec = _abcSpec = _deadSpec = null;
+        _topRaceSpec = _abcSpec = _deadSpec = _fastSpec = _healthSpec = _gmInvSpec = _pulseSpec = null;
         if (_data is null) return;
 
-        var top = _data.TopSellingProducts.Take(8).Reverse().ToList();
+        var top = _data.TopSellingProducts
+            .OrderByDescending(p => p.Revenue)
+            .Take(8)
+            .ToList();
         if (top.Count > 0)
-            _topSpec = CapChartFactory.HorizontalBar(
-                top.Select(p => p.ProductName.Length > 22 ? p.ProductName[..21] + "…" : p.ProductName),
-                "Revenue",
-                top.Select(p => p.Revenue));
+        {
+            // Progressive rank reveal: Top 1 → Top N (Dashboard-style race)
+            var raceFrames = new List<CapChartFrame>();
+            for (var n = 1; n <= top.Count; n++)
+            {
+                var slice = top.Take(n).OrderBy(p => p.Revenue).ToList();
+                raceFrames.Add(new CapChartFrame
+                {
+                    Label = $"Top {n}",
+                    Labels = slice.Select(p => Truncate(p.ProductName, 22)).ToList(),
+                    Datasets =
+                    [
+                        new CapChartDataset
+                        {
+                            Label = "Revenue",
+                            Data = slice.Select(p => p.Revenue).ToList(),
+                            ColorRole = "accent"
+                        }
+                    ]
+                });
+            }
+            _topRaceSpec = CapChartFactory.Timeline(raceFrames, "horizontalBar", autoPlay: false, intervalMs: 1100);
+            _topRaceSpec.Type = "horizontalBar";
+        }
 
         var abc = _data.AbcAnalysis
             .GroupBy(a => a.AbcClass.ToString())
             .Select(g => new { Class = g.Key, Value = g.Sum(x => x.AnnualUsageValue) })
+            .Where(x => x.Value > 0)
             .OrderBy(x => x.Class)
             .ToList();
         if (abc.Count > 0)
             _abcSpec = CapChartFactory.Doughnut(abc.Select(a => $"Class {a.Class}"), "ABC", abc.Select(a => a.Value));
 
-        var dead = _data.DeadStock.OrderByDescending(d => d.StockValue).Take(8).Reverse().ToList();
+        var dead = _data.DeadStock.OrderByDescending(d => d.StockValue).Take(8).ToList();
         if (dead.Count > 0)
+        {
+            var deadAsc = dead.OrderBy(d => d.StockValue).ToList();
             _deadSpec = CapChartFactory.HorizontalBar(
-                dead.Select(p => p.ProductName.Length > 22 ? p.ProductName[..21] + "…" : p.ProductName),
+                deadAsc.Select(p => Truncate(p.ProductName, 22)),
                 "Stock value",
-                dead.Select(p => p.StockValue),
+                deadAsc.Select(p => p.StockValue),
                 "accent2");
+        }
+
+        var fast = _data.FastMovers.OrderByDescending(f => f.QuantitySold).Take(8).ToList();
+        if (fast.Count > 0)
+        {
+            var fastAsc = fast.OrderBy(f => f.QuantitySold).ToList();
+            _fastSpec = CapChartFactory.HorizontalBar(
+                fastAsc.Select(p => Truncate(p.ProductName, 22)),
+                "Qty sold",
+                fastAsc.Select(p => p.QuantitySold),
+                "accent");
+        }
+
+        // Bubble: days since sale (X) vs stock value (Y); radius ~ qty on hand
+        var healthPoints = BuildHealthBubbles(_data);
+        if (healthPoints.Count > 0)
+            _healthSpec = CapChartFactory.Bubble(healthPoints);
+        else
+        {
+            // Fallback dual series when bubble inputs thin: days vs value for dead + slow
+            var healthRows = _data.DeadStock
+                .OrderByDescending(d => d.StockValue)
+                .Take(6)
+                .Select(d => (Name: Truncate(d.ProductName, 18), Days: (decimal)d.DaysSinceLastSale, Value: d.StockValue))
+                .ToList();
+            if (healthRows.Count == 0)
+            {
+                healthRows = _data.SlowMovingProducts
+                    .OrderByDescending(s => s.DaysSinceLastSale)
+                    .Take(6)
+                    .Select(s => (Name: Truncate(s.ProductName, 18), Days: (decimal)s.DaysSinceLastSale, Value: s.QuantityOnHand))
+                    .ToList();
+            }
+            if (healthRows.Count > 0)
+            {
+                _healthSpec = CapChartFactory.GroupedBar(
+                    healthRows.Select(r => r.Name),
+                    ("Days since sale", healthRows.Select(r => r.Days), "accent2"),
+                    ("Stock / qty", healthRows.Select(r => r.Value), "accent"));
+            }
+        }
+
+        var deadAgg = _data.DeadStock.Sum(d => d.StockValue);
+        var fastRev = _data.FastMovers.Sum(f => f.Revenue);
+        if (_data.GrossMarginAmount != 0 || _data.TotalInventoryValue != 0 || deadAgg != 0 || fastRev != 0)
+        {
+            _gmInvSpec = CapChartFactory.GroupedBar(
+                ["GM", "Inventory", "Dead stock", "Fast rev"],
+                ("Value", new[] { _data.GrossMarginAmount, _data.TotalInventoryValue, deadAgg, fastRev }, "accent"));
+        }
+
+        // 4D Insight Pulse: progressive Top N + ABC share frames
+        var pulseFrames = BuildPulseFrames(_data, top, abc.Select(a => (a.Class, a.Value)).ToList());
+        if (pulseFrames.Count > 0)
+        {
+            _pulseSpec = CapChartFactory.Timeline(pulseFrames, "horizontalBar", autoPlay: false, intervalMs: 1200);
+            _pulseSpec.Type = "horizontalBar";
+        }
     }
+
+    private static List<CapChartBubblePoint> BuildHealthBubbles(AnalyticsDto data)
+    {
+        var points = new List<CapChartBubblePoint>();
+        foreach (var d in data.DeadStock.OrderByDescending(x => x.StockValue).Take(10))
+        {
+            if (d.StockValue <= 0 && d.DaysSinceLastSale <= 0) continue;
+            points.Add(new CapChartBubblePoint
+            {
+                X = d.DaysSinceLastSale,
+                Y = d.StockValue,
+                R = Math.Max(6m, Math.Min(40m, d.QuantityOnHand * 2m + 8m)),
+                Name = Truncate(d.ProductName, 24)
+            });
+        }
+        if (points.Count < 3)
+        {
+            foreach (var s in data.SlowMovingProducts.OrderByDescending(x => x.DaysSinceLastSale).Take(8))
+            {
+                if (points.Any(p => p.Name == Truncate(s.ProductName, 24))) continue;
+                points.Add(new CapChartBubblePoint
+                {
+                    X = s.DaysSinceLastSale,
+                    Y = Math.Max(1m, s.QuantityOnHand),
+                    R = Math.Max(6m, Math.Min(36m, s.QuantityOnHand * 2m + 6m)),
+                    Name = Truncate(s.ProductName, 24)
+                });
+                if (points.Count >= 12) break;
+            }
+        }
+        return points;
+    }
+
+    private static List<CapChartFrame> BuildPulseFrames(
+        AnalyticsDto data,
+        List<TopProductAnalyticsDto> top,
+        List<(string Class, decimal Value)> abc)
+    {
+        var frames = new List<CapChartFrame>();
+        var prevTake = 0;
+        foreach (var n in new[] { 3, 5, 8 })
+        {
+            if (top.Count == 0) break;
+            var take = Math.Min(n, top.Count);
+            if (take <= prevTake) continue;
+            prevTake = take;
+            var slice = top.Take(take).OrderBy(p => p.Revenue).ToList();
+            frames.Add(new CapChartFrame
+            {
+                Label = $"Top {take} revenue",
+                Labels = slice.Select(p => Truncate(p.ProductName, 20)).ToList(),
+                Datasets =
+                [
+                    new CapChartDataset
+                    {
+                        Label = "Revenue",
+                        Data = slice.Select(p => p.Revenue).ToList(),
+                        ColorRole = "accent"
+                    }
+                ]
+            });
+        }
+
+        if (abc.Count > 0)
+        {
+            var ordered = abc.OrderBy(a => a.Class).ToList();
+            frames.Add(new CapChartFrame
+            {
+                Label = "ABC class share",
+                Labels = ordered.Select(a => $"Class {a.Class}").ToList(),
+                Datasets =
+                [
+                    new CapChartDataset
+                    {
+                        Label = "Usage value",
+                        Data = ordered.Select(a => a.Value).ToList(),
+                        ColorRole = "accent2"
+                    }
+                ]
+            });
+        }
+
+        var deadTop = data.DeadStock.OrderByDescending(d => d.StockValue).Take(5).OrderBy(d => d.StockValue).ToList();
+        if (deadTop.Count > 0)
+        {
+            frames.Add(new CapChartFrame
+            {
+                Label = "Dead stock pressure",
+                Labels = deadTop.Select(d => Truncate(d.ProductName, 20)).ToList(),
+                Datasets =
+                [
+                    new CapChartDataset
+                    {
+                        Label = "Stock value",
+                        Data = deadTop.Select(d => d.StockValue).ToList(),
+                        ColorRole = "accent2"
+                    }
+                ]
+            });
+        }
+
+        var fastTop = data.FastMovers.OrderByDescending(f => f.QuantitySold).Take(5).OrderBy(f => f.QuantitySold).ToList();
+        if (fastTop.Count > 0)
+        {
+            frames.Add(new CapChartFrame
+            {
+                Label = "Fast mover velocity",
+                Labels = fastTop.Select(f => Truncate(f.ProductName, 20)).ToList(),
+                Datasets =
+                [
+                    new CapChartDataset
+                    {
+                        Label = "Qty sold",
+                        Data = fastTop.Select(f => f.QuantitySold).ToList(),
+                        ColorRole = "accent"
+                    }
+                ]
+            });
+        }
+
+        return frames;
+    }
+
+    private static string Truncate(string value, int max)
+        => string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..(max - 1)] + "…";
 
     private async Task ExportAsync()
     {

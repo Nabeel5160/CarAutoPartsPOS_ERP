@@ -8,7 +8,13 @@
 
 <div class="cap-scene login-wrap">
     <div class="login-panel">
-        <h1 class="page-title mb-1">@AppConfig.Branding.ShortName <span style="color:var(--cap-accent)">@AppConfig.Branding.AccentWord</span></h1>
+        <div class="cap-login-brand">
+            @if (!string.IsNullOrWhiteSpace(AppConfig.ResolvedLogoUrl))
+            {
+                <img class="cap-brand-logo" src="@AppConfig.ResolvedLogoUrl" alt="" />
+            }
+            <h1 class="page-title mb-1 cap-brand-text">@AppConfig.Branding.ShortName <span style="color:var(--cap-accent)">@AppConfig.Branding.AccentWord</span></h1>
+        </div>
         <p class="page-sub">Sign in to the ERP console</p>
 
         @if (!string.IsNullOrWhiteSpace(_error))

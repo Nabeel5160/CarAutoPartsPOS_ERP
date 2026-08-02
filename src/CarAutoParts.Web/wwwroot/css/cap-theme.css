@@ -226,9 +226,60 @@ code, .mono { font-family: var(--cap-font-mono); }
   padding: var(--cap-space-2) var(--cap-space-3) var(--cap-space-4);
   color: var(--cap-text);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 .cap-brand span { color: var(--cap-accent); }
+
+.cap-brand .cap-brand-text {
+  color: var(--cap-text);
+}
+
+.cap-brand .cap-brand-text > span {
+  color: var(--cap-accent);
+}
+
+.cap-brand img.cap-brand-logo,
+.cap-login-brand img.cap-brand-logo {
+  max-height: 40px;
+  max-width: 120px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cap-login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  text-align: center;
+}
+
+.cap-login-brand img.cap-brand-logo {
+  max-height: 48px;
+  max-width: 160px;
+}
+
+.cap-login-brand .page-title {
+  margin-bottom: 0;
+}
+
+.cap-logo-preview {
+  max-height: 72px;
+  max-width: 200px;
+  object-fit: contain;
+  display: block;
+  margin-bottom: 0.5rem;
+  background: color-mix(in srgb, var(--cap-surface) 80%, transparent);
+  border: var(--cap-border-width) solid var(--cap-border);
+  border-radius: var(--cap-radius-sm);
+  padding: 0.35rem;
+}
 
 .cap-nav {
   flex: 1 1 auto;
@@ -389,6 +440,121 @@ code, .mono { font-family: var(--cap-font-mono); }
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+/* Desktop collapsible sidebar (icon rail). No hover flyout — rail stays in grid. */
+@media (min-width: 992px) {
+  .cap-shell {
+    transition: grid-template-columns .22s ease;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed {
+    --cap-sidebar-width: 72px;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-main {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-sidebar {
+    grid-column: 1;
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-width: 0;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    overflow: hidden;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-brand {
+    justify-content: center;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    gap: 0;
+    flex-direction: column;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-brand-text,
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-parent-label,
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-chevron,
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-link > span:not(.cap-nav-ico) {
+    display: none;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-brand img.cap-brand-logo {
+    max-width: 36px;
+    max-height: 36px;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-brand:not(:has(img.cap-brand-logo)) .cap-brand-text {
+    display: block;
+    max-width: 3rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.65rem;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-link,
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-parent {
+    justify-content: center;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    gap: 0;
+  }
+
+  .cap-shell.cap-shell--sidebar-boxed .cap-nav-children {
+    margin-left: 0;
+    padding-left: 0;
+    border-left-color: transparent;
+  }
+
+  /* Edge toggle on the sidebar / content seam (tracks --cap-sidebar-width). */
+  .cap-sidebar-collapse {
+    display: none;
+  }
+
+  .cap-shell > .cap-sidebar-collapse {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 1.15rem;
+    left: calc(var(--cap-sidebar-width) - 0.7rem);
+    z-index: 26;
+    width: 1.45rem;
+    height: 1.45rem;
+    padding: 0;
+    border-radius: var(--cap-radius-pill);
+    border: var(--cap-border-width) solid color-mix(in srgb, var(--cap-text) 35%, var(--cap-border));
+    background: var(--cap-surface-2);
+    color: var(--cap-text);
+    box-shadow: var(--cap-shadow);
+    cursor: pointer;
+    line-height: 1;
+    font-size: 0.85rem;
+    transition: left .22s ease, background .15s ease, color .15s ease;
+  }
+
+  .cap-shell > .cap-sidebar-collapse:hover {
+    background: var(--cap-accent);
+    color: var(--cap-on-accent);
+    border-color: var(--cap-accent);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .cap-sidebar-collapse {
+    display: none !important;
+  }
+}
+
+.cap-shell.cap-shell--fullscreen .cap-topbar {
+  --cap-topbar-pad-y: var(--cap-space-3);
 }
 
 .cap-content {
@@ -620,6 +786,46 @@ code, .mono { font-family: var(--cap-font-mono); }
   --bs-btn-active-border-color: color-mix(in srgb, var(--cap-accent) 85%, #000);
   --bs-btn-disabled-color: var(--cap-muted);
   --bs-btn-disabled-border-color: var(--cap-border);
+  /* Force visible contrast in dark + light (Bootstrap outline vars alone can vanish). */
+  color: var(--cap-accent) !important;
+  background-color: color-mix(in srgb, var(--cap-accent) 10%, transparent) !important;
+  border-color: var(--cap-accent) !important;
+}
+
+.btn-outline-warning:hover,
+.btn-cap-outline:hover,
+.btn-outline-warning:focus-visible,
+.btn-cap-outline:focus-visible {
+  color: var(--cap-on-accent) !important;
+  background-color: var(--cap-accent) !important;
+  border-color: var(--cap-accent) !important;
+}
+
+.btn-outline-warning:active,
+.btn-cap-outline:active,
+.btn-outline-warning.active,
+.btn-cap-outline.active,
+.btn-cap-outline[aria-pressed="true"] {
+  color: var(--cap-on-accent) !important;
+  background-color: color-mix(in srgb, var(--cap-accent) 88%, #000) !important;
+  border-color: color-mix(in srgb, var(--cap-accent) 88%, #000) !important;
+}
+
+/* Topbar shell tools — always readable on dark/light surfaces */
+.cap-topbar-tools .btn-cap-ghost,
+.cap-topbar-tools .btn-cap-outline {
+  color: var(--cap-text) !important;
+  border-color: color-mix(in srgb, var(--cap-text) 40%, var(--cap-accent)) !important;
+  background-color: color-mix(in srgb, var(--cap-surface-2) 80%, transparent) !important;
+  white-space: nowrap;
+}
+
+.cap-topbar-tools .btn-cap-ghost:hover,
+.cap-topbar-tools .btn-cap-outline:hover,
+.cap-topbar-tools .btn-cap-outline[aria-pressed="true"] {
+  color: var(--cap-on-accent) !important;
+  background-color: var(--cap-accent) !important;
+  border-color: var(--cap-accent) !important;
 }
 
 .btn-outline-danger,

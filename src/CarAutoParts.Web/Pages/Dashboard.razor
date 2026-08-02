@@ -29,56 +29,64 @@
 
 @if (_data is not null)
 {
-    <div class="row g-3 mb-3">
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today sales</span><span class="value">@_data.TodaySales.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month sales</span><span class="value">@_data.MonthSales.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.InventoryValue.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Low stock</span><span class="value">@_data.LowStockCount</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month purchases</span><span class="value">@_data.MonthPurchases.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending POs</span><span class="value">@_data.PendingPurchaseOrders</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending transfers</span><span class="value">@_data.PendingTransfers</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Unread alerts</span><span class="value">@_data.UnreadNotifications</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today cash variance</span><span class="value">@_data.TodayCashVariance.ToString("N0")</span></div></div>
-        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Open shifts</span><span class="value">@_data.OpenShifts</span></div></div>
-        @if (_fbr is not null)
-        {
-            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR success %</span><span class="value">@_fbr.SuccessRatePercent.ToString("0.#")%</span></div></div>
-            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR needs retry</span><span class="value">@_fbr.NeedsRetryCount</span></div></div>
-        }
-    </div>
+    <CapViewToggle Mode="_view" ModeChanged="OnViewChanged" CssClass="mb-3" />
 
-    <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Sales vs purchases" Spec="@_salesPurchasesSpec" Height="280" ShowSkeleton="@_busy" />
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today sales</span><span class="value">@_data.TodaySales.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month sales</span><span class="value">@_data.MonthSales.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Inventory value</span><span class="value">@_data.InventoryValue.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Low stock</span><span class="value">@_data.LowStockCount</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Month purchases</span><span class="value">@_data.MonthPurchases.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending POs</span><span class="value">@_data.PendingPurchaseOrders</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Pending transfers</span><span class="value">@_data.PendingTransfers</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Unread alerts</span><span class="value">@_data.UnreadNotifications</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Today cash variance</span><span class="value">@_data.TodayCashVariance.ToString("N0")</span></div></div>
+            <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Open shifts</span><span class="value">@_data.OpenShifts</span></div></div>
+            @if (_fbr is not null)
+            {
+                <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR success %</span><span class="value">@_fbr.SuccessRatePercent.ToString("0.#")%</span></div></div>
+                <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">FBR needs retry</span><span class="value">@_fbr.NeedsRetryCount</span></div></div>
+            }
+        </div>
+    }
+
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Sales vs purchases" Spec="@_salesPurchasesSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Category mix" Spec="@_categorySpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Top products" Spec="@_topProductsSpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Inventory value trend" Spec="@_inventorySpec" Height="280" ShowSkeleton="@_busy" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChartPlayer Title="4D Sales Pulse" Spec="@_pulseSpec" Height="300" ShowSkeleton="@(_busy || _timelineBusy)" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChartPlayer Title="Executive 3D (category × month)" Spec="@_bar3dSpec" Height="320" ShowSkeleton="@(_busy || _timelineBusy)" />
+                </div>
             </div>
         </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Category mix" Spec="@_categorySpec" Height="280" ShowSkeleton="@_busy" />
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Top products" Spec="@_topProductsSpec" Height="280" ShowSkeleton="@_busy" />
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Inventory value trend" Spec="@_inventorySpec" Height="280" ShowSkeleton="@_busy" />
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChartPlayer Title="4D Sales Pulse" Spec="@_pulseSpec" Height="300" ShowSkeleton="@(_busy || _timelineBusy)" />
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChartPlayer Title="Executive 3D (category × month)" Spec="@_bar3dSpec" Height="320" ShowSkeleton="@(_busy || _timelineBusy)" />
-            </div>
-        </div>
-    </div>
+    }
 }
 
 @code {
@@ -90,6 +98,9 @@
     private bool _busy = true;
     private bool _timelineBusy;
     private string? _error;
+    private CapViewMode _view = CapViewMode.Graphs;
+
+    private void OnViewChanged(CapViewMode mode) => _view = mode;
 
     private CapChartSpec? _salesPurchasesSpec;
     private CapChartSpec? _categorySpec;

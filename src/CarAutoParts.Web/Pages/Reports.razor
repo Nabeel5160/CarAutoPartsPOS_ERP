@@ -126,6 +126,11 @@
 
 <LoadingState Busy="@_busy" Error="@_error" />
 
+@if (HasChartView)
+{
+    <CapViewToggle Mode="_view" ModeChanged="OnViewChanged" CssClass="mb-3" />
+}
+
 @if (_type == "daily-sales" && _daily is not null)
 {
     <div class="row g-3 mb-3">
@@ -137,46 +142,52 @@
             <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Tax</span><span class="value">@_daily.TaxAmount.ToString("N0")</span></div></div>
         }
     </div>
-    <div class="row g-3 mb-3">
-        <div class="col-lg-8">
-            <div class="cap-card">
-                <CapChartPlayer Title="Daily net sales" Spec="@_dailyLineSpec" Height="280" />
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-lg-8">
+                <div class="cap-card">
+                    <CapChartPlayer Title="Daily net sales" Spec="@_dailyLineSpec" Height="280" />
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="cap-card">
+                    <CapChart Title="Tenders" Spec="@_dailyTenderSpec" Height="280" />
+                </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="cap-card">
-                <CapChart Title="Tenders" Spec="@_dailyTenderSpec" Height="280" />
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <div class="cap-card">
+                    <h5>Tenders</h5>
+                    <ul class="mb-0">@foreach (var t in _daily.Tenders) { <li>@t.Method — @t.Amount.ToString("N2")</li> }</ul>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="cap-card table-responsive">
+                    <table class="table table-cap table-striped mb-0">
+                        <thead><tr><th>Date</th><th>Inv</th><th>Sales</th><th>Tax</th><th>Returns</th><th>Net</th></tr></thead>
+                        <tbody>
+                        @foreach (var d in FilteredDailyDays)
+                        {
+                            <tr>
+                                <td>@d.Date.ToString("yyyy-MM-dd")</td>
+                                <td>@d.InvoiceCount</td>
+                                <td>@d.SalesTotal.ToString("N2")</td>
+                                <td>@d.TaxAmount.ToString("N2")</td>
+                                <td>@d.ReturnsTotal.ToString("N2")</td>
+                                <td>@d.NetSales.ToString("N2")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div>
-    <div class="row g-3 mb-3">
-        <div class="col-md-4">
-            <div class="cap-card">
-                <h5>Tenders</h5>
-                <ul class="mb-0">@foreach (var t in _daily.Tenders) { <li>@t.Method — @t.Amount.ToString("N2")</li> }</ul>
-            </div>
-        </div>
-        <div class="col-md-8">
-            <div class="cap-card table-responsive">
-                <table class="table table-cap table-striped mb-0">
-                    <thead><tr><th>Date</th><th>Inv</th><th>Sales</th><th>Tax</th><th>Returns</th><th>Net</th></tr></thead>
-                    <tbody>
-                    @foreach (var d in FilteredDailyDays)
-                    {
-                        <tr>
-                            <td>@d.Date.ToString("yyyy-MM-dd")</td>
-                            <td>@d.InvoiceCount</td>
-                            <td>@d.SalesTotal.ToString("N2")</td>
-                            <td>@d.TaxAmount.ToString("N2")</td>
-                            <td>@d.ReturnsTotal.ToString("N2")</td>
-                            <td>@d.NetSales.ToString("N2")</td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    }
 }
 
 @if (_type == "z-shifts")
@@ -244,104 +255,129 @@
 
 @if (_type == "sales-dim" && _salesDim is not null)
 {
-    <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Revenue mix"
-                          Spec="@_salesDimDonutSpec"
-                          Height="280"
-                          EnableClick="true"
-                          OnSegmentClick="OnSalesDimSegmentClick" />
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="cap-card">
-                <CapChart Title="Top revenue (stacked qty proxy)" Spec="@_salesDimBarSpec" Height="280" />
-            </div>
-        </div>
-    </div>
-    @if (!string.IsNullOrWhiteSpace(_salesDimFilter))
+    @if (_view == CapViewMode.Graphs)
     {
-        <div class="mb-2">
-            <button type="button" class="btn btn-sm btn-outline-light" @onclick="ClearSalesDimFilter">Clear chart filter: @_salesDimFilter</button>
+        <div class="row g-3 mb-3">
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Revenue mix"
+                              Spec="@_salesDimDonutSpec"
+                              Height="280"
+                              EnableClick="true"
+                              OnSegmentClick="OnSalesDimSegmentClick" />
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cap-card">
+                    <CapChart Title="Top revenue (stacked qty proxy)" Spec="@_salesDimBarSpec" Height="280" />
+                </div>
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_salesDimFilter))
+        {
+            <p class="text-muted mb-2">Chart filter set — switch to Numbers to see the filtered table, or clear it.</p>
+            <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-light" @onclick="ClearSalesDimFilter">Clear chart filter: @_salesDimFilter</button>
+            </div>
+        }
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        @if (!string.IsNullOrWhiteSpace(_salesDimFilter))
+        {
+            <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-light" @onclick="ClearSalesDimFilter">Clear chart filter: @_salesDimFilter</button>
+            </div>
+        }
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead>
+                <tr>
+                    <th>Label</th>
+                    @if (_dimension == "product") { <th>SKU</th> }
+                    @if (_salesDim.IncludeOem) { <th>OEM</th> }
+                    <th>Qty</th><th>Revenue</th><th>Tax</th><th>Invoices</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in FilteredSalesDimRows.Take(200))
+                {
+                    <tr>
+                        <td>@r.Label</td>
+                        @if (_dimension == "product") { <td>@r.Sku</td> }
+                        @if (_salesDim.IncludeOem) { <td>@r.OemNumber</td> }
+                        <td>@r.Quantity.ToString("0.##")</td>
+                        <td>@r.Revenue.ToString("N2")</td>
+                        <td>@r.TaxAmount.ToString("N2")</td>
+                        <td>@r.InvoiceCount</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
         </div>
     }
-    <div class="cap-card table-responsive">
-        <table class="table table-cap table-striped mb-0">
-            <thead>
-            <tr>
-                <th>Label</th>
-                @if (_dimension == "product") { <th>SKU</th> }
-                @if (_salesDim.IncludeOem) { <th>OEM</th> }
-                <th>Qty</th><th>Revenue</th><th>Tax</th><th>Invoices</th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var r in FilteredSalesDimRows.Take(200))
-            {
-                <tr>
-                    <td>@r.Label</td>
-                    @if (_dimension == "product") { <td>@r.Sku</td> }
-                    @if (_salesDim.IncludeOem) { <td>@r.OemNumber</td> }
-                    <td>@r.Quantity.ToString("0.##")</td>
-                    <td>@r.Revenue.ToString("N2")</td>
-                    <td>@r.TaxAmount.ToString("N2")</td>
-                    <td>@r.InvoiceCount</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
 }
 
 @if (_type == "sales-staff" && _salesStaff is not null)
 {
-    <div class="cap-card mb-3">
-        <CapChart Title="Staff sales race" Spec="@_salesStaffSpec" Height="300" />
-    </div>
-    <div class="cap-card table-responsive">
-        <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Label</th><th>Invoices</th><th>Sales</th><th>Tax</th><th>Cash</th><th>Other</th></tr></thead>
-            <tbody>
-            @foreach (var r in _salesStaff.Rows)
-            {
-                <tr>
-                    <td>@r.Label</td>
-                    <td>@r.InvoiceCount</td>
-                    <td>@r.SalesTotal.ToString("N2")</td>
-                    <td>@r.TaxAmount.ToString("N2")</td>
-                    <td>@r.TenderCash.ToString("N2")</td>
-                    <td>@r.TenderOther.ToString("N2")</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="cap-card mb-3">
+            <CapChart Title="Staff sales race" Spec="@_salesStaffSpec" Height="300" />
+        </div>
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Label</th><th>Invoices</th><th>Sales</th><th>Tax</th><th>Cash</th><th>Other</th></tr></thead>
+                <tbody>
+                @foreach (var r in _salesStaff.Rows)
+                {
+                    <tr>
+                        <td>@r.Label</td>
+                        <td>@r.InvoiceCount</td>
+                        <td>@r.SalesTotal.ToString("N2")</td>
+                        <td>@r.TaxAmount.ToString("N2")</td>
+                        <td>@r.TenderCash.ToString("N2")</td>
+                        <td>@r.TenderOther.ToString("N2")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @if (_type is "profit-dim" && _profitDim is not null)
 {
-    <div class="cap-card mb-3">
-        <CapChart Title="Revenue vs profit" Spec="@_profitDimSpec" Height="300" />
-    </div>
-    <div class="cap-card table-responsive">
-        <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Label</th><th>Qty</th><th>Revenue</th><th>COGS</th><th>Profit</th><th>GM%</th></tr></thead>
-            <tbody>
-            @foreach (var r in _profitDim.Rows)
-            {
-                <tr>
-                    <td>@r.Label</td>
-                    <td>@r.Quantity.ToString("0.##")</td>
-                    <td>@r.Revenue.ToString("N2")</td>
-                    <td>@r.Cost.ToString("N2")</td>
-                    <td>@r.Profit.ToString("N2")</td>
-                    <td>@r.GrossMarginPercent.ToString("N1")</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="cap-card mb-3">
+            <CapChart Title="Revenue vs profit" Spec="@_profitDimSpec" Height="300" />
+        </div>
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Label</th><th>Qty</th><th>Revenue</th><th>COGS</th><th>Profit</th><th>GM%</th></tr></thead>
+                <tbody>
+                @foreach (var r in _profitDim.Rows)
+                {
+                    <tr>
+                        <td>@r.Label</td>
+                        <td>@r.Quantity.ToString("0.##")</td>
+                        <td>@r.Revenue.ToString("N2")</td>
+                        <td>@r.Cost.ToString("N2")</td>
+                        <td>@r.Profit.ToString("N2")</td>
+                        <td>@r.GrossMarginPercent.ToString("N1")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @if (_type == "movements" && _movements is not null)
@@ -420,34 +456,40 @@
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Net tax</span><span class="value">@_tax.NetTax.ToString("N0")</span></div></div>
         <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Taxable</span><span class="value">@_tax.TaxableSales.ToString("N0")</span></div></div>
     </div>
-    <div class="cap-card mb-3">
-        <CapChart Title="Tax by rate" Spec="@_taxSpec" Height="260" />
-    </div>
-    <div class="cap-card table-responsive mb-3">
-        <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Rate %</th><th>Taxable</th><th>Tax</th></tr></thead>
-            <tbody>
-            @foreach (var r in _tax.ByRate)
-            {
-                <tr><td>@r.TaxRate.ToString("0.##")</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td></tr>
-            }
-            </tbody>
-        </table>
-    </div>
-    @if (_tax.IncludeHs && _tax.ByHsCode.Count > 0)
+    @if (_view == CapViewMode.Graphs)
     {
-        <div class="cap-card table-responsive">
-            <h5>By HS code</h5>
+        <div class="cap-card mb-3">
+            <CapChart Title="Tax by rate" Spec="@_taxSpec" Height="260" />
+        </div>
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="cap-card table-responsive mb-3">
             <table class="table table-cap table-striped mb-0">
-                <thead><tr><th>HS</th><th>Taxable</th><th>Tax</th><th>Qty</th></tr></thead>
+                <thead><tr><th>Rate %</th><th>Taxable</th><th>Tax</th></tr></thead>
                 <tbody>
-                @foreach (var r in _tax.ByHsCode.Take(100))
+                @foreach (var r in _tax.ByRate)
                 {
-                    <tr><td>@r.HsCode</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td><td>@r.Quantity.ToString("0.##")</td></tr>
+                    <tr><td>@r.TaxRate.ToString("0.##")</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td></tr>
                 }
                 </tbody>
             </table>
         </div>
+        @if (_tax.IncludeHs && _tax.ByHsCode.Count > 0)
+        {
+            <div class="cap-card table-responsive">
+                <h5>By HS code</h5>
+                <table class="table table-cap table-striped mb-0">
+                    <thead><tr><th>HS</th><th>Taxable</th><th>Tax</th><th>Qty</th></tr></thead>
+                    <tbody>
+                    @foreach (var r in _tax.ByHsCode.Take(100))
+                    {
+                        <tr><td>@r.HsCode</td><td>@r.TaxableAmount.ToString("N2")</td><td>@r.TaxAmount.ToString("N2")</td><td>@r.Quantity.ToString("0.##")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
     }
 }
 
@@ -475,29 +517,35 @@
 @if (_type == "stock-aging" && _stockAging is not null)
 {
     <p class="text-muted">@_stockAging.SourceNote</p>
-    <div class="cap-card mb-3">
-        <CapChart Title="Aging buckets" Spec="@_stockAgingSpec" Height="280" />
-    </div>
-    <div class="cap-card table-responsive">
-        <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>SKU</th><th>Product</th><th>WH</th><th>Batch</th><th>Days</th><th>Bucket</th><th>Qty</th><th>Value</th></tr></thead>
-            <tbody>
-            @foreach (var r in _stockAging.Rows.Take(300))
-            {
-                <tr>
-                    <td>@r.Sku</td>
-                    <td>@r.ProductName</td>
-                    <td>@r.WarehouseName</td>
-                    <td>@r.BatchNumber</td>
-                    <td>@r.AgeDays</td>
-                    <td>@r.Bucket</td>
-                    <td>@r.Quantity.ToString("0.##")</td>
-                    <td>@r.Value.ToString("N2")</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    @if (_view == CapViewMode.Graphs)
+    {
+        <div class="cap-card mb-3">
+            <CapChart Title="Aging buckets" Spec="@_stockAgingSpec" Height="280" />
+        </div>
+    }
+    @if (_view == CapViewMode.Numbers)
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>SKU</th><th>Product</th><th>WH</th><th>Batch</th><th>Days</th><th>Bucket</th><th>Qty</th><th>Value</th></tr></thead>
+                <tbody>
+                @foreach (var r in _stockAging.Rows.Take(300))
+                {
+                    <tr>
+                        <td>@r.Sku</td>
+                        <td>@r.ProductName</td>
+                        <td>@r.WarehouseName</td>
+                        <td>@r.BatchNumber</td>
+                        <td>@r.AgeDays</td>
+                        <td>@r.Bucket</td>
+                        <td>@r.Quantity.ToString("0.##")</td>
+                        <td>@r.Value.ToString("N2")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @if (_type == "sku-margin" && _skuMargin is not null)
@@ -598,6 +646,14 @@
     private CapChartSpec? _stockAgingSpec;
     private string? _salesDimFilter;
     private string? _dailyDayFilter;
+    private CapViewMode _view = CapViewMode.Numbers;
+
+    private static readonly HashSet<string> ChartReportTypes =
+        ["daily-sales", "sales-dim", "sales-staff", "profit-dim", "tax", "stock-aging"];
+
+    private bool HasChartView => ChartReportTypes.Contains(_type);
+
+    private void OnViewChanged(CapViewMode mode) => _view = mode;
 
     private IEnumerable<DailySalesDayRowDto> FilteredDailyDays =>
         _daily is null ? [] :
