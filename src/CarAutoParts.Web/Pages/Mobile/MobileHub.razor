@@ -23,7 +23,23 @@
                 <span class="cap-m-tile-sub">Approve or reject pending requests</span>
             </a>
         }
-        @if (!_canStock && !_canApprovals)
+        @if (_canCrm)
+        {
+            <a class="cap-m-tile" href="m/crm/tasks">
+                <span class="cap-m-tile-ico" aria-hidden="true">◎</span>
+                <span class="cap-m-tile-title">CRM tasks</span>
+                <span class="cap-m-tile-sub">My day follow-ups</span>
+            </a>
+        }
+        @if (_canService)
+        {
+            <a class="cap-m-tile" href="m/service">
+                <span class="cap-m-tile-ico" aria-hidden="true">🛠</span>
+                <span class="cap-m-tile-title">Service tickets</span>
+                <span class="cap-m-tile-sub">Open tickets · start / resolve</span>
+            </a>
+        }
+        @if (!_canStock && !_canApprovals && !_canCrm && !_canService)
         {
             <div class="cap-card">
                 <p class="mb-0 text-secondary">No mobile tools available for your role.</p>
@@ -39,11 +55,17 @@
 @code {
     private bool _canStock;
     private bool _canApprovals;
+    private bool _canCrm;
+    private bool _canService;
 
     protected override async Task OnInitializedAsync()
     {
         _canStock = await Perms.HasAsync(Permissions.InventoryView)
                     && AppConfig.ModuleEnabled(ModuleKeys.InvStock);
         _canApprovals = await Perms.HasAsync(Permissions.ApprovalsView);
+        _canCrm = await Perms.HasAsync("crm.view")
+                  && AppConfig.ModuleEnabled(ModuleKeys.SalesCrm);
+        _canService = await Perms.HasAsync("service.view")
+                      && AppConfig.ModuleEnabled(ModuleKeys.ServiceTickets);
     }
 }

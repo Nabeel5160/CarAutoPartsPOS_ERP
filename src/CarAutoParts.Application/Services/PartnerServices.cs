@@ -233,6 +233,7 @@ public class CustomerService : ICustomerService
         entity.Email = dto.Email;
         entity.CreditLimit = dto.CreditLimit;
         entity.IsActive = dto.IsActive;
+        entity.CommissionPercent = dto.CommissionPercent;
         entity.UpdatedAt = DateTime.UtcNow;
         _customers.Update(entity);
         await _unitOfWork.SaveChangesAsync(ct);

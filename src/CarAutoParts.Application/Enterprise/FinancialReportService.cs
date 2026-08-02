@@ -229,6 +229,91 @@ public sealed class FinancialReportService : IFinancialReportService
         return Result<PartnerAgingReportDto>.Success(BuildAgingReport(asOf, lines));
     }
 
+    public async Task<Result<CashFlowReportDto>> CashFlowAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        CancellationToken ct = default)
+    {
+        if (!EnsureCompany(out _, out var error))
+            return Result<CashFlowReportDto>.Failure(error!);
+
+        var from = fromDate.Date;
+        var to = toDate.Date;
+
+        var accounts = await _db.GlAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, ct);
+        var cashCodes = new[] { "1100", "1110" };
+        var cashAccountIds = accounts.Values.Where(a => cashCodes.Contains(a.Code)).Select(a => a.Id).ToHashSet();
+        if (cashAccountIds.Count == 0)
+            return Result<CashFlowReportDto>.Failure("Cash/Bank GL accounts (1100/1110) are not configured.");
+
+        var openingCash = await _db.JournalLines.AsNoTracking()
+            .Where(l => cashAccountIds.Contains(l.AccountId)
+                        && l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.JournalDate < from)
+            .SumAsync(l => l.Debit - l.Credit, ct);
+
+        var periodLines = await _db.JournalLines.AsNoTracking()
+            .Include(l => l.JournalEntry)
+            .Where(l => l.JournalEntry.Status == JournalStatus.Posted
+                        && l.JournalEntry.JournalDate >= from
+                        && l.JournalEntry.JournalDate <= to)
+            .ToListAsync(ct);
+
+        decimal operating = 0, investing = 0, financing = 0;
+        var lines = new List<CashFlowLineDto>();
+
+        foreach (var grp in periodLines.GroupBy(l => l.JournalEntryId))
+        {
+            var cashLines = grp.Where(l => cashAccountIds.Contains(l.AccountId)).ToList();
+            if (cashLines.Count == 0)
+                continue;
+
+            var netCash = cashLines.Sum(l => l.Debit - l.Credit);
+            if (netCash == 0)
+                continue;
+
+            var counterparts = grp.Where(l => !cashAccountIds.Contains(l.AccountId)).ToList();
+            var category = ClassifyCashFlow(counterparts, accounts);
+
+            switch (category)
+            {
+                case "Financing": financing += netCash; break;
+                case "Investing": investing += netCash; break;
+                default: operating += netCash; break;
+            }
+
+            var je = grp.First().JournalEntry;
+            lines.Add(new CashFlowLineDto(je.Id, je.JournalNumber, je.JournalDate, category, netCash, je.Description));
+        }
+
+        var netChange = operating + investing + financing;
+
+        return Result<CashFlowReportDto>.Success(new CashFlowReportDto(
+            from,
+            to,
+            openingCash,
+            operating,
+            investing,
+            financing,
+            netChange,
+            openingCash + netChange,
+            lines.OrderBy(l => l.JournalDate).ThenBy(l => l.JournalNumber).ToList()));
+    }
+
+    private static string ClassifyCashFlow(List<JournalLine> counterparts, Dictionary<int, GlAccount> accounts)
+    {
+        if (counterparts.Any(l => accounts.TryGetValue(l.AccountId, out var a) && a.AccountType == AccountType.Equity))
+            return "Financing";
+
+        if (counterparts.Any(l => accounts.TryGetValue(l.AccountId, out var a) && IsFixedAssetCode(a.Code)))
+            return "Investing";
+
+        return "Operating";
+    }
+
+    private static bool IsFixedAssetCode(string code) =>
+        code.Length >= 2 && code[0] == '1' && code[1] is >= '5' and <= '9';
+
     private static void AddToBucket(
         ref (string Name, decimal Current, decimal Days30, decimal Days60, decimal Days90) line,
         DateTime invoiceDate,

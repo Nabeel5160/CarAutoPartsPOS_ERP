@@ -148,3 +148,67 @@ public record CreateReorderPrRequest(
     int? SupplierId,
     int? WarehouseId,
     IReadOnlyList<ReorderSuggestionLineDto> Lines);
+
+// —— Purchase RFQ (Program B — thin RFQ → compare → PO) ——
+
+public record CreatePurchaseRfqLineRequest(int ProductId, decimal Quantity, string? Notes = null);
+
+public record CreatePurchaseRfqRequest(
+    DateTime? ResponseDeadline,
+    string? Notes,
+    IReadOnlyList<CreatePurchaseRfqLineRequest> Lines);
+
+public record PurchaseRfqLineDto(
+    int Id,
+    int ProductId,
+    string? ProductName,
+    string? Sku,
+    decimal Quantity,
+    string? Notes);
+
+public record CreateVendorQuoteLineRequest(
+    int ProductId,
+    decimal Quantity,
+    decimal UnitPrice,
+    int? LeadTimeDays = null,
+    string? Notes = null);
+
+public record CreateVendorQuoteRequest(
+    int SupplierId,
+    DateTime? ValidUntil,
+    string? Notes,
+    IReadOnlyList<CreateVendorQuoteLineRequest> Lines);
+
+public record VendorQuoteLineDto(
+    int Id,
+    int ProductId,
+    string? ProductName,
+    decimal Quantity,
+    decimal UnitPrice,
+    int? LeadTimeDays,
+    string? Notes,
+    decimal LineTotal);
+
+public record VendorQuoteDto(
+    int Id,
+    int PurchaseRfqId,
+    int SupplierId,
+    string? SupplierName,
+    VendorQuoteStatus Status,
+    DateTime QuoteDate,
+    DateTime? ValidUntil,
+    string? Notes,
+    decimal TotalAmount,
+    IReadOnlyList<VendorQuoteLineDto> Lines);
+
+public record PurchaseRfqDto(
+    int Id,
+    string RfqNumber,
+    PurchaseRfqStatus Status,
+    DateTime RfqDate,
+    DateTime? ResponseDeadline,
+    string? Notes,
+    int? PurchaseOrderId,
+    string? PurchaseOrderNumber,
+    IReadOnlyList<PurchaseRfqLineDto> Lines,
+    IReadOnlyList<VendorQuoteDto> VendorQuotes);

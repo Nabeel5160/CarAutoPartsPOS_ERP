@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarAutoParts.Api", "src\Car
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarAutoParts.Web", "src\CarAutoParts.Web\CarAutoParts.Web.csproj", "{931A8C30-BAFA-4805-AC62-728237AF0129}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarAutoParts.Api.Tests", "tests\CarAutoParts.Api.Tests\CarAutoParts.Api.Tests.csproj", "{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +145,18 @@ Global
 		{931A8C30-BAFA-4805-AC62-728237AF0129}.Release|x64.Build.0 = Release|Any CPU
 		{931A8C30-BAFA-4805-AC62-728237AF0129}.Release|x86.ActiveCfg = Release|Any CPU
 		{931A8C30-BAFA-4805-AC62-728237AF0129}.Release|x86.Build.0 = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|x64.Build.0 = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Debug|x86.Build.0 = Debug|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|x64.ActiveCfg = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|x64.Build.0 = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|x86.ActiveCfg = Release|Any CPU
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -157,6 +171,7 @@ Global
 		{C8153433-576A-4D25-B965-F019E6521D7F} = {B2C3D4E5-F6A7-8901-BCDE-F12345678901}
 		{95238642-F22D-440B-951D-66619B564A31} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{931A8C30-BAFA-4805-AC62-728237AF0129} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+		{FCFCAD6C-7526-42FC-B317-D96E9BE0332E} = {B2C3D4E5-F6A7-8901-BCDE-F12345678901}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {C3D4E5F6-A7B8-9012-CDEF-123456789ABC}

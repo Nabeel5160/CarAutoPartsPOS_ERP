@@ -1,0 +1,144 @@
+@page "/crm/customers/{CustomerId:int}"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="@(_dto?.Name ?? "Customer 360")" Subtitle="Timeline · AR · sales documents · profitability" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_dto is not null)
+{
+    <div class="row g-2 mb-3">
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Balance / AR</div><div class="fs-5">@_dto.Balance.ToString("N2")</div></div></div>
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Credit limit</div><div class="fs-5">@_dto.CreditLimit.ToString("N2")</div></div></div>
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Profitability</div><div class="fs-5">@_dto.Profitability.ToString("N2")</div></div></div>
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Contact</div><div>@(_dto.Phone ?? "—") · @(_dto.Email ?? "—")</div></div></div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-5">
+            <div class="cap-card mb-3">
+                <h6>Communication / activity log</h6>
+                @if (_dto.Activities.Count == 0) { <p class="text-secondary mb-0">No activities.</p> }
+                else
+                {
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var a in _dto.Activities)
+                        {
+                            <li class="mb-2 border-bottom border-secondary pb-2">
+                                <strong>@a.Subject</strong> <span class="badge badge-soft">@a.Type</span>
+                                <div class="small text-secondary">@(a.DueAt?.ToLocalTime().ToString("g") ?? a.CompletedAt?.ToLocalTime().ToString("g") ?? "")</div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div class="cap-card mb-3">
+                <h6>Converted leads</h6>
+                @if (_dto.ConvertedLeads.Count == 0) { <p class="text-secondary mb-0">None</p> }
+                @foreach (var l in _dto.ConvertedLeads)
+                {
+                    <div><a href="@($"/crm/leads/{l.Id}")">@l.Name</a> · @l.Source</div>
+                }
+            </div>
+            <div class="cap-card">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Service tickets</h6>
+                    <a class="btn btn-sm btn-outline-light" href="/service/tickets">All tickets</a>
+                </div>
+                @if (_tickets.Count == 0)
+                {
+                    <p class="text-secondary mb-0">No service tickets.</p>
+                }
+                else
+                {
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var t in _tickets)
+                        {
+                            <li class="mb-2 border-bottom border-secondary pb-2">
+                                <a href="@($"/service/tickets/{t.Id}")">@t.Subject</a>
+                                <span class="badge badge-soft ms-1">@TicketStatusLabel(t.Status)</span>
+                                @if (t.IsWarrantyClaim) { <span class="badge badge-soft ms-1">Warranty</span> }
+                                <div class="small text-secondary">@t.OpenedAt.ToLocalTime().ToString("g")</div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="cap-card mb-3">
+                <h6>Opportunities</h6>
+                <table class="table table-cap table-sm mb-0">
+                    <thead><tr><th>Name</th><th>Stage</th><th>Value</th></tr></thead>
+                    <tbody>
+                    @foreach (var o in _dto.Opportunities)
+                    {
+                        <tr><td>@o.Name</td><td>@o.Stage</td><td>@o.Value.ToString("N0")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <div class="cap-card mb-3">
+                <h6>Invoices</h6>
+                <table class="table table-cap table-sm mb-0">
+                    <thead><tr><th>Number</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in _dto.Invoices)
+                    {
+                        <tr><td><a href="/invoices">@d.Number</a></td><td>@d.Date.ToLocalTime().ToString("d")</td><td>@d.Amount.ToString("N2")</td><td>@d.Status</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <div class="cap-card mb-3">
+                <h6>Orders</h6>
+                <table class="table table-cap table-sm mb-0">
+                    <thead><tr><th>Number</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in _dto.Orders)
+                    {
+                        <tr><td><a href="/sales-orders">@d.Number</a></td><td>@d.Date.ToLocalTime().ToString("d")</td><td>@d.Amount.ToString("N2")</td><td>@d.Status</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <div class="cap-card mb-3">
+                <h6>Returns</h6>
+                <table class="table table-cap table-sm mb-0">
+                    <thead><tr><th>Number</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var d in _dto.Returns)
+                    {
+                        <tr><td><a href="/returns">@d.Number</a></td><td>@d.Date.ToLocalTime().ToString("d")</td><td>@d.Amount.ToString("N2")</td><td>@d.Status</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int CustomerId { get; set; }
+    private bool _busy = true;
+    private string? _error;
+    private Customer360Dto? _dto;
+    private List<ServiceTicketDto> _tickets = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (data, error, _) = await Api.GetCrmCustomer360Async(CustomerId);
+        _error = error;
+        _dto = data;
+
+        var (tickets, _, _) = await Api.GetCustomerServiceTicketsAsync(CustomerId);
+        _tickets = tickets ?? new();
+
+        _busy = false;
+    }
+
+    private static string TicketStatusLabel(int status) => status switch
+    {
+        0 => "Open", 1 => "In progress", 2 => "Resolved", 3 => "Closed", _ => status.ToString()
+    };
+}

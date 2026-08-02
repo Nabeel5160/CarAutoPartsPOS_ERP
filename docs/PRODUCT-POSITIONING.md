@@ -10,14 +10,18 @@ Honest fit:
 - Chart of accounts, periods, journals, aging, receipts
 - Roles/permissions, branch scoping, audit, backup, health checks
 - Per-install business profile (Settings) without custom builds
+- **Light CRM** — leads → customer convert, pipeline/kanban, activities / my-day, customer 360 (AR + sales docs), assignment rules and email template stubs (not Salesforce / marketing automation)
+- **Service Light** — customer-linked service tickets with status/priority workflow, optional warranty/AMC reference, mobile ticket view, and a browser camera barcode scan on mobile stock lookup (not a field-service/SLA suite)
 
 ## What we do not claim (yet)
 
 - Full SAP / Dynamics / Odoo parity
-- HR / payroll, deep CRM, e-commerce storefront
+- HR / payroll, **deep** CRM (workflow builders, campaigns, multi-pipeline), e-commerce storefront
 - DB-per-tenant SaaS mega-scale / multi-company verticals in one DB
 - Runtime custom-field builder (EAV)
-- Offline-first counter with multi-day queue (short outage queue exists as of Phase 10; not multi-day store mode)
+- Offline-first counter with multi-day queue (short outage queue exists as of Phase 10; not multi-day store mode; **not extended in Program C1**)
+- **Full service / field-service suite** — Service Light has no SLA timers, no knowledge base, no service customer portal, no technician scheduling/dispatch, and no dedicated warranty-claim or AMC-contract entities (warranty/AMC are free-text ticket references only)
+- Native mobile app or universal camera scanning — the `/m/stock` scan button relies on the browser `BarcodeDetector` API (Chromium/Android only today; no iOS Safari, no dedicated scanner hardware support)
 - Masterpiece polish / category leadership — see [ROADMAP-TO-TOP-TIER.md](ROADMAP-TO-TOP-TIER.md) (Stages 0–5); enterprise Phases 0–11 are the foundation, not the end
 
 ## Phase baseline (current)

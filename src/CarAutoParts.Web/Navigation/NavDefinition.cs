@@ -60,6 +60,7 @@ public static class NavDefinition
             new("Reorder", "reorder", "↻", "purchases.requisition", ModuleKeys.PurchReorder),
             new("GRN", "grn", "📥", "grn.manage", ModuleKeys.PurchGrn),
             new("AP Invoices", "ap-invoices", "📄", "ap.invoice.manage", ModuleKeys.PurchAp),
+            new("RFQ", "rfq", "📨", "purchases.view", null),
         ]),
         new("sales", "Sales", "💳",
         [
@@ -70,6 +71,18 @@ public static class NavDefinition
             new("Invoices", "invoices", "🧾", "sales.view", ModuleKeys.SalesInvoices),
             new("Returns", "returns", "↩", "returns.manage", ModuleKeys.SalesReturns),
             new("FBR", "fbr", "☁", "pos.checkout", ModuleKeys.SalesFbr),
+            new("Sales Targets", "sales-targets", "🎯", "sales.view", null),
+        ]),
+        new("crm", "CRM", "◎",
+        [
+            new("Leads", "crm/leads", "◎", "crm.view", ModuleKeys.SalesCrm),
+            new("Tasks", "crm/tasks", "✓", "crm.view", ModuleKeys.SalesCrm),
+            new("Pipeline", "crm/pipeline", "≡", "crm.view", ModuleKeys.SalesCrm),
+            new("CRM Settings", "crm/settings", "⚙", "crm.manage", ModuleKeys.SalesCrm),
+        ]),
+        new("service", "Service", "🛠",
+        [
+            new("Tickets", "service/tickets", "🛠", "service.view", ModuleKeys.ServiceTickets),
         ]),
         new("finance", "Finance", "📒",
         [
@@ -80,6 +93,7 @@ public static class NavDefinition
             new("Opening Balances", "opening-balances", "🏁", "finance.manage", ModuleKeys.FinanceOpening),
             new("Bank Recon", "bank-reconciliation", "🏦", "finance.view", ModuleKeys.FinanceBank),
             new("Fin Reports", "financial-reports", "Σ", "finance.view", ModuleKeys.FinanceReports),
+            new("Cash Flow", "cash-flow", "💵", "finance.view", ModuleKeys.FinanceReports),
             new("Mappings", "account-mappings", "🔗", "finance.view", ModuleKeys.FinanceMaps),
         ]),
         new("reports", "Nav_Reports", "▤",
@@ -131,6 +145,9 @@ public static class NavDefinition
             path.Equals("m/approvals", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("m/approvals/", StringComparison.OrdinalIgnoreCase))
             return null;
+        if (path.Equals("m/service", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("m/service/", StringComparison.OrdinalIgnoreCase))
+            return ModuleKeys.ServiceTickets;
 
         foreach (var group in Groups)
         {

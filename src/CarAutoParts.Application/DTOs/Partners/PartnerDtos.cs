@@ -45,7 +45,8 @@ public record CustomerDto(
     string? Email,
     decimal Balance,
     decimal CreditLimit,
-    bool IsActive);
+    bool IsActive,
+    decimal CommissionPercent = 0);
 
 /// <summary>Customer detail.</summary>
 public record CustomerDetailDto(
@@ -59,7 +60,8 @@ public record CustomerDetailDto(
     string? Province,
     decimal CreditLimit,
     decimal Balance,
-    bool IsActive);
+    bool IsActive,
+    decimal CommissionPercent = 0);
 
 /// <summary>Customer ledger entry.</summary>
 public record CustomerLedgerEntryDto(

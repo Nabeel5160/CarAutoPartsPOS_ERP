@@ -1,0 +1,199 @@
+@page "/crm/pipeline"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+
+<PageHeader Title="CRM Pipeline" Subtitle="Kanban by stage · weighted forecast" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_dash is not null)
+{
+    <div class="row g-2 mb-3">
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Open value</div><div class="fs-5">@_dash.OpenValue.ToString("N0")</div></div></div>
+        <div class="col-md-3"><div class="cap-card"><div class="text-secondary small">Weighted</div><div class="fs-5">@_dash.WeightedValue.ToString("N0")</div></div></div>
+        <div class="col-md-2"><div class="cap-card"><div class="text-secondary small">Open deals</div><div class="fs-5">@_dash.OpenCount</div></div></div>
+        <div class="col-md-2"><div class="cap-card"><div class="text-secondary small">Win rate</div><div class="fs-5">@((_dash.WinRate * 100).ToString("N0"))%</div></div></div>
+        <div class="col-md-2"><div class="cap-card"><div class="text-secondary small">Won / Lost</div><div class="fs-5">@_dash.WonCount / @_dash.LostCount</div></div></div>
+    </div>
+}
+
+@if (_canManage)
+{
+    <div class="cap-card mb-3">
+        <h6>New opportunity</h6>
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Name *" @bind="_create.Name" /></div>
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="Value" @bind="_create.Value" /></div>
+            <div class="col-md-2"><input type="number" class="form-control" placeholder="Probability %" @bind="_create.Probability" /></div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_createCustomerId">
+                    <option value="0">Customer (optional)</option>
+                    @foreach (var c in _customers)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Add</button></div>
+        </div>
+    </div>
+}
+
+<div class="crm-kanban d-flex gap-2 overflow-auto pb-2">
+    @foreach (var stage in _stages)
+    {
+        <div class="crm-kanban-col cap-card flex-shrink-0" style="width:14rem; --stage-accent:@StageColor(stage)">
+            <h6 class="crm-kanban-title">@StageLabel(stage)</h6>
+            @foreach (var o in ItemsFor(stage))
+            {
+                <div class="crm-deal mb-2 p-2 rounded border border-secondary">
+                    <div class="fw-semibold">@o.Name</div>
+                    <div class="small">@o.Value.ToString("N0") · @o.Probability% · w @o.WeightedValue.ToString("N0")</div>
+                    @if (_canManage && stage is not (3 or 4))
+                    {
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            @foreach (var next in NextStages(stage))
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => MoveAsync(o, next)">@StageLabel(next)</button>
+                            }
+                        </div>
+                        <div class="mt-1">
+                            <input type="number" class="form-control form-control-sm" placeholder="Quote #"
+                                   value="@GetQuoteId(o.Id)" @onchange="e => SetQuoteId(o.Id, e.Value?.ToString())" />
+                            <button type="button" class="btn btn-sm btn-outline-info mt-1" @onclick="() => LinkQuoteAsync(o.Id)">Link quote</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(_reasonPrompt))
+{
+    <div class="cap-card mt-3">
+        <label class="form-label">@_reasonPrompt</label>
+        <input class="form-control mb-2" @bind="_reasonText" />
+        <button class="btn btn-cap" @onclick="ConfirmMoveAsync">Confirm</button>
+        <button class="btn btn-outline-secondary" @onclick="() => _pending = null">Cancel</button>
+    </div>
+}
+
+<style>
+    .crm-kanban-title { border-left: 3px solid var(--stage-accent, #888); padding-left: .5rem; }
+    .crm-deal { background: rgba(255,255,255,.03); }
+</style>
+
+@code {
+    private static readonly int[] _stages = [0, 1, 2, 3, 4];
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private List<OpportunityDto> _items = new();
+    private CrmPipelineDashboardDto? _dash;
+    private OpportunityCreateDto _create = new() { Probability = 10 };
+    private int _createCustomerId;
+    private List<CustomerDto> _customers = new();
+    private Dictionary<int, int> _quoteIds = new();
+    private (OpportunityDto Opp, int Stage)? _pending;
+    private string? _reasonPrompt;
+    private string? _reasonText;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("crm.manage");
+        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _customers = cust?.Items.ToList() ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        try
+        {
+            var (data, error, _) = await Api.GetCrmOpportunitiesAsync(new QuerySpec { Page = 1, PageSize = 200 });
+            if (error is not null) { _error = error; return; }
+            _items = data?.Items.ToList() ?? new();
+            var (dash, _, _) = await Api.GetCrmPipelineDashboardAsync();
+            _dash = dash;
+        }
+        finally { _busy = false; }
+    }
+
+    private IEnumerable<OpportunityDto> ItemsFor(int stage) => _items.Where(o => o.Stage == stage);
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_create.Name)) { Toast.ShowWarning("Name required"); return; }
+        _create.CustomerId = _createCustomerId > 0 ? _createCustomerId : null;
+        var (data, error, _) = await Api.CreateCrmOpportunityAsync(_create);
+        if (error is not null) { Toast.ShowError(error); return; }
+        Toast.ShowSuccess("Opportunity created");
+        _create = new OpportunityCreateDto { Probability = 10 };
+        _createCustomerId = 0;
+        await LoadAsync();
+    }
+
+    private async Task MoveAsync(OpportunityDto o, int stage)
+    {
+        if (stage is 3 or 4)
+        {
+            _pending = (o, stage);
+            _reasonPrompt = stage == 3 ? "Win reason required" : "Lost reason required";
+            _reasonText = null;
+            return;
+        }
+        await ApplyStageAsync(o.Id, stage, null, null);
+    }
+
+    private async Task ConfirmMoveAsync()
+    {
+        if (_pending is null) return;
+        var (o, stage) = _pending.Value;
+        if (string.IsNullOrWhiteSpace(_reasonText)) { Toast.ShowWarning("Reason required"); return; }
+        await ApplyStageAsync(o.Id, stage, stage == 4 ? _reasonText : null, stage == 3 ? _reasonText : null);
+        _pending = null;
+        _reasonPrompt = null;
+    }
+
+    private async Task ApplyStageAsync(int id, int stage, string? lost, string? win)
+    {
+        var (data, error, _) = await Api.ChangeCrmOpportunityStageAsync(id, new OpportunityStageChangeDto
+        {
+            Stage = stage, LostReason = lost, WinReason = win
+        });
+        if (error is not null) { Toast.ShowError(error); return; }
+        await LoadAsync();
+    }
+
+    private async Task LinkQuoteAsync(int id)
+    {
+        if (!_quoteIds.TryGetValue(id, out var qid) || qid <= 0) { Toast.ShowWarning("Enter quotation id"); return; }
+        var (_, error, _) = await Api.LinkCrmQuotationAsync(id, qid);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Linked"); await LoadAsync(); }
+    }
+
+    private static IEnumerable<int> NextStages(int stage) => stage switch
+    {
+        0 => [1, 2, 3, 4],
+        1 => [2, 3, 4],
+        2 => [3, 4],
+        _ => []
+    };
+
+    private static string StageLabel(int s) => s switch
+    {
+        0 => "Prospect", 1 => "Quoted", 2 => "Negotiation", 3 => "Won", 4 => "Lost", _ => s.ToString()
+    };
+
+    private static string StageColor(int s) => s switch
+    {
+        0 => "#6c8cff", 1 => "#4ecdc4", 2 => "#f0a500", 3 => "#3ddc97", 4 => "#ff6b6b", _ => "#888"
+    };
+
+    private int GetQuoteId(int id) => _quoteIds.TryGetValue(id, out var v) ? v : 0;
+    private void SetQuoteId(int id, string? raw) =>
+        _quoteIds[id] = int.TryParse(raw, out var v) ? v : 0;
+}

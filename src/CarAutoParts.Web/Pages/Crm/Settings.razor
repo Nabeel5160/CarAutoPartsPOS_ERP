@@ -1,0 +1,131 @@
+@page "/crm/settings"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+
+<PageHeader Title="CRM Settings" Subtitle="Assignment rules · email templates (copy-only)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_canManage)
+{
+    <div class="cap-card mb-3">
+        <h6>Assignment rule</h6>
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Source (blank = default)" @bind="_rule.Source" /></div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_ruleOwner">
+                    <option value="0">Owner</option>
+                    @foreach (var u in _users)
+                    {
+                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 form-check mt-2">
+                <input class="form-check-input" type="checkbox" @bind="_rule.IsDefault" id="defRule" />
+                <label class="form-check-label" for="defRule">Default</label>
+            </div>
+            <div class="col-md-2"><button class="btn btn-cap" @onclick="SaveRuleAsync">Save rule</button></div>
+        </div>
+        <table class="table table-cap table-sm mt-3 mb-0">
+            <thead><tr><th>Source</th><th>Owner</th><th>Default</th><th>Active</th></tr></thead>
+            <tbody>
+            @foreach (var r in _rules)
+            {
+                <tr>
+                    <td>@(r.Source ?? "—")</td>
+                    <td>@OwnerName(r.OwnerUserId)</td>
+                    <td>@(r.IsDefault ? "Yes" : "")</td>
+                    <td>@(r.IsActive ? "Yes" : "No")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cap-card">
+        <h6>Email template</h6>
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Name" @bind="_tpl.Name" /></div>
+            <div class="col-md-4"><input class="form-control" placeholder="Subject" @bind="_tpl.Subject" /></div>
+            <div class="col-md-12"><textarea class="form-control" rows="3" placeholder="Body" @bind="_tpl.Body"></textarea></div>
+            <div class="col-md-2"><button class="btn btn-cap" @onclick="SaveTplAsync">Save template</button></div>
+        </div>
+        <table class="table table-cap table-sm mt-3 mb-0">
+            <thead><tr><th>Name</th><th>Subject</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var t in _templates)
+            {
+                <tr>
+                    <td>@t.Name</td>
+                    <td>@t.Subject</td>
+                    <td><button class="btn btn-sm btn-outline-light" @onclick="() => CopyTpl(t)">Copy body</button></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        @if (!string.IsNullOrEmpty(_copied))
+        {
+            <pre class="mt-2 small">@_copied</pre>
+        }
+    </div>
+}
+else
+{
+    <EmptyState Title="Manage permission required" Message="crm.manage needed for CRM automation settings." />
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private List<UserDto> _users = new();
+    private List<CrmAssignmentRuleDto> _rules = new();
+    private List<CrmEmailTemplateDto> _templates = new();
+    private CrmAssignmentRuleDto _rule = new() { IsActive = true };
+    private int _ruleOwner;
+    private CrmEmailTemplateDto _tpl = new() { IsActive = true };
+    private string? _copied;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("crm.manage");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        try
+        {
+            var (rules, e1, _) = await Api.GetCrmAssignmentRulesAsync();
+            var (tpls, e2, _) = await Api.GetCrmEmailTemplatesAsync();
+            _error = e1 ?? e2;
+            _rules = rules ?? new();
+            _templates = tpls ?? new();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveRuleAsync()
+    {
+        _rule.OwnerUserId = _ruleOwner > 0 ? _ruleOwner : null;
+        var (_, error, _) = await Api.UpsertCrmAssignmentRuleAsync(_rule);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Rule saved"); _rule = new() { IsActive = true }; await LoadAsync(); }
+    }
+
+    private async Task SaveTplAsync()
+    {
+        var (_, error, _) = await Api.UpsertCrmEmailTemplateAsync(_tpl);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Template saved"); _tpl = new() { IsActive = true }; await LoadAsync(); }
+    }
+
+    private void CopyTpl(CrmEmailTemplateDto t) => _copied = $"{t.Subject}\n\n{t.Body}";
+
+    private string OwnerName(int? id) =>
+        id is null ? "—" : (_users.FirstOrDefault(u => u.Id == id)?.DisplayName
+            ?? _users.FirstOrDefault(u => u.Id == id)?.Username ?? id.ToString()!);
+}

@@ -16,3 +16,16 @@ public enum FbrSubmissionStatus { Pending = 0, Success = 1, Failed = 2, Stub = 3
 public enum BackupType { Manual = 0, Automatic = 1 }
 public enum HeldSaleStatus { Held = 0, Recalled = 1, Discarded = 2 }
 public enum CashierShiftStatus { Open = 0, Closed = 1 }
+
+// CRM (light)
+public enum LeadStatus { New = 0, Contacted = 1, Qualified = 2, Lost = 3, Converted = 4 }
+public enum CrmActivityType { Call = 0, Visit = 1, WhatsApp = 2, Email = 3, Task = 4, Meeting = 5, Note = 6 }
+public enum OpportunityStage { Prospect = 0, Quoted = 1, Negotiation = 2, Won = 3, Lost = 4 }
+
+// Purchasing RFQ (Program B — ops gaps)
+public enum PurchaseRfqStatus { Draft = 0, Sent = 1, QuotesReceived = 2, Closed = 3, Cancelled = 4 }
+public enum VendorQuoteStatus { Draft = 0, Received = 1, Selected = 2, Rejected = 3 }
+
+// Service Light (Program C1)
+public enum ServiceTicketStatus { Open = 0, InProgress = 1, Resolved = 2, Closed = 3 }
+public enum ServiceTicketPriority { Low = 0, Normal = 1, High = 2, Urgent = 3 }

@@ -18,7 +18,8 @@ public record PostSupplierPaymentRequest(
     string PaymentMethod,
     string? Reference = null,
     DateTime? PaymentDate = null,
-    string? Notes = null);
+    string? Notes = null,
+    decimal WithholdingTaxRate = 0);
 
 public interface IPaymentPostingService
 {
@@ -99,17 +100,30 @@ public sealed class PaymentPostingService : IPaymentPostingService
         if (supplier is null)
             return Result<int>.Failure("Supplier not found.");
 
+        if (request.WithholdingTaxRate < 0 || request.WithholdingTaxRate > 100)
+            return Result<int>.Failure("Withholding tax rate must be between 0 and 100.");
+
+        var whtAmount = Math.Round(request.Amount * request.WithholdingTaxRate / 100m, 2);
+        var netCash = request.Amount - whtAmount;
+        if (netCash <= 0)
+            return Result<int>.Failure("Net cash payment after withholding tax must be positive.");
+
         var cashKey = ResolveCashBankKey(request.PaymentMethod);
+        var lines = new List<GlPostingLineRequest>
+        {
+            new("Payable", request.Amount, true, "AP clearance"),
+            new(cashKey, netCash, false, "Cash/Bank")
+        };
+        if (whtAmount > 0)
+            lines.Add(new GlPostingLineRequest("WithholdingTaxPayable", whtAmount, false, "Withholding tax withheld"));
+
         var gl = await _gl.PostDocumentAsync(
             "Payment",
             request.PaymentDate ?? DateTime.UtcNow,
             request.Reference,
             $"Supplier payment {supplier.Name}",
             supplier.Id,
-            [
-                new GlPostingLineRequest("Payable", request.Amount, true, "AP clearance"),
-                new GlPostingLineRequest(cashKey, request.Amount, false, "Cash/Bank")
-            ],
+            lines,
             autoPost: true,
             ct);
 
@@ -122,7 +136,9 @@ public sealed class PaymentPostingService : IPaymentPostingService
             Amount = request.Amount,
             PaymentDate = request.PaymentDate ?? DateTime.UtcNow,
             Reference = request.Reference,
-            Notes = request.Notes
+            Notes = request.Notes,
+            WithholdingTaxRate = request.WithholdingTaxRate,
+            WithholdingTaxAmount = whtAmount
         });
         supplier.Balance = Math.Max(0, supplier.Balance - request.Amount);
         await _db.SaveChangesAsync(ct);

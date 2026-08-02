@@ -116,6 +116,29 @@ public sealed class BalanceSheetReportDto
     public List<BalanceSheetLineDto> Lines { get; set; } = [];
 }
 
+public sealed class CashFlowLineDto
+{
+    public int JournalEntryId { get; set; }
+    public string JournalNumber { get; set; } = "";
+    public DateTime JournalDate { get; set; }
+    public string Category { get; set; } = "";
+    public decimal Amount { get; set; }
+    public string? Description { get; set; }
+}
+
+public sealed class CashFlowReportDto
+{
+    public DateTime FromDate { get; set; }
+    public DateTime ToDate { get; set; }
+    public decimal OpeningCash { get; set; }
+    public decimal OperatingActivities { get; set; }
+    public decimal InvestingActivities { get; set; }
+    public decimal FinancingActivities { get; set; }
+    public decimal NetChangeInCash { get; set; }
+    public decimal ClosingCash { get; set; }
+    public List<CashFlowLineDto> Lines { get; set; } = [];
+}
+
 public sealed class PeriodCloseChecklistItemDto
 {
     public string Code { get; set; } = "";

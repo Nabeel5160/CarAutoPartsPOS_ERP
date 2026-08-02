@@ -1,0 +1,61 @@
+@page "/m/crm/tasks"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+
+<div class="cap-mobile">
+    <PageHeader Title="CRM Tasks" Subtitle="My day on mobile" />
+    <LoadingState Busy="@_busy" Error="@_error" />
+
+    @if (_items is not null)
+    {
+        @if (_items.Count == 0)
+        {
+            <EmptyState Title="All clear" Message="No tasks due today." />
+        }
+        else
+        {
+            @foreach (var a in _items)
+            {
+                <div class="cap-card mb-2">
+                    <div class="fw-semibold">@a.Subject</div>
+                    <div class="small text-secondary">@(a.DueAt?.ToLocalTime().ToString("g") ?? "—")</div>
+                    @if (a.CompletedAt is null && _canComplete)
+                    {
+                        <button class="btn btn-sm btn-cap mt-2" @onclick="() => CompleteAsync(a.Id)">Complete</button>
+                    }
+                </div>
+            }
+        }
+    }
+
+    <p class="cap-m-footnote mt-3"><a href="m">← Mobile hub</a> · <a href="crm/tasks">Desktop tasks</a></p>
+</div>
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private bool _canComplete;
+    private List<CrmActivityDto>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canComplete = await Perms.HasAsync("crm.activities");
+        var (data, error, _) = await Api.GetCrmActivitiesAsync(new QuerySpec { Page = 1, PageSize = 50 }, myDay: true);
+        _error = error;
+        _items = data?.Items.Where(a => a.CompletedAt is null).ToList() ?? new();
+        _busy = false;
+    }
+
+    private async Task CompleteAsync(int id)
+    {
+        var (_, error, _) = await Api.CompleteCrmActivityAsync(id);
+        if (error is not null) Toast.ShowError(error);
+        else
+        {
+            Toast.ShowSuccess("Done");
+            _items = _items?.Where(a => a.Id != id).ToList();
+        }
+    }
+}

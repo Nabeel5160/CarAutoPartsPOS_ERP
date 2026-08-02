@@ -42,7 +42,13 @@
                     <td>
                         @if (!l.IsCleared)
                         {
-                            <input type="number" class="form-control form-control-sm d-inline-block" style="width:6rem" @bind="_matchJl" />
+                            <select class="form-select form-select-sm d-inline-block" style="width:auto" @bind="_matchJl">
+                                <option value="0">Select uncleared JL…</option>
+                                @foreach (var u in _uncleared ?? [])
+                                {
+                                    <option value="@u.JournalLineId">@u.JournalNumber · @u.JournalDate.ToString("yyyy-MM-dd") · Dr @u.Debit.ToString("N0") / Cr @u.Credit.ToString("N0")@(string.IsNullOrEmpty(u.Description) ? "" : $" · {u.Description}")</option>
+                                }
+                            </select>
                             <button class="btn btn-sm btn-outline-success" @onclick="() => MatchAsync(l.Id)">Match</button>
                         }
                         else { @l.MatchedJournalLineId }

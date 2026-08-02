@@ -43,6 +43,7 @@ public static class ConfigKeys
     public const string ModSalesInvoices = "sales.invoices";
     public const string ModSalesReturns = "sales.returns";
     public const string ModSalesFbr = "sales.fbr";
+    public const string ModSalesCrm = "sales.crm";
     public const string ModFinanceCompany = "finance.company";
     public const string ModFinanceCoa = "finance.coa";
     public const string ModFinanceJournals = "finance.journals";
@@ -53,6 +54,7 @@ public static class ConfigKeys
     public const string ModFinanceMaps = "finance.mappings";
     public const string ModInsightsReports = "insights.reports";
     public const string ModInsightsAnalytics = "insights.analytics";
+    public const string ModServiceTickets = "service.tickets";
 
     // Fields
     public const string FieldProductOem = "product.oem";
@@ -144,10 +146,10 @@ public static class VerticalProfiles
         ConfigKeys.ModPartnersSuppliers, ConfigKeys.ModPartnersCustomers, ConfigKeys.ModPartnersAging, ConfigKeys.ModPartnersReceipts,
         ConfigKeys.ModPurchOrders, ConfigKeys.ModPurchRequisitions, ConfigKeys.ModPurchReorder, ConfigKeys.ModPurchGrn, ConfigKeys.ModPurchAp,
         ConfigKeys.ModSalesPos, ConfigKeys.ModSalesQuotations, ConfigKeys.ModSalesOrders, ConfigKeys.ModSalesDeliveries,
-        ConfigKeys.ModSalesInvoices, ConfigKeys.ModSalesReturns, ConfigKeys.ModSalesFbr,
+        ConfigKeys.ModSalesInvoices, ConfigKeys.ModSalesReturns, ConfigKeys.ModSalesFbr, ConfigKeys.ModSalesCrm,
         ConfigKeys.ModFinanceCompany, ConfigKeys.ModFinanceCoa, ConfigKeys.ModFinanceJournals, ConfigKeys.ModFinancePeriods,
         ConfigKeys.ModFinanceOpening, ConfigKeys.ModFinanceBank, ConfigKeys.ModFinanceReports, ConfigKeys.ModFinanceMaps,
-        ConfigKeys.ModInsightsReports, ConfigKeys.ModInsightsAnalytics
+        ConfigKeys.ModInsightsReports, ConfigKeys.ModInsightsAnalytics, ConfigKeys.ModServiceTickets
     };
 
     public static IReadOnlySet<string> KnownFieldKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

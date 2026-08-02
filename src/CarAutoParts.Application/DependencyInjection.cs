@@ -43,9 +43,13 @@ public static class DependencyInjection
 
         services.AddScoped<ISupplierService, SupplierService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<ICrmService, CrmService>();
         services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
         services.AddScoped<IPurchaseRequisitionService, PurchaseRequisitionService>();
         services.AddScoped<IReorderService, ReorderService>();
+        services.AddScoped<IPurchaseRfqService, PurchaseRfqService>();
+        services.AddScoped<ISalesTargetService, SalesTargetService>();
+        services.AddScoped<IServiceTicketService, ServiceTicketService>();
 
         services.AddScoped<ISalesService, SalesService>();
         services.AddScoped<IPosCheckoutService, PosCheckoutService>();

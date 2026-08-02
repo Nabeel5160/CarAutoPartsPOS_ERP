@@ -28,6 +28,8 @@ public class SupplierPaymentConfiguration : IEntityTypeConfiguration<SupplierPay
         builder.Property(p => p.Amount).HasPrecision(18, 2);
         builder.Property(p => p.Reference).HasMaxLength(100);
         builder.Property(p => p.Notes).HasMaxLength(500);
+        builder.Property(p => p.WithholdingTaxRate).HasPrecision(5, 2);
+        builder.Property(p => p.WithholdingTaxAmount).HasPrecision(18, 2);
 
         builder.HasOne(p => p.Supplier).WithMany(s => s.Payments).HasForeignKey(p => p.SupplierId);
     }
@@ -46,5 +48,6 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         builder.Property(c => c.Province).HasMaxLength(50);
         builder.Property(c => c.CreditLimit).HasPrecision(18, 2);
         builder.Property(c => c.Balance).HasPrecision(18, 2);
+        builder.Property(c => c.CommissionPercent).HasPrecision(5, 2);
     }
 }

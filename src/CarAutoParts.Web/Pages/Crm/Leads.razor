@@ -1,0 +1,193 @@
+@page "/crm/leads"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="CRM Leads" Subtitle="Capture, qualify, and convert prospects to customers" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label">Status</label>
+            <select class="form-select" @bind="_filterStatus">
+                <option value="">All</option>
+                <option value="New">New</option>
+                <option value="Contacted">Contacted</option>
+                <option value="Qualified">Qualified</option>
+                <option value="Lost">Lost</option>
+                <option value="Converted">Converted</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Source</label>
+            <input class="form-control" placeholder="Source" @bind="_filterSource" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Owner</label>
+            <select class="form-select" @bind="_filterOwner">
+                <option value="0">All owners</option>
+                @foreach (var u in _users)
+                {
+                    <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="LoadAsync">Filter</button></div>
+    </div>
+</div>
+
+@if (_canCreate)
+{
+    <div class="cap-card mb-3">
+        <h6 class="mb-2">New lead</h6>
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Name *" @bind="_form.Name" /></div>
+            <div class="col-md-2"><input class="form-control" placeholder="Phone" @bind="_form.Phone" /></div>
+            <div class="col-md-2"><input class="form-control" placeholder="Email" @bind="_form.Email" /></div>
+            <div class="col-md-2"><input class="form-control" placeholder="Source *" @bind="_form.Source" /></div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_formOwner">
+                    <option value="0">Default owner</option>
+                    @foreach (var u in _users)
+                    {
+                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-1"><button class="btn btn-cap w-100" disabled="@_saving" @onclick="() => CreateAsync()">Add</button></div>
+        </div>
+        @if (_dupWarn is not null)
+        {
+            <div class="alert alert-warning mt-2 mb-0 py-2">@_dupWarn
+                <button class="btn btn-sm btn-outline-warning ms-2" @onclick="() => CreateAsync(true)">Create anyway</button>
+            </div>
+        }
+    </div>
+}
+
+@if (_items is not null)
+{
+    @if (_items.Items.Count == 0)
+    {
+        <EmptyState Title="No leads yet" Message="Add a lead above, or wait for walk-in prospects from the counter." />
+    }
+    else
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Source</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Owner</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var lead in _items.Items)
+                {
+                    <tr style="cursor:pointer" @onclick="() => OpenLead(lead.Id)">
+                        <td>@lead.Name</td>
+                        <td>@(lead.Phone ?? "—")</td>
+                        <td>@(lead.Source ?? "—")</td>
+                        <td><span class="badge badge-soft">@StatusLabel(lead.Status)</span></td>
+                        <td>@lead.Score</td>
+                        <td>@OwnerName(lead.OwnerUserId)</td>
+                        <td>@lead.CreatedAt.ToLocalTime().ToString("g")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _busy = true;
+    private bool _saving;
+    private string? _error;
+    private string? _dupWarn;
+    private bool _canCreate;
+    private PagedResult<LeadDto>? _items;
+    private LeadCreateDto _form = new() { Source = "Walk-in" };
+    private string _filterStatus = "";
+    private string _filterSource = "";
+    private int _filterOwner;
+    private int _formOwner;
+    private List<UserDto> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canCreate = await Perms.HasAsync("crm.leads");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            int? owner = _filterOwner > 0 ? _filterOwner : null;
+            var (data, error, _) = await Api.GetCrmLeadsAsync(
+                new QuerySpec { Page = 1, PageSize = 100 },
+                string.IsNullOrWhiteSpace(_filterStatus) ? null : _filterStatus,
+                string.IsNullOrWhiteSpace(_filterSource) ? null : _filterSource,
+                owner);
+            if (error is not null) { _error = error; return; }
+            _items = data;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CreateAsync(bool confirmDup = false)
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name) || string.IsNullOrWhiteSpace(_form.Source))
+        {
+            Toast.ShowWarning("Name and source are required.");
+            return;
+        }
+
+        _saving = true;
+        _dupWarn = null;
+        try
+        {
+            _form.OwnerUserId = _formOwner > 0 ? _formOwner : null;
+            _form.ConfirmDuplicate = confirmDup;
+            var (data, error, _) = await Api.CreateCrmLeadAsync(_form);
+            if (error is not null || data is null)
+            {
+                if (error?.Contains("duplicates", StringComparison.OrdinalIgnoreCase) == true)
+                    _dupWarn = error;
+                else
+                    Toast.ShowError(error ?? "Could not create lead.");
+                return;
+            }
+
+            Toast.ShowSuccess($"Lead '{data.Name}' created.");
+            _form = new LeadCreateDto { Source = "Walk-in" };
+            _formOwner = 0;
+            await LoadAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private void OpenLead(int id) => Nav.NavigateTo($"/crm/leads/{id}");
+
+    private string OwnerName(int? id) =>
+        id is null ? "—" : (_users.FirstOrDefault(u => u.Id == id)?.DisplayName
+            ?? _users.FirstOrDefault(u => u.Id == id)?.Username ?? id.ToString()!);
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "New", 1 => "Contacted", 2 => "Qualified", 3 => "Lost", 4 => "Converted", _ => status.ToString()
+    };
+}

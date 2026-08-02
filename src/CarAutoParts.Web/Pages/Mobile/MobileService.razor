@@ -1,0 +1,99 @@
+@page "/m/service"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject WebAppConfigService AppConfig
+
+<div class="cap-mobile">
+    <PageHeader Title="Service tickets" Subtitle="Open tickets on mobile">
+        <a class="btn btn-sm btn-outline-light" href="m">← Mobile</a>
+    </PageHeader>
+
+    @if (!_allowed)
+    {
+        <div class="alert alert-warning">Service access required.</div>
+    }
+    else
+    {
+        <LoadingState Busy="@_busy" Error="@_error" />
+
+        @if (_items is not null)
+        {
+            @if (_items.Count == 0)
+            {
+                <EmptyState Title="All clear" Message="No open tickets." />
+            }
+            else
+            {
+                @foreach (var t in _items)
+                {
+                    <div class="cap-card mb-2">
+                        <div class="fw-semibold">@t.Subject</div>
+                        <div class="small text-secondary">@(t.CustomerName ?? "—") · @PriorityLabel(t.Priority)</div>
+                        <div class="small text-secondary">@StatusLabel(t.Status) @(t.DueAt is DateTime d ? $"· due {d.ToLocalTime():g}" : "")</div>
+                        @if (_canManage && t.Status != 3)
+                        {
+                            <div class="mt-2 d-flex gap-2 flex-wrap">
+                                @if (t.Status == 0)
+                                {
+                                    <button class="btn btn-sm btn-outline-info" @onclick="() => SetStatusAsync(t.Id, 1)">Start</button>
+                                }
+                                <button class="btn btn-sm btn-cap" @onclick="() => SetStatusAsync(t.Id, 2)">Resolve</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        }
+
+        <p class="cap-m-footnote mt-3"><a href="m">← Mobile hub</a> · <a href="service/tickets">Desktop tickets</a></p>
+    }
+</div>
+
+@code {
+    private bool _allowed;
+    private bool _canManage;
+    private bool _busy = true;
+    private string? _error;
+    private List<ServiceTicketDto>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allowed = await Perms.HasAsync("service.view") && AppConfig.ModuleEnabled(ModuleKeys.ServiceTickets);
+        if (!_allowed) { _busy = false; return; }
+        _canManage = await Perms.HasAsync("service.manage");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetServiceTicketsAsync(new QuerySpec { Page = 1, PageSize = 50 });
+        _error = error;
+        _items = data?.Items.Where(t => t.Status != 3).ToList() ?? new();
+        _busy = false;
+    }
+
+    private async Task SetStatusAsync(int id, int status)
+    {
+        var dto = new ServiceTicketStatusChangeDto { Status = status, ResolutionNotes = status == 2 ? "Resolved via mobile" : null };
+        var (_, error, _) = await Api.ChangeServiceTicketStatusAsync(id, dto);
+        if (error is not null) Toast.ShowError(error);
+        else
+        {
+            Toast.ShowSuccess("Updated");
+            await LoadAsync();
+        }
+    }
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "Open", 1 => "In progress", 2 => "Resolved", 3 => "Closed", _ => status.ToString()
+    };
+
+    private static string PriorityLabel(int priority) => priority switch
+    {
+        0 => "Low", 1 => "Normal", 2 => "High", 3 => "Urgent", _ => priority.ToString()
+    };
+}

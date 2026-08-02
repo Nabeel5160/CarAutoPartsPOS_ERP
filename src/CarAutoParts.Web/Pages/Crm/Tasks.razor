@@ -1,0 +1,203 @@
+@page "/crm/tasks"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+
+<PageHeader Title="CRM Tasks" Subtitle="My day · overdue · upcoming · calendar list" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="btn-group mb-3">
+    <button class="btn @TabClass("myday")" @onclick="@(() => SwitchTab("myday"))">My day</button>
+    <button class="btn @TabClass("overdue")" @onclick="@(() => SwitchTab("overdue"))">Overdue</button>
+    <button class="btn @TabClass("all")" @onclick="@(() => SwitchTab("all"))">Upcoming</button>
+    <button class="btn @TabClass("cal")" @onclick="@(() => SwitchTab("cal"))">Calendar</button>
+</div>
+
+@if (_canCreate)
+{
+    <div class="cap-card mb-3">
+        <h6>New activity</h6>
+        <div class="row g-2">
+            <div class="col-md-2">
+                <select class="form-select" @bind="_form.Type">
+                    <option value="4">Task</option>
+                    <option value="0">Call</option>
+                    <option value="5">Meeting</option>
+                    <option value="3">Email</option>
+                    <option value="2">WhatsApp</option>
+                    <option value="6">Note</option>
+                    <option value="1">Visit</option>
+                </select>
+            </div>
+            <div class="col-md-3"><input class="form-control" placeholder="Subject *" @bind="_form.Subject" /></div>
+            <div class="col-md-2"><input type="datetime-local" class="form-control" @bind="_dueLocal" /></div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_leadId">
+                    <option value="0">Lead</option>
+                    @foreach (var l in _leads)
+                    {
+                        <option value="@l.Id">@l.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_customerId">
+                    <option value="0">Customer</option>
+                    @foreach (var c in _customers)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_assigneeId">
+                    <option value="0">Assignee (me)</option>
+                    @foreach (var u in _users)
+                    {
+                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-1"><button class="btn btn-cap w-100" @onclick="CreateAsync">Add</button></div>
+        </div>
+    </div>
+}
+
+@if (_tab == "cal")
+{
+    <div class="cap-card">
+        @foreach (var day in _calendar)
+        {
+            <div class="mb-3">
+                <h6>@day.Key.ToString("ddd d MMM")</h6>
+                @foreach (var a in day)
+                {
+                    <div class="small mb-1">@a.Subject · @TypeLabel(a.Type) · @(a.DueAt?.ToLocalTime().ToString("t") ?? "")</div>
+                }
+            </div>
+        }
+    </div>
+}
+else if (_items is not null)
+{
+    @if (_items.Count == 0)
+    {
+        <EmptyState Title="No tasks" Message="Nothing in this queue." />
+    }
+    else
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead><tr><th>Subject</th><th>Type</th><th>Due</th><th>Lead</th><th>Customer</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var a in _items)
+                {
+                    <tr>
+                        <td>@a.Subject</td>
+                        <td>@TypeLabel(a.Type)</td>
+                        <td>@(a.DueAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                        <td>@LeadName(a.LeadId)</td>
+                        <td>@CustomerName(a.CustomerId)</td>
+                        <td>
+                            @if (a.CompletedAt is null && _canCreate)
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => CompleteAsync(a.Id)">Complete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private bool _canCreate;
+    private string _tab = "myday";
+    private List<CrmActivityDto>? _items;
+    private CrmActivityCreateDto _form = new();
+    private DateTime? _dueLocal = DateTime.Today.AddHours(10);
+    private int _leadId;
+    private int _customerId;
+    private int _assigneeId;
+    private List<UserDto> _users = new();
+    private List<LeadDto> _leads = new();
+    private List<CustomerDto> _customers = new();
+    private List<IGrouping<DateTime, CrmActivityDto>> _calendar = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canCreate = await Perms.HasAsync("crm.activities");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        var (leads, _, _) = await Api.GetCrmLeadsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _leads = leads?.Items.ToList() ?? new();
+        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _customers = cust?.Items.ToList() ?? new();
+        await LoadAsync();
+    }
+
+    private string TabClass(string t) => _tab == t ? "btn-cap" : "btn-outline-light";
+
+    private async Task SwitchTab(string t)
+    {
+        _tab = t;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            bool? myDay = _tab == "myday" ? true : null;
+            bool? overdue = _tab == "overdue" ? true : null;
+            var (data, error, _) = await Api.GetCrmActivitiesAsync(
+                new QuerySpec { Page = 1, PageSize = 100 }, myDay: myDay, overdue: overdue);
+            if (error is not null) { _error = error; return; }
+            _items = data?.Items.Where(a => a.CompletedAt is null || _tab == "all").ToList() ?? new();
+            if (_tab == "cal")
+            {
+                var list = data?.Items?.ToList() ?? new List<CrmActivityDto>();
+                _calendar = list
+                    .Where(a => a.DueAt is not null)
+                    .GroupBy(a => a.DueAt!.Value.ToLocalTime().Date)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Subject)) { Toast.ShowWarning("Subject required"); return; }
+        _form.DueAt = _dueLocal?.ToUniversalTime();
+        _form.LeadId = _leadId > 0 ? _leadId : null;
+        _form.CustomerId = _customerId > 0 ? _customerId : null;
+        _form.AssignedToUserId = _assigneeId > 0 ? _assigneeId : null;
+        var (_, error, _) = await Api.CreateCrmActivityAsync(_form);
+        if (error is not null) { Toast.ShowError(error); return; }
+        Toast.ShowSuccess("Activity created");
+        _form = new CrmActivityCreateDto();
+        await LoadAsync();
+    }
+
+    private async Task CompleteAsync(int id)
+    {
+        var (_, error, _) = await Api.CompleteCrmActivityAsync(id, createNext: true);
+        if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Completed"); await LoadAsync(); }
+    }
+
+    private string LeadName(int? id) => id is null ? "—" : (_leads.FirstOrDefault(l => l.Id == id)?.Name ?? id.ToString()!);
+    private string CustomerName(int? id) => id is null ? "—" : (_customers.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString()!);
+    private static string TypeLabel(int t) => t switch
+    {
+        0 => "Call", 1 => "Visit", 2 => "WhatsApp", 3 => "Email", 4 => "Task", 5 => "Meeting", 6 => "Note", _ => t.ToString()
+    };
+}

@@ -93,12 +93,24 @@
     <h5>New quotation</h5>
     <div class="row g-2 align-items-end">
         <div class="col-md-2">
-            <label class="form-label small mb-0">Customer Id</label>
-            <input type="number" class="form-control" placeholder="CustomerId" @bind="_customerId" @bind:event="oninput" />
+            <label class="form-label small mb-0">Customer</label>
+            <select class="form-select" @bind="_customerId">
+                <option value="">Select…</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
         </div>
         <div class="col-md-2">
-            <label class="form-label small mb-0">Product Id</label>
-            <input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" @bind:event="oninput" />
+            <label class="form-label small mb-0">Product</label>
+            <select class="form-select" @bind="_line.ProductId">
+                <option value="0">Select…</option>
+                @foreach (var p in _products)
+                {
+                    <option value="@p.Id">@p.Name (@p.Sku)</option>
+                }
+            </select>
         </div>
         <div class="col-md-2">
             <label class="form-label small mb-0">Qty</label>
@@ -131,10 +143,16 @@
     private string _priceHint = "";
     private int _page = 1;
     private int _pageSize = 10;
+    private List<CustomerDto> _customers = [];
+    private List<ProductListDto> _products = [];
 
     protected override async Task OnInitializedAsync()
     {
         _canManage = await Perms.HasAsync(Permissions.QuotationsManage);
+        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _customers = cust?.Items ?? [];
+        var (prod, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _products = prod?.Items ?? [];
         await LoadAsync();
     }
 

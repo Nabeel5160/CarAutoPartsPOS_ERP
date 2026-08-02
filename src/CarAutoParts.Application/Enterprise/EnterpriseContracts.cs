@@ -59,6 +59,12 @@ public interface IEnterpriseDb
     DbSet<PurchaseReturn> PurchaseReturns { get; }
     DbSet<CreditNoteApplication> CreditNoteApplications { get; }
     DbSet<PurchaseCreditNoteApplication> PurchaseCreditNoteApplications { get; }
+    DbSet<PurchaseRfq> PurchaseRfqs { get; }
+    DbSet<PurchaseRfqLine> PurchaseRfqLines { get; }
+    DbSet<VendorQuote> VendorQuotes { get; }
+    DbSet<VendorQuoteLine> VendorQuoteLines { get; }
+    DbSet<SalesTarget> SalesTargets { get; }
+    DbSet<AppUser> Users { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -501,6 +507,25 @@ public record BalanceSheetReportDto(
     decimal TotalEquity,
     IReadOnlyList<BalanceSheetLineDto> Lines);
 
+public record CashFlowLineDto(
+    int JournalEntryId,
+    string JournalNumber,
+    DateTime JournalDate,
+    string Category,
+    decimal Amount,
+    string? Description);
+
+public record CashFlowReportDto(
+    DateTime FromDate,
+    DateTime ToDate,
+    decimal OpeningCash,
+    decimal OperatingActivities,
+    decimal InvestingActivities,
+    decimal FinancingActivities,
+    decimal NetChangeInCash,
+    decimal ClosingCash,
+    IReadOnlyList<CashFlowLineDto> Lines);
+
 // —— GL posting DTOs ——
 
 public record GlPostingLineRequest(
@@ -580,6 +605,7 @@ public interface IFinancialReportService
     Task<Result<BalanceSheetReportDto>> BalanceSheetAsync(DateTime asOfDate, CancellationToken ct = default);
     Task<Result<PartnerAgingReportDto>> CustomerAgingAsync(DateTime? asOfDate = null, CancellationToken ct = default);
     Task<Result<PartnerAgingReportDto>> SupplierAgingAsync(DateTime? asOfDate = null, CancellationToken ct = default);
+    Task<Result<CashFlowReportDto>> CashFlowAsync(DateTime fromDate, DateTime toDate, CancellationToken ct = default);
 }
 
 public interface IAccountMappingService

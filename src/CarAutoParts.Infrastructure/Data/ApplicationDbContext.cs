@@ -109,6 +109,22 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProductKit> ProductKits => Set<ProductKit>();
     public DbSet<ProductKitComponent> ProductKitComponents => Set<ProductKitComponent>();
     public DbSet<ProductSupersession> ProductSupersessions => Set<ProductSupersession>();
+    public DbSet<Lead> Leads => Set<Lead>();
+    public DbSet<CrmActivity> CrmActivities => Set<CrmActivity>();
+    public DbSet<Opportunity> Opportunities => Set<Opportunity>();
+    public DbSet<OpportunityStageHistory> OpportunityStageHistories => Set<OpportunityStageHistory>();
+    public DbSet<CrmAssignmentRule> CrmAssignmentRules => Set<CrmAssignmentRule>();
+    public DbSet<CrmEmailTemplate> CrmEmailTemplates => Set<CrmEmailTemplate>();
+
+    // Program B — ops gaps (RFQ, sales targets)
+    public DbSet<PurchaseRfq> PurchaseRfqs => Set<PurchaseRfq>();
+    public DbSet<PurchaseRfqLine> PurchaseRfqLines => Set<PurchaseRfqLine>();
+    public DbSet<VendorQuote> VendorQuotes => Set<VendorQuote>();
+    public DbSet<VendorQuoteLine> VendorQuoteLines => Set<VendorQuoteLine>();
+    public DbSet<SalesTarget> SalesTargets => Set<SalesTarget>();
+
+    // Program C1 — Service Light
+    public DbSet<ServiceTicket> ServiceTickets => Set<ServiceTicket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

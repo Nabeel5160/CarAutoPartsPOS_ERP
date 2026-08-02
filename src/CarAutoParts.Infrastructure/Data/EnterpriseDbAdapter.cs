@@ -63,6 +63,12 @@ public sealed class EnterpriseDbAdapter : IEnterpriseDb
     public DbSet<PurchaseReturn> PurchaseReturns => _db.PurchaseReturns;
     public DbSet<CreditNoteApplication> CreditNoteApplications => _db.CreditNoteApplications;
     public DbSet<PurchaseCreditNoteApplication> PurchaseCreditNoteApplications => _db.PurchaseCreditNoteApplications;
+    public DbSet<PurchaseRfq> PurchaseRfqs => _db.PurchaseRfqs;
+    public DbSet<PurchaseRfqLine> PurchaseRfqLines => _db.PurchaseRfqLines;
+    public DbSet<VendorQuote> VendorQuotes => _db.VendorQuotes;
+    public DbSet<VendorQuoteLine> VendorQuoteLines => _db.VendorQuoteLines;
+    public DbSet<SalesTarget> SalesTargets => _db.SalesTargets;
+    public DbSet<AppUser> Users => _db.Users;
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

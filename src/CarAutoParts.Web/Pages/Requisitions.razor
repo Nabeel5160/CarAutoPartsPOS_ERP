@@ -48,12 +48,39 @@
 <div class="cap-card mb-3">
     <h5>New requisition</h5>
     <div class="row g-2">
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="SupplierId" @bind="_create.SupplierId" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_create.WarehouseId" /></div>
-        <div class="col-md-2"><input type="number" class="form-control" placeholder="ProductId" @bind="_line.ProductId" /></div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Supplier</label>
+            <select class="form-select" @bind="_create.SupplierId">
+                <option value="">Select…</option>
+                @foreach (var s in _suppliers)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Warehouse</label>
+            <select class="form-select" @bind="_create.WarehouseId">
+                <option value="">Select…</option>
+                @foreach (var w in _warehouses)
+                {
+                    <option value="@w.Id">@w.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-0">Product</label>
+            <select class="form-select" @bind="_line.ProductId">
+                <option value="0">Select…</option>
+                @foreach (var p in _products)
+                {
+                    <option value="@p.Id">@p.Name (@p.Sku)</option>
+                }
+            </select>
+        </div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Qty" @bind="_line.Quantity" /></div>
         <div class="col-md-2"><input type="number" class="form-control" placeholder="Unit price" @bind="_line.SuggestedUnitPrice" /></div>
-        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create draft</button></div>
+        <div class="col-md-2 mt-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create draft</button></div>
     </div>
 </div>
 
@@ -65,6 +92,9 @@
     private string? _error;
     private int _page = 1;
     private int _pageSize = 10;
+    private List<SupplierDto> _suppliers = [];
+    private List<WarehouseDto> _warehouses = [];
+    private List<ProductListDto> _products = [];
 
     private static string StatusName(int s) => s switch
     {
@@ -76,7 +106,16 @@
         _ => s.ToString()
     };
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var (sup, _, _) = await Api.GetSuppliersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _suppliers = sup?.Items ?? [];
+        var (wh, _, _) = await Api.GetWarehousesAsync();
+        _warehouses = wh ?? [];
+        var (prod, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _products = prod?.Items ?? [];
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

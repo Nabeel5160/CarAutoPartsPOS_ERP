@@ -433,6 +433,120 @@ public sealed class CapApiService
     public Task<(List<ApprovalRequestWebDto>? Data, string? Error, int Status)> GetPendingApprovalsAsync() =>
         _api.GetAsync<List<ApprovalRequestWebDto>>("/api/approvals/pending");
 
+    // CRM
+    public Task<(PagedResult<LeadDto>? Data, string? Error, int Status)> GetCrmLeadsAsync(
+        QuerySpec? q = null, string? status = null, string? source = null, int? ownerUserId = null)
+    {
+        var qs = ApiClient.ToQuery(q ?? new QuerySpec());
+        if (!string.IsNullOrWhiteSpace(status)) qs += $"&status={Uri.EscapeDataString(status)}";
+        if (!string.IsNullOrWhiteSpace(source)) qs += $"&source={Uri.EscapeDataString(source)}";
+        if (ownerUserId is int oid) qs += $"&ownerUserId={oid}";
+        return _api.GetAsync<PagedResult<LeadDto>>($"/api/crm/leads{qs}");
+    }
+
+    public Task<(LeadDto? Data, string? Error, int Status)> GetCrmLeadAsync(int id) =>
+        _api.GetAsync<LeadDto>($"/api/crm/leads/{id}");
+
+    public Task<(LeadDto? Data, string? Error, int Status)> CreateCrmLeadAsync(LeadCreateDto dto) =>
+        _api.PostAsync<LeadDto>("/api/crm/leads", dto);
+
+    public Task<(LeadDto? Data, string? Error, int Status)> UpdateCrmLeadAsync(int id, LeadUpdateDto dto) =>
+        _api.PutAsync<LeadDto>($"/api/crm/leads/{id}", dto);
+
+    public Task<(List<LeadDuplicateDto>? Data, string? Error, int Status)> GetCrmLeadDuplicatesAsync(
+        string? phone, string? email, string? name, int? excludeLeadId = null)
+    {
+        var qs = $"?phone={Uri.EscapeDataString(phone ?? "")}&email={Uri.EscapeDataString(email ?? "")}&name={Uri.EscapeDataString(name ?? "")}";
+        if (excludeLeadId is int id) qs += $"&excludeLeadId={id}";
+        return _api.GetAsync<List<LeadDuplicateDto>>($"/api/crm/leads/duplicates{qs}");
+    }
+
+    public Task<(LeadDto? Data, string? Error, int Status)> ConvertCrmLeadToCustomerAsync(int id, int? existingCustomerId = null) =>
+        _api.PostAsync<LeadDto>($"/api/crm/leads/{id}/convert-customer", new { ExistingCustomerId = existingCustomerId });
+
+    public Task<(OpportunityDto? Data, string? Error, int Status)> ConvertCrmLeadToOpportunityAsync(int id, string? name, decimal value) =>
+        _api.PostAsync<OpportunityDto>($"/api/crm/leads/{id}/convert-opportunity", new { Name = name, Value = value });
+
+    public Task<(PagedResult<CrmActivityDto>? Data, string? Error, int Status)> GetCrmActivitiesAsync(
+        QuerySpec? q = null, int? leadId = null, int? customerId = null, bool? myDay = null, bool? overdue = null)
+    {
+        var qs = ApiClient.ToQuery(q ?? new QuerySpec());
+        if (leadId is int lid) qs += $"&leadId={lid}";
+        if (customerId is int cid) qs += $"&customerId={cid}";
+        if (myDay is true) qs += "&myDay=true";
+        if (overdue is true) qs += "&overdue=true";
+        return _api.GetAsync<PagedResult<CrmActivityDto>>($"/api/crm/activities{qs}");
+    }
+
+    public Task<(CrmActivityDto? Data, string? Error, int Status)> CreateCrmActivityAsync(CrmActivityCreateDto dto) =>
+        _api.PostAsync<CrmActivityDto>("/api/crm/activities", dto);
+
+    public Task<(CrmActivityDto? Data, string? Error, int Status)> CompleteCrmActivityAsync(int id, bool createNext = false, int nextDueDays = 7) =>
+        _api.PostAsync<CrmActivityDto>($"/api/crm/activities/{id}/complete", new { CreateNext = createNext, NextDueDays = nextDueDays });
+
+    public Task<(PagedResult<OpportunityDto>? Data, string? Error, int Status)> GetCrmOpportunitiesAsync(
+        QuerySpec? q = null, string? stage = null, int? customerId = null)
+    {
+        var qs = ApiClient.ToQuery(q ?? new QuerySpec());
+        if (!string.IsNullOrWhiteSpace(stage)) qs += $"&stage={Uri.EscapeDataString(stage)}";
+        if (customerId is int cid) qs += $"&customerId={cid}";
+        return _api.GetAsync<PagedResult<OpportunityDto>>($"/api/crm/opportunities{qs}");
+    }
+
+    public Task<(OpportunityDto? Data, string? Error, int Status)> CreateCrmOpportunityAsync(OpportunityCreateDto dto) =>
+        _api.PostAsync<OpportunityDto>("/api/crm/opportunities", dto);
+
+    public Task<(OpportunityDto? Data, string? Error, int Status)> ChangeCrmOpportunityStageAsync(int id, OpportunityStageChangeDto dto) =>
+        _api.PostAsync<OpportunityDto>($"/api/crm/opportunities/{id}/stage", dto);
+
+    public Task<(OpportunityDto? Data, string? Error, int Status)> LinkCrmQuotationAsync(int id, int quotationId) =>
+        _api.PostAsync<OpportunityDto>($"/api/crm/opportunities/{id}/link-quotation", new { QuotationId = quotationId });
+
+    public Task<(CrmPipelineDashboardDto? Data, string? Error, int Status)> GetCrmPipelineDashboardAsync() =>
+        _api.GetAsync<CrmPipelineDashboardDto>("/api/crm/pipeline/dashboard");
+
+    public Task<(Customer360Dto? Data, string? Error, int Status)> GetCrmCustomer360Async(int customerId) =>
+        _api.GetAsync<Customer360Dto>($"/api/crm/customers/{customerId}/360");
+
+    public Task<(List<CrmAssignmentRuleDto>? Data, string? Error, int Status)> GetCrmAssignmentRulesAsync() =>
+        _api.GetAsync<List<CrmAssignmentRuleDto>>("/api/crm/assignment-rules");
+
+    public Task<(CrmAssignmentRuleDto? Data, string? Error, int Status)> UpsertCrmAssignmentRuleAsync(CrmAssignmentRuleDto dto) =>
+        _api.PostAsync<CrmAssignmentRuleDto>("/api/crm/assignment-rules", dto);
+
+    public Task<(List<CrmEmailTemplateDto>? Data, string? Error, int Status)> GetCrmEmailTemplatesAsync() =>
+        _api.GetAsync<List<CrmEmailTemplateDto>>("/api/crm/email-templates");
+
+    public Task<(CrmEmailTemplateDto? Data, string? Error, int Status)> UpsertCrmEmailTemplateAsync(CrmEmailTemplateDto dto) =>
+        _api.PostAsync<CrmEmailTemplateDto>("/api/crm/email-templates", dto);
+
+    // Service Light (Program C1)
+    public Task<(PagedResult<ServiceTicketDto>? Data, string? Error, int Status)> GetServiceTicketsAsync(
+        QuerySpec? q = null, string? status = null, string? priority = null, int? customerId = null, int? assignedToUserId = null)
+    {
+        var qs = ApiClient.ToQuery(q ?? new QuerySpec());
+        if (!string.IsNullOrWhiteSpace(status)) qs += $"&status={Uri.EscapeDataString(status)}";
+        if (!string.IsNullOrWhiteSpace(priority)) qs += $"&priority={Uri.EscapeDataString(priority)}";
+        if (customerId is int cid) qs += $"&customerId={cid}";
+        if (assignedToUserId is int aid) qs += $"&assignedToUserId={aid}";
+        return _api.GetAsync<PagedResult<ServiceTicketDto>>($"/api/service/tickets{qs}");
+    }
+
+    public Task<(ServiceTicketDto? Data, string? Error, int Status)> GetServiceTicketAsync(int id) =>
+        _api.GetAsync<ServiceTicketDto>($"/api/service/tickets/{id}");
+
+    public Task<(ServiceTicketDto? Data, string? Error, int Status)> CreateServiceTicketAsync(ServiceTicketCreateDto dto) =>
+        _api.PostAsync<ServiceTicketDto>("/api/service/tickets", dto);
+
+    public Task<(ServiceTicketDto? Data, string? Error, int Status)> UpdateServiceTicketAsync(int id, ServiceTicketUpdateDto dto) =>
+        _api.PutAsync<ServiceTicketDto>($"/api/service/tickets/{id}", dto);
+
+    public Task<(ServiceTicketDto? Data, string? Error, int Status)> ChangeServiceTicketStatusAsync(int id, ServiceTicketStatusChangeDto dto) =>
+        _api.PostAsync<ServiceTicketDto>($"/api/service/tickets/{id}/status", dto);
+
+    public Task<(List<ServiceTicketDto>? Data, string? Error, int Status)> GetCustomerServiceTicketsAsync(int customerId) =>
+        _api.GetAsync<List<ServiceTicketDto>>($"/api/service/customers/{customerId}/tickets");
+
     public Task<(List<ApprovalPolicyWebDto>? Data, string? Error, int Status)> GetApprovalPoliciesAsync() =>
         _api.GetAsync<List<ApprovalPolicyWebDto>>("/api/approvals/policies");
 
@@ -574,6 +688,9 @@ public sealed class CapApiService
     public Task<(BalanceSheetReportDto? Data, string? Error, int Status)> GetBalanceSheetAsync(DateTime? asOf = null) =>
         _api.GetAsync<BalanceSheetReportDto>($"/api/v1/enterprise/reports/balance-sheet{(asOf is null ? "" : $"?asOf={asOf:yyyy-MM-dd}")}");
 
+    public Task<(CashFlowReportDto? Data, string? Error, int Status)> GetCashFlowAsync(DateTime from, DateTime to) =>
+        _api.GetAsync<CashFlowReportDto>($"/api/v1/enterprise/reports/cash-flow?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+
     public Task<(bool Ok, string? Error, int Status)> RetryFbrAsync(int invoiceId) =>
         _api.PostAsync($"/api/v1/enterprise/fbr/retry/{invoiceId}", null);
 
@@ -615,6 +732,54 @@ public sealed class CapApiService
 
     public Task<(PurchaseRequisitionDto? Data, string? Error, int Status)> CreateReorderPrAsync(CreateReorderPrRequest dto) =>
         _api.PostAsync<PurchaseRequisitionDto>("/api/v1/reorder/create-pr", dto);
+
+    // RFQ
+    private const string RfqBase = "/api/v1/rfq";
+
+    public Task<(PagedResult<PurchaseRfqDto>? Data, string? Error, int Status)> GetRfqsAsync(QuerySpec? q = null) =>
+        _api.GetAsync<PagedResult<PurchaseRfqDto>>($"{RfqBase}{ApiClient.ToQuery(q ?? new QuerySpec())}");
+
+    public Task<(PurchaseRfqDto? Data, string? Error, int Status)> GetRfqAsync(int id) =>
+        _api.GetAsync<PurchaseRfqDto>($"{RfqBase}/{id}");
+
+    public Task<(PurchaseRfqDto? Data, string? Error, int Status)> CreateRfqAsync(CreatePurchaseRfqRequest dto) =>
+        _api.PostAsync<PurchaseRfqDto>(RfqBase, dto);
+
+    public Task<(PurchaseRfqDto? Data, string? Error, int Status)> SendRfqAsync(int id) =>
+        _api.PostAsync<PurchaseRfqDto>($"{RfqBase}/{id}/send", null);
+
+    public Task<(PurchaseRfqDto? Data, string? Error, int Status)> CancelRfqAsync(int id) =>
+        _api.PostAsync<PurchaseRfqDto>($"{RfqBase}/{id}/cancel", null);
+
+    public Task<(VendorQuoteDto? Data, string? Error, int Status)> AddVendorQuoteAsync(int rfqId, CreateVendorQuoteRequest dto) =>
+        _api.PostAsync<VendorQuoteDto>($"{RfqBase}/{rfqId}/quotes", dto);
+
+    public Task<(VendorQuoteDto? Data, string? Error, int Status)> SelectVendorQuoteAsync(int quoteId) =>
+        _api.PostAsync<VendorQuoteDto>($"{RfqBase}/quotes/{quoteId}/select", null);
+
+    public Task<(PurchaseOrderDetailDto? Data, string? Error, int Status)> CreatePoFromQuoteAsync(int quoteId) =>
+        _api.PostAsync<PurchaseOrderDetailDto>($"{RfqBase}/quotes/{quoteId}/create-po", null);
+
+    // Sales targets
+    private const string SalesTargetsBase = "/api/v1/sales-targets";
+
+    public Task<(List<SalesTargetDto>? Data, string? Error, int Status)> GetSalesTargetsAsync(int? userId = null, int? year = null)
+    {
+        var qs = new List<string>();
+        if (userId is int u) qs.Add($"userId={u}");
+        if (year is int y) qs.Add($"year={y}");
+        var q = qs.Count == 0 ? "" : "?" + string.Join("&", qs);
+        return _api.GetAsync<List<SalesTargetDto>>($"{SalesTargetsBase}{q}");
+    }
+
+    public Task<(SalesTargetDto? Data, string? Error, int Status)> CreateSalesTargetAsync(SalesTargetUpsertRequest dto) =>
+        _api.PostAsync<SalesTargetDto>(SalesTargetsBase, dto);
+
+    public Task<(SalesTargetDto? Data, string? Error, int Status)> UpdateSalesTargetAsync(int id, SalesTargetUpsertRequest dto) =>
+        _api.PutAsync<SalesTargetDto>($"{SalesTargetsBase}/{id}", dto);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteSalesTargetAsync(int id) =>
+        _api.DeleteAsync($"{SalesTargetsBase}/{id}");
 
     public Task<(PagedResult<PurchaseInvoiceDto>? Data, string? Error, int Status)> GetApInvoicesAsync(QuerySpec? q = null) =>
         _api.GetAsync<PagedResult<PurchaseInvoiceDto>>($"{Ent}/ap-invoices{ApiClient.ToQuery(q ?? new QuerySpec())}");

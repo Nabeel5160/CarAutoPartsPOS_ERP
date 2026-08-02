@@ -27,6 +27,12 @@ public class SupplierPayment : BaseEntity
     public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
     public string? Reference { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>Withholding tax rate (%) applied under PK tax law, e.g. Section 153 supply payments.</summary>
+    public decimal WithholdingTaxRate { get; set; }
+
+    /// <summary>Withheld amount deducted from the gross payment and remitted to the tax authority.</summary>
+    public decimal WithholdingTaxAmount { get; set; }
 }
 
 public class Customer : BaseEntity
@@ -41,6 +47,10 @@ public class Customer : BaseEntity
     public decimal CreditLimit { get; set; }
     public decimal Balance { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Salesperson commission % applied on invoices linked to this customer (Program B — sales thin).</summary>
+    public decimal CommissionPercent { get; set; }
+
     public ICollection<SalesOrder> SalesOrders { get; set; } = new List<SalesOrder>();
     public ICollection<SalesInvoice> SalesInvoices { get; set; } = new List<SalesInvoice>();
 }

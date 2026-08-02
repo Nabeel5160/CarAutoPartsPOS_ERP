@@ -90,6 +90,22 @@ public static class Permissions
     public const string SalesPriceOverride = "sales.price.override";
     public const string KitsManage = "kits.manage";
 
+    public const string CrmView = "crm.view";
+    public const string CrmManage = "crm.manage";
+    public const string CrmLeads = "crm.leads";
+    public const string CrmActivities = "crm.activities";
+
+    /// <summary>Create/manage RFQs and vendor quotes; view uses PurchasesView.</summary>
+    public const string RfqManage = "rfq.manage";
+
+    /// <summary>Create/manage sales targets; view uses SalesView.</summary>
+    public const string SalesTargetsManage = "salestargets.manage";
+
+    /// <summary>View service tickets (Program C1 — Service Light).</summary>
+    public const string ServiceView = "service.view";
+    /// <summary>Create/manage service tickets and status transitions.</summary>
+    public const string ServiceManage = "service.manage";
+
     /// <summary>All defined permission codes.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -116,6 +132,9 @@ public static class Permissions
         PlatformView, PlatformManage,
         FinanceView, FinanceManage, FinancePost, FinanceForceClose,
         GrnManage, ApInvoiceManage, CycleCountManage,
-        QuotationsManage, DeliveriesManage, PriceListsManage, SalesPriceOverride, KitsManage
+        QuotationsManage, DeliveriesManage, PriceListsManage, SalesPriceOverride, KitsManage,
+        CrmView, CrmManage, CrmLeads, CrmActivities,
+        RfqManage, SalesTargetsManage,
+        ServiceView, ServiceManage
     ];
 }

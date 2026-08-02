@@ -301,6 +301,14 @@ public class EnterpriseController : ApiControllerBase
     public async Task<IActionResult> BalanceSheet([FromQuery] DateTime? asOf = null, CancellationToken ct = default) =>
         FromResult(await _reports.BalanceSheetAsync(asOf ?? DateTime.UtcNow.Date, ct));
 
+    [HttpGet("reports/cash-flow")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> CashFlow(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        CancellationToken ct = default) =>
+        FromResult(await _reports.CashFlowAsync(from, to, ct));
+
     [HttpPost("fbr/retry/{invoiceId:int}")]
     [Authorize(Policy = Permissions.PosCheckout)]
     [RequireFeature(ConfigKeys.ModSalesFbr)]

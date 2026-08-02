@@ -131,4 +131,6 @@ public static class Permissions
     public const string SalesPriceOverride = "sales.price.override";
     public const string PosPriceOverride = "pos.price.override";
     public const string KitsManage = "kits.manage";
+    public const string ServiceView = "service.view";
+    public const string ServiceManage = "service.manage";
 }

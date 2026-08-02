@@ -1389,6 +1389,15 @@ code, .mono { font-family: var(--cap-font-mono); }
   gap: var(--cap-space-3);
 }
 
+.cap-m-scan-video {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: var(--cap-radius, 8px);
+  background: #000;
+  display: block;
+}
+
 .cap-m-card {
   background: var(--cap-surface);
   border: var(--cap-border-width) solid var(--cap-border);

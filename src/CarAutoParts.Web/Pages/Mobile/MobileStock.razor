@@ -1,8 +1,10 @@
 @page "/m/stock"
 @attribute [Authorize]
+@implements IDisposable
 @inject CapApiService Api
 @inject PermissionService Perms
 @inject WebAppConfigService AppConfig
+@inject IJSRuntime Js
 
 <div class="cap-mobile">
     <PageHeader Title="Stock check" Subtitle="Read-only lookup">
@@ -22,6 +24,17 @@
                        @bind="_search" @bind:event="oninput" @onkeydown="OnSearchKey" />
                 <button type="button" class="btn btn-cap btn-lg" disabled="@_busy" @onclick="SearchAsync">Search</button>
             </div>
+            @if (_scanSupported)
+            {
+                <button type="button" class="btn btn-outline-light btn-sm mt-2" @onclick="ToggleScanAsync">
+                    @(_scanning ? "Stop camera" : "📷 Scan barcode")
+                </button>
+                @if (_scanning)
+                {
+                    <video id="cap-scan-video" autoplay playsinline muted class="cap-m-scan-video mt-2"></video>
+                    <p class="small text-secondary mt-1 mb-0">Point the camera at a barcode…</p>
+                }
+            }
         </div>
 
         <LoadingState Busy="@_busy" Error="@_error" />
@@ -92,6 +105,9 @@
     private int _pageSize = 10;
     private PagedResult<InventoryItemDto>? _items;
     private List<LowStockAlertDto>? _low;
+    private bool _scanning;
+    private bool _scanSupported = true;
+    private DotNetObjectReference<MobileStock>? _dotNetRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,6 +118,8 @@
         var low = await Api.GetLowStockAsync();
         _low = low.Data ?? [];
         if (low.Error is not null) _error = low.Error;
+
+        _scanSupported = await Js.InvokeAsync<bool>("capBarcodeScanner.supported");
     }
 
     private async Task OnSearchKey(KeyboardEventArgs e)
@@ -129,4 +147,46 @@
 
     private async Task OnPageChanged(int page) { _page = page; await LoadPageAsync(); }
     private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadPageAsync(); }
+
+    private async Task ToggleScanAsync()
+    {
+        if (_scanning)
+        {
+            await StopScanAsync();
+            return;
+        }
+
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        _scanning = true;
+        StateHasChanged();
+        await Task.Delay(50); // let the <video> element render before JS attaches the stream
+        var ok = await Js.InvokeAsync<bool>("capBarcodeScanner.start", "cap-scan-video", _dotNetRef);
+        if (!ok)
+        {
+            _scanning = false;
+            _scanSupported = false;
+            _error = "Camera scan is not supported on this device/browser.";
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnBarcodeDetected(string value)
+    {
+        _scanning = false;
+        _search = value;
+        await InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            await SearchAsync();
+        });
+    }
+
+    private async Task StopScanAsync()
+    {
+        _scanning = false;
+        await Js.InvokeVoidAsync("capBarcodeScanner.stop");
+    }
+
+    public void Dispose() => _dotNetRef?.Dispose();
 }

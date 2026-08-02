@@ -1,0 +1,183 @@
+@page "/crm/leads/{Id:int}"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="@(_lead?.Name ?? "Lead")" Subtitle="Convert, update status, and track activities" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_lead is not null)
+{
+    @if (_dups.Count > 0 && _lead.Status != 4)
+    {
+        <div class="alert alert-warning">Possible duplicates:
+            @foreach (var d in _dups)
+            {
+                <span class="me-2">@d.Name (@d.Kind)</span>
+            }
+        </div>
+    }
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="cap-card mb-3">
+                <h6>Details</h6>
+                <div class="row g-2">
+                    <div class="col-md-6"><label class="form-label">Name</label><input class="form-control" @bind="_edit.Name" /></div>
+                    <div class="col-md-3"><label class="form-label">Phone</label><input class="form-control" @bind="_edit.Phone" /></div>
+                    <div class="col-md-3"><label class="form-label">Email</label><input class="form-control" @bind="_edit.Email" /></div>
+                    <div class="col-md-3"><label class="form-label">Source</label><input class="form-control" @bind="_edit.Source" /></div>
+                    <div class="col-md-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" @bind="_edit.Status">
+                            <option value="0">New</option>
+                            <option value="1">Contacted</option>
+                            <option value="2">Qualified</option>
+                            <option value="3">Lost</option>
+                            <option value="4">Converted</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Owner</label>
+                        <select class="form-select" @bind="_ownerId">
+                            <option value="0">—</option>
+                            @foreach (var u in _users)
+                            {
+                                <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3"><label class="form-label">Lost reason</label><input class="form-control" @bind="_edit.LostReason" /></div>
+                    <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" rows="2" @bind="_edit.Notes"></textarea></div>
+                </div>
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    @if (_canManage)
+                    {
+                        <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+                        @if (_lead.Status != 4)
+                        {
+                            <button class="btn btn-outline-success" @onclick="ConvertCustomerAsync">Convert → Customer</button>
+                            <button class="btn btn-outline-info" @onclick="ConvertOppAsync">Convert → Opportunity</button>
+                        }
+                        else if (_lead.ConvertedCustomerId is int cid)
+                        {
+                            <a class="btn btn-outline-light" href="@($"/crm/customers/{cid}")">Open Customer 360</a>
+                        }
+                    }
+                    <a class="btn btn-outline-secondary" href="/crm/leads">Back</a>
+                </div>
+                <p class="text-secondary small mt-2 mb-0">Score @_lead.Score · Created @_lead.CreatedAt.ToLocalTime().ToString("g")</p>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="cap-card">
+                <h6>Activity timeline</h6>
+                @if (_activities.Count == 0)
+                {
+                    <p class="text-secondary mb-0">No activities yet.</p>
+                }
+                else
+                {
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var a in _activities)
+                        {
+                            <li class="mb-2 border-bottom border-secondary pb-2">
+                                <strong>@a.Subject</strong>
+                                <span class="badge badge-soft ms-1">@TypeLabel(a.Type)</span>
+                                <div class="small text-secondary">
+                                    @(a.DueAt?.ToLocalTime().ToString("g") ?? "—")
+                                    @(a.CompletedAt is null ? "" : " · done")
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private LeadDto? _lead;
+    private LeadUpdateDto _edit = new();
+    private int _ownerId;
+    private List<UserDto> _users = new();
+    private List<CrmActivityDto> _activities = new();
+    private List<LeadDuplicateDto> _dups = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("crm.leads");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var (data, error, _) = await Api.GetCrmLeadAsync(Id);
+            if (error is not null || data is null) { _error = error ?? "Lead not found"; return; }
+            _lead = data;
+            _edit = new LeadUpdateDto
+            {
+                Name = data.Name,
+                Phone = data.Phone,
+                Email = data.Email,
+                Source = data.Source,
+                Notes = data.Notes,
+                Status = data.Status,
+                LostReason = data.LostReason,
+                ConfirmDuplicate = true
+            };
+            _ownerId = data.OwnerUserId ?? 0;
+
+            var (acts, _, _) = await Api.GetCrmActivitiesAsync(new QuerySpec { Page = 1, PageSize = 50 }, leadId: Id);
+            _activities = acts?.Items.ToList() ?? new();
+
+            var (dups, _, _) = await Api.GetCrmLeadDuplicatesAsync(data.Phone, data.Email, data.Name, Id);
+            _dups = dups ?? new();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        _edit.OwnerUserId = _ownerId > 0 ? _ownerId : null;
+        var (data, error, _) = await Api.UpdateCrmLeadAsync(Id, _edit);
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Save failed"); return; }
+        Toast.ShowSuccess("Lead updated");
+        await LoadAsync();
+    }
+
+    private async Task ConvertCustomerAsync()
+    {
+        var (data, error, _) = await Api.ConvertCrmLeadToCustomerAsync(Id);
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Convert failed"); return; }
+        Toast.ShowSuccess($"Converted to customer #{data.ConvertedCustomerId}");
+        await LoadAsync();
+    }
+
+    private async Task ConvertOppAsync()
+    {
+        var (data, error, _) = await Api.ConvertCrmLeadToOpportunityAsync(Id, null, 0);
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Opportunity failed"); return; }
+        Toast.ShowSuccess($"Opportunity '{data.Name}' created");
+        Nav.NavigateTo("/crm/pipeline");
+    }
+
+    private static string TypeLabel(int t) => t switch
+    {
+        0 => "Call", 1 => "Visit", 2 => "WhatsApp", 3 => "Email", 4 => "Task", 5 => "Meeting", 6 => "Note", _ => t.ToString()
+    };
+}

@@ -1,0 +1,184 @@
+@page "/service/tickets/{Id:int}"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="@(_ticket?.Subject ?? "Ticket")" Subtitle="Update details, assignee, and status" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_ticket is not null)
+{
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="cap-card mb-3">
+                <h6>Details</h6>
+                <div class="row g-2">
+                    <div class="col-md-6"><label class="form-label">Customer</label>
+                        <input class="form-control" value="@_ticket.CustomerName" disabled />
+                    </div>
+                    <div class="col-md-6"><label class="form-label">Subject</label><input class="form-control" @bind="_edit.Subject" disabled="@_isClosed" /></div>
+                    <div class="col-md-3">
+                        <label class="form-label">Priority</label>
+                        <select class="form-select" @bind="_edit.Priority" disabled="@_isClosed">
+                            <option value="0">Low</option>
+                            <option value="1">Normal</option>
+                            <option value="2">High</option>
+                            <option value="3">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Assignee</label>
+                        <select class="form-select" @bind="_assigneeId" disabled="@_isClosed">
+                            <option value="0">Unassigned</option>
+                            @foreach (var u in _users)
+                            {
+                                <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="edWarranty" @bind="_edit.IsWarrantyClaim" disabled="@_isClosed" />
+                            <label class="form-check-label" for="edWarranty">Warranty claim</label>
+                        </div>
+                    </div>
+                    @if (_edit.IsWarrantyClaim)
+                    {
+                        <div class="col-md-3"><label class="form-label">Warranty ref.</label><input class="form-control" @bind="_edit.WarrantyReference" disabled="@_isClosed" /></div>
+                    }
+                    <div class="col-md-3"><label class="form-label">AMC reference</label><input class="form-control" @bind="_edit.AmcReference" disabled="@_isClosed" /></div>
+                    <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" rows="2" @bind="_edit.Description" disabled="@_isClosed"></textarea></div>
+                    <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" rows="2" @bind="_edit.Notes" disabled="@_isClosed"></textarea></div>
+                </div>
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    @if (_canManage && !_isClosed)
+                    {
+                        <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
+                    }
+                    <a class="btn btn-outline-secondary" href="/service/tickets">Back</a>
+                    @if (_ticket.CustomerId > 0)
+                    {
+                        <a class="btn btn-outline-light" href="@($"/crm/customers/{_ticket.CustomerId}")">Open Customer 360</a>
+                    }
+                </div>
+                <p class="text-secondary small mt-2 mb-0">
+                    Opened @_ticket.OpenedAt.ToLocalTime().ToString("g")
+                    @(_ticket.DueAt is DateTime due ? $" · Due {due.ToLocalTime():g}" : "")
+                </p>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="cap-card">
+                <h6>Status</h6>
+                <p><span class="badge badge-soft fs-6">@StatusLabel(_ticket.Status)</span></p>
+                @if (_canManage && !_isClosed)
+                {
+                    <div class="mb-2">
+                        <label class="form-label">Change status to</label>
+                        <select class="form-select" @bind="_newStatus">
+                            <option value="0">Open</option>
+                            <option value="1">In progress</option>
+                            <option value="2">Resolved</option>
+                            <option value="3">Closed</option>
+                        </select>
+                    </div>
+                    @if (_newStatus is 2 or 3)
+                    {
+                        <div class="mb-2">
+                            <label class="form-label">Resolution notes @(string.IsNullOrWhiteSpace(_ticket.ResolutionNotes) ? "*" : "")</label>
+                            <textarea class="form-control" rows="2" @bind="_resolutionNotes"></textarea>
+                        </div>
+                    }
+                    <button class="btn btn-outline-success" @onclick="ChangeStatusAsync">Apply status</button>
+                }
+                else if (_isClosed)
+                {
+                    <p class="text-secondary small mb-0">Ticket is closed. Open a new ticket for further work.</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(_ticket.ResolutionNotes))
+                {
+                    <hr />
+                    <h6>Resolution notes</h6>
+                    <p class="mb-0">@_ticket.ResolutionNotes</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private ServiceTicketDto? _ticket;
+    private ServiceTicketUpdateDto _edit = new();
+    private int _assigneeId;
+    private int _newStatus;
+    private string? _resolutionNotes;
+    private List<UserDto> _users = new();
+
+    private bool _isClosed => _ticket?.Status == 3;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("service.manage");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var (data, error, _) = await Api.GetServiceTicketAsync(Id);
+            if (error is not null || data is null) { _error = error ?? "Ticket not found"; return; }
+            _ticket = data;
+            _edit = new ServiceTicketUpdateDto
+            {
+                Subject = data.Subject,
+                Description = data.Description,
+                Priority = data.Priority,
+                IsWarrantyClaim = data.IsWarrantyClaim,
+                WarrantyReference = data.WarrantyReference,
+                AmcReference = data.AmcReference,
+                ProductId = data.ProductId,
+                DueAt = data.DueAt,
+                Notes = data.Notes
+            };
+            _assigneeId = data.AssignedToUserId ?? 0;
+            _newStatus = data.Status;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        _edit.AssignedToUserId = _assigneeId > 0 ? _assigneeId : null;
+        var (data, error, _) = await Api.UpdateServiceTicketAsync(Id, _edit);
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Save failed"); return; }
+        Toast.ShowSuccess("Ticket updated");
+        await LoadAsync();
+    }
+
+    private async Task ChangeStatusAsync()
+    {
+        var dto = new ServiceTicketStatusChangeDto { Status = _newStatus, ResolutionNotes = _resolutionNotes };
+        var (data, error, _) = await Api.ChangeServiceTicketStatusAsync(Id, dto);
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Status change failed"); return; }
+        Toast.ShowSuccess("Status updated");
+        _resolutionNotes = null;
+        await LoadAsync();
+    }
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "Open", 1 => "In progress", 2 => "Resolved", 3 => "Closed", _ => status.ToString()
+    };
+}

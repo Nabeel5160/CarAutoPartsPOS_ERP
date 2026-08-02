@@ -14,12 +14,12 @@
 {
     <div class="cap-card table-responsive">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>Name</th><th>Phone</th><th>Balance</th><th>Credit</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Phone</th><th>Balance</th><th>Credit</th><th>Commission %</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
             @foreach (var c in _items.Items)
             {
                 <tr>
-                    <td>@c.Name</td><td>@c.Phone</td><td>@c.Balance.ToString("N2")</td><td>@c.CreditLimit.ToString("N2")</td>
+                    <td>@c.Name</td><td>@c.Phone</td><td>@c.Balance.ToString("N2")</td><td>@c.CreditLimit.ToString("N2")</td><td>@c.CommissionPercent.ToString("N2")</td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">
                             <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => LedgerAsync(c.Id)">Ledger</button>
@@ -52,6 +52,7 @@
             <div class="col-md-4"><input class="form-control" placeholder="Phone" @bind="_form.Phone" /></div>
             <div class="col-md-4"><input class="form-control" placeholder="Email" @bind="_form.Email" /></div>
             <div class="col-md-4"><input type="number" class="form-control" placeholder="Credit limit" @bind="_form.CreditLimit" /></div>
+            <div class="col-md-4"><input type="number" step="0.01" class="form-control" placeholder="Commission %" @bind="_form.CommissionPercent" /></div>
         </div>
         <div class="mt-3 d-flex gap-2">
             <button class="btn btn-cap" @onclick="SaveAsync">Save</button>
@@ -93,7 +94,7 @@
         _editing = true;
         if (c is null) { _editId = null; _form = new() { IsActive = true }; return; }
         _editId = c.Id;
-        _form = new CustomerDto { Id = c.Id, Name = c.Name, Phone = c.Phone, Email = c.Email, CreditLimit = c.CreditLimit, CustomerType = c.CustomerType, IsActive = c.IsActive, Balance = c.Balance };
+        _form = new CustomerDto { Id = c.Id, Name = c.Name, Phone = c.Phone, Email = c.Email, CreditLimit = c.CreditLimit, CustomerType = c.CustomerType, IsActive = c.IsActive, Balance = c.Balance, CommissionPercent = c.CommissionPercent };
     }
 
     private async Task SaveAsync()

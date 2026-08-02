@@ -1,0 +1,219 @@
+@page "/service/tickets"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="Service Tickets" Subtitle="Tickets, warranty claims, and AMC follow-ups (Service Light)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label">Status</label>
+            <select class="form-select" @bind="_filterStatus">
+                <option value="">All</option>
+                <option value="Open">Open</option>
+                <option value="InProgress">In progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Closed">Closed</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Priority</label>
+            <select class="form-select" @bind="_filterPriority">
+                <option value="">All</option>
+                <option value="Low">Low</option>
+                <option value="Normal">Normal</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Customer</label>
+            <select class="form-select" @bind="_filterCustomer">
+                <option value="0">All customers</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="LoadAsync">Filter</button></div>
+    </div>
+</div>
+
+@if (_canManage)
+{
+    <div class="cap-card mb-3">
+        <h6 class="mb-2">New ticket</h6>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <select class="form-select" @bind="_form.CustomerId">
+                    <option value="0">Customer *</option>
+                    @foreach (var c in _customers)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3"><input class="form-control" placeholder="Subject *" @bind="_form.Subject" /></div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_form.Priority">
+                    <option value="0">Low</option>
+                    <option value="1">Normal</option>
+                    <option value="2">High</option>
+                    <option value="3">Urgent</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_formAssignee">
+                    <option value="0">Unassigned</option>
+                    @foreach (var u in _users)
+                    {
+                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2"><button class="btn btn-cap w-100" disabled="@_saving" @onclick="CreateAsync">Add</button></div>
+            <div class="col-md-6">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="warrantyChk" @bind="_form.IsWarrantyClaim" />
+                    <label class="form-check-label" for="warrantyChk">Warranty claim</label>
+                </div>
+            </div>
+            @if (_form.IsWarrantyClaim)
+            {
+                <div class="col-md-3"><input class="form-control" placeholder="Warranty reference" @bind="_form.WarrantyReference" /></div>
+            }
+            <div class="col-md-3"><input class="form-control" placeholder="AMC reference (optional)" @bind="_form.AmcReference" /></div>
+        </div>
+    </div>
+}
+
+@if (_items is not null)
+{
+    @if (_items.Items.Count == 0)
+    {
+        <EmptyState Title="No tickets yet" Message="Log a service ticket, warranty claim, or AMC follow-up above." />
+    }
+    else
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Customer</th>
+                        <th>Type</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Assignee</th>
+                        <th>Opened</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var t in _items.Items)
+                {
+                    <tr style="cursor:pointer" @onclick="() => OpenTicket(t.Id)">
+                        <td>@t.Subject</td>
+                        <td>@(t.CustomerName ?? "—")</td>
+                        <td>@(t.IsWarrantyClaim ? "Warranty" : (string.IsNullOrWhiteSpace(t.AmcReference) ? "General" : "AMC"))</td>
+                        <td><span class="badge badge-soft">@PriorityLabel(t.Priority)</span></td>
+                        <td><span class="badge badge-soft">@StatusLabel(t.Status)</span></td>
+                        <td>@AssigneeName(t.AssignedToUserId)</td>
+                        <td>@t.OpenedAt.ToLocalTime().ToString("g")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _busy = true;
+    private bool _saving;
+    private string? _error;
+    private bool _canManage;
+    private PagedResult<ServiceTicketDto>? _items;
+    private ServiceTicketCreateDto _form = new() { Priority = 1 };
+    private int _formAssignee;
+    private string _filterStatus = "";
+    private string _filterPriority = "";
+    private int _filterCustomer;
+    private List<CustomerDto> _customers = new();
+    private List<UserDto> _users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("service.manage");
+        var (customers, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 500 });
+        _customers = customers?.Items.ToList() ?? new();
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            int? customerId = _filterCustomer > 0 ? _filterCustomer : null;
+            var (data, error, _) = await Api.GetServiceTicketsAsync(
+                new QuerySpec { Page = 1, PageSize = 100 },
+                string.IsNullOrWhiteSpace(_filterStatus) ? null : _filterStatus,
+                string.IsNullOrWhiteSpace(_filterPriority) ? null : _filterPriority,
+                customerId);
+            if (error is not null) { _error = error; return; }
+            _items = data;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_form.CustomerId <= 0 || string.IsNullOrWhiteSpace(_form.Subject))
+        {
+            Toast.ShowWarning("Customer and subject are required.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            _form.AssignedToUserId = _formAssignee > 0 ? _formAssignee : null;
+            var (data, error, _) = await Api.CreateServiceTicketAsync(_form);
+            if (error is not null || data is null)
+            {
+                Toast.ShowError(error ?? "Could not create ticket.");
+                return;
+            }
+
+            Toast.ShowSuccess($"Ticket '{data.Subject}' created.");
+            _form = new ServiceTicketCreateDto { Priority = 1 };
+            _formAssignee = 0;
+            await LoadAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private void OpenTicket(int id) => Nav.NavigateTo($"/service/tickets/{id}");
+
+    private string AssigneeName(int? id) =>
+        id is null ? "—" : (_users.FirstOrDefault(u => u.Id == id)?.DisplayName
+            ?? _users.FirstOrDefault(u => u.Id == id)?.Username ?? id.ToString()!);
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "Open", 1 => "In progress", 2 => "Resolved", 3 => "Closed", _ => status.ToString()
+    };
+
+    private static string PriorityLabel(int priority) => priority switch
+    {
+        0 => "Low", 1 => "Normal", 2 => "High", 3 => "Urgent", _ => priority.ToString()
+    };
+}

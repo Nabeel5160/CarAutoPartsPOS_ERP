@@ -70,7 +70,15 @@ public static class PermissionDefinitions
         (Permissions.DeliveriesManage, "Manage Deliveries", "Sales"),
         (Permissions.PriceListsManage, "Manage Price Lists", "Sales"),
         (Permissions.SalesPriceOverride, "Override Wholesale Prices", "Sales"),
-        (Permissions.KitsManage, "Manage Kits", "Products")
+        (Permissions.KitsManage, "Manage Kits", "Products"),
+        (Permissions.CrmView, "View CRM", "CRM"),
+        (Permissions.CrmManage, "Manage CRM", "CRM"),
+        (Permissions.CrmLeads, "Manage CRM Leads", "CRM"),
+        (Permissions.CrmActivities, "Manage CRM Activities", "CRM"),
+        (Permissions.RfqManage, "Manage RFQs & Vendor Quotes", "Purchases"),
+        (Permissions.SalesTargetsManage, "Manage Sales Targets", "Sales"),
+        (Permissions.ServiceView, "View Service Tickets", "Service"),
+        (Permissions.ServiceManage, "Manage Service Tickets", "Service")
     ];
 
     public static readonly string[] Admin = Permissions.All.ToArray();
@@ -100,7 +108,10 @@ public static class PermissionDefinitions
         Permissions.FinanceView, Permissions.FinanceManage, Permissions.FinancePost, Permissions.FinanceForceClose,
         Permissions.GrnManage, Permissions.ApInvoiceManage, Permissions.CycleCountManage,
         Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.PriceListsManage,
-        Permissions.SalesPriceOverride, Permissions.KitsManage
+        Permissions.SalesPriceOverride, Permissions.KitsManage,
+        Permissions.CrmView, Permissions.CrmManage, Permissions.CrmLeads, Permissions.CrmActivities,
+        Permissions.RfqManage, Permissions.SalesTargetsManage,
+        Permissions.ServiceView, Permissions.ServiceManage
     ];
 
     public static readonly string[] SalesUser =
@@ -115,7 +126,9 @@ public static class PermissionDefinitions
         Permissions.PosShift,
         Permissions.ReturnsManage,
         Permissions.ReportsView,
-        Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.SalesPriceOverride
+        Permissions.QuotationsManage, Permissions.DeliveriesManage, Permissions.SalesPriceOverride,
+        Permissions.CrmView, Permissions.CrmLeads, Permissions.CrmActivities,
+        Permissions.ServiceView, Permissions.ServiceManage
     ];
 
     public static readonly string[] InventoryUser =
@@ -130,7 +143,8 @@ public static class PermissionDefinitions
         Permissions.TransfersView, Permissions.TransfersCreate,
         Permissions.SerialNumbersView, Permissions.SerialNumbersManage,
         Permissions.ReportsView,
-        Permissions.GrnManage, Permissions.CycleCountManage, Permissions.KitsManage
+        Permissions.GrnManage, Permissions.CycleCountManage, Permissions.KitsManage,
+        Permissions.RfqManage
     ];
 
     /// <summary>Counter cashier — POS + shifts; no price override.</summary>

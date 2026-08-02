@@ -513,6 +513,9 @@ public sealed class PostSupplierPaymentRequest
     public string? Reference { get; set; }
     public DateTime? PaymentDate { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>Withholding tax rate (%) deducted from the gross payment before cash/bank disbursement.</summary>
+    public decimal WithholdingTaxRate { get; set; }
 }
 
 // —— Requisitions / Reorder ——
@@ -586,4 +589,109 @@ public sealed class CreateReorderPrRequest
     public int? SupplierId { get; set; }
     public int? WarehouseId { get; set; }
     public List<ReorderSuggestionLineDto> Lines { get; set; } = [];
+}
+
+// —— Purchase RFQ (Program B — thin RFQ → compare → PO) ——
+
+public sealed class PurchaseRfqLineDto
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public string? Sku { get; set; }
+    public decimal Quantity { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class CreatePurchaseRfqLineRequest
+{
+    public int ProductId { get; set; }
+    public decimal Quantity { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class CreatePurchaseRfqRequest
+{
+    public DateTime? ResponseDeadline { get; set; }
+    public string? Notes { get; set; }
+    public List<CreatePurchaseRfqLineRequest> Lines { get; set; } = [];
+}
+
+public sealed class VendorQuoteLineDto
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public int? LeadTimeDays { get; set; }
+    public string? Notes { get; set; }
+    public decimal LineTotal { get; set; }
+}
+
+public sealed class CreateVendorQuoteLineRequest
+{
+    public int ProductId { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public int? LeadTimeDays { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class CreateVendorQuoteRequest
+{
+    public int SupplierId { get; set; }
+    public DateTime? ValidUntil { get; set; }
+    public string? Notes { get; set; }
+    public List<CreateVendorQuoteLineRequest> Lines { get; set; } = [];
+}
+
+public sealed class VendorQuoteDto
+{
+    public int Id { get; set; }
+    public int PurchaseRfqId { get; set; }
+    public int SupplierId { get; set; }
+    public string? SupplierName { get; set; }
+    public int Status { get; set; }
+    public DateTime QuoteDate { get; set; }
+    public DateTime? ValidUntil { get; set; }
+    public string? Notes { get; set; }
+    public decimal TotalAmount { get; set; }
+    public List<VendorQuoteLineDto> Lines { get; set; } = [];
+}
+
+public sealed class PurchaseRfqDto
+{
+    public int Id { get; set; }
+    public string RfqNumber { get; set; } = "";
+    public int Status { get; set; }
+    public DateTime RfqDate { get; set; }
+    public DateTime? ResponseDeadline { get; set; }
+    public string? Notes { get; set; }
+    public int? PurchaseOrderId { get; set; }
+    public string? PurchaseOrderNumber { get; set; }
+    public List<PurchaseRfqLineDto> Lines { get; set; } = [];
+    public List<VendorQuoteDto> VendorQuotes { get; set; } = [];
+}
+
+// —— Sales targets (Program B — sales thin) ——
+
+public sealed class SalesTargetDto
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string? UserName { get; set; }
+    public int PeriodYear { get; set; }
+    public int PeriodMonth { get; set; }
+    public decimal TargetAmount { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class SalesTargetUpsertRequest
+{
+    public int UserId { get; set; }
+    public int PeriodYear { get; set; } = DateTime.Today.Year;
+    public int PeriodMonth { get; set; } = DateTime.Today.Month;
+    public decimal TargetAmount { get; set; }
+    public string? Notes { get; set; }
 }

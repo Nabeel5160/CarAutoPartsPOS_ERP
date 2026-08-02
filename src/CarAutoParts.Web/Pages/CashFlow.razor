@@ -1,0 +1,73 @@
+@page "/cash-flow"
+@attribute [Authorize]
+@inject CapApiService Api
+
+<PageHeader Title="Cash flow" Subtitle="Operating / investing / financing cash movements (GL 1100/1110)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">From</label><input type="date" class="form-control" @bind="_from" /></div>
+        <div class="col-md-3"><label class="form-label">To</label><input type="date" class="form-control" @bind="_to" /></div>
+        <div class="col-md-3"><button class="btn btn-cap" @onclick="LoadAsync">Run report</button></div>
+    </div>
+</div>
+
+@if (_report is not null)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Opening cash</span><span class="value">@_report.OpeningCash.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Net change</span><span class="value">@_report.NetChangeInCash.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Closing cash</span><span class="value">@_report.ClosingCash.ToString("N0")</span></div></div>
+        <div class="col-md-3"><div class="cap-card cap-kpi"><span class="label">Period</span><span class="value">@_report.FromDate.ToString("MM-dd") – @_report.ToDate.ToString("MM-dd")</span></div></div>
+    </div>
+
+    <div class="cap-card mb-3">
+        <h5>Summary</h5>
+        <table class="table table-cap mb-0">
+            <tbody>
+                <tr><td>Operating activities</td><td class="text-end">@_report.OperatingActivities.ToString("N2")</td></tr>
+                <tr><td>Investing activities</td><td class="text-end">@_report.InvestingActivities.ToString("N2")</td></tr>
+                <tr><td>Financing activities</td><td class="text-end">@_report.FinancingActivities.ToString("N2")</td></tr>
+                <tr class="fw-bold"><td>Net change in cash</td><td class="text-end">@_report.NetChangeInCash.ToString("N2")</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cap-card">
+        <h5>Journal lines</h5>
+        <table class="table table-cap table-striped mb-0">
+            <thead><tr><th>Date</th><th>JV#</th><th>Category</th><th>Amount</th><th>Description</th></tr></thead>
+            <tbody>
+            @foreach (var l in _report.Lines)
+            {
+                <tr>
+                    <td>@l.JournalDate.ToString("yyyy-MM-dd")</td>
+                    <td>@l.JournalNumber</td>
+                    <td>@l.Category</td>
+                    <td>@l.Amount.ToString("N2")</td>
+                    <td>@l.Description</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private bool _busy;
+    private string? _error;
+    private DateTime _from = DateTime.Today.AddMonths(-1);
+    private DateTime _to = DateTime.Today;
+    private CashFlowReportDto? _report;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true; _error = null;
+        var (data, error, _) = await Api.GetCashFlowAsync(_from, _to);
+        _report = data; _error = error;
+        _busy = false;
+    }
+}

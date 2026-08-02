@@ -1,5 +1,57 @@
 # Enterprise Mid-Market Hardening — Changelog
 
+## 2026-08-03 — QA loop: Program A/B/C1 smoke, regression & API coverage
+
+QA + fix pass over Light CRM (A), Ops gaps (B), and Service Light (C1). No feature code was found broken; work was additive test coverage plus one new test project. See [QA-PROGRAM-ABC.md](QA-PROGRAM-ABC.md) for the full report.
+
+### Added
+- `tests/CarAutoParts.Api.Tests` (new project, `Microsoft.AspNetCore.Mvc.Testing` + InMemory EF Core): first real HTTP-pipeline test host for this repo (`ApiTestFactory : WebApplicationFactory<Program>`), exercising routing, JWT auth, permission policies, and `RequireFeature` module gates end-to-end.
+  - `CrmApiTests` — smoke endpoint (ok/unauthorized/forbidden), lead create+list, convert-to-customer idempotency, pipeline dashboard weighted revenue, lost-without-reason 400, module-disabled 404.
+  - `ServiceApiTests` — smoke endpoint, ticket create+list, company-filtered list, resolve-requires-notes, closed-ticket-cannot-transition.
+- `tests/CarAutoParts.Application.Tests/ProgramBOpsGapsTests.cs` — Program B regression the API layer doesn't expose directly: RFQ create/send/vendor-quote/select/create-PO lifecycle, sales target CRUD + duplicate-period + validation, supplier payment withholding-tax GL lines + field persistence.
+
+### Verified (no changes needed)
+- CRM (`CrmFoundationW0Tests`), Service tickets (`ServiceTicketTests`), and the `GET /api/crm/smoke` / `GET /api/service/smoke` endpoints all behave as documented.
+- Program B UI/API surfaces (RFQ, sales targets, cash flow, bank reconciliation, WHT fields) are present and wired; `BackupsController` "placeholder" was already removed per [MASTER-ROADMAP.md](MASTER-ROADMAP.md).
+
+### Known pre-existing gaps (not fixed in this pass — out of scope / date-sensitive fixtures)
+- 11 pre-existing `CarAutoParts.Application.Tests` failures across `Phase2ProcurementTests`, `Phase3InventoryTests`, `Phase4FinanceTests`, `Phase5MultiBranchTests`, `Phase6GovernanceTests`, and `DocumentPostingIntegrationTests` — all `System.InvalidOperationException: No open accounting period for document date.` from fixed calendar-date test fixtures vs. the real system clock. Unrelated to Programs A/B/C1.
+
+## 2026-08-03 — Program C1: Service Light + Mobile (thin slice)
+
+Program C (multi-quarter remainder) starts with **C1**. See [MASTER-ROADMAP.md](MASTER-ROADMAP.md) Phase 8 / Phase 11 for scope and what's still PARTIAL/TODO.
+
+### Domain / Data
+- `ServiceTicket` (`CompanyEntity`): customer link, subject/description, `ServiceTicketStatus` (Open/InProgress/Resolved/Closed), `ServiceTicketPriority` (Low/Normal/High/Urgent), optional warranty flag + warranty/AMC free-text reference, optional product link, assigned user, open/due/resolved/closed dates, notes + resolution notes
+- Migration `20260803160000_ProgramC1ServiceLight`; module key `service.tickets` added to vertical profiles (enabled by default across auto-parts/bike-parts/retail)
+- Permissions `service.view` / `service.manage`; seeded for Admin, Manager, SalesUser roles
+
+### API
+- `ServiceController` (`/api/service`, `/api/v1/service`) — `RequireFeature(service.tickets)` + `Authorize`: list (company/status/priority/customer filtered, paged), get by id, create, update, status-change (with resolution notes on Resolve/Close), and per-customer ticket list for Customer 360
+
+### Web
+- `/service/tickets` — list with status/priority/customer filters + create form (customer/product pickers, not raw IDs)
+- `/service/tickets/{id}` — detail with field edits and status-change workflow
+- Nav: new **Service** group ("Tickets") gated by `service.view` + module flag
+- Customer 360 (`/crm/customers/{id}`): "Service tickets" card showing that customer's tickets, link to full list
+
+### Mobile
+- `/m/service` — mobile ticket list (status/priority filter) + quick status update / resolve with notes; tile added to `MobileHub` gated by `service.view`
+- `/m/stock` camera barcode scan: "Scan barcode" button using the browser `BarcodeDetector` API (`barcode-scanner.js`) to fill SKU search — graceful no-op on unsupported browsers (no iOS Safari support yet)
+
+### Tests
+- `ServiceTicketTests` (Application layer): create ticket, company-scoped listing, status transition, resolution-notes requirement, vertical-profile module inclusion
+
+### Honest scope note
+This is a **thin ticket workflow**, not a field-service/SLA suite: no SLA timers, no knowledge base, no service customer portal, no technician scheduling, and warranty/AMC are free-text references (not dedicated claim/contract entities). Extended (multi-day) offline was **not** attempted in this pass — see [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md).
+
+## 2026-08-02 — CRM W0 foundation
+
+- Light CRM foundation: `Lead`, `CrmActivity`, `Opportunity` (`CompanyEntity`); migration `CrmFoundationW0`
+- Permissions `crm.view` / `crm.manage` / `crm.leads` / `crm.activities`; module toggle `sales.crm`
+- API `CrmController` (`RequireFeature`) + Web CRM nav (Leads / Tasks / Pipeline)
+- Loop doc: [CRM-LOOP.md](CRM-LOOP.md)
+
 ## 2026-08-02 — Analytics Graphs tab (4D charts)
 
 ### Web UI (`Analytics.razor` + `CapViewToggle`)

@@ -106,7 +106,7 @@ public sealed class EnterprisePlatformSeeder
                  {
                      ("INV", "INV-"), ("PO", "PO-"), ("JV", "JV-"), ("GRN", "GRN-"),
                      ("SO", "SO-"), ("DN", "DN-"), ("QT", "QT-"), ("PI", "PI-"), ("CC", "CC-"),
-                     ("REQ", "REQ-")
+                     ("REQ", "REQ-"), ("RFQ", "RFQ-"), ("VQ", "VQ-")
                  })
         {
             _db.NumberSequences.Add(new NumberSequence
@@ -218,6 +218,7 @@ public sealed class EnterprisePlatformSeeder
 
         await EnsureAccount("1350", "Goods In Transit", AccountType.Asset);
         await EnsureAccount("5200", "Cash Over/Short", AccountType.Expense);
+        await EnsureAccount("2210", "Withholding Tax Payable", AccountType.Liability);
 
         if (!await _db.NumberSequences.IgnoreQueryFilters()
                 .AnyAsync(s => s.CompanyId == companyId && s.DocumentType == "REQ", ct))
@@ -233,6 +234,26 @@ public sealed class EnterprisePlatformSeeder
                 CreatedBy = "system"
             });
         }
+
+        async Task EnsureSequence(string doc, string prefix)
+        {
+            if (await _db.NumberSequences.IgnoreQueryFilters()
+                    .AnyAsync(s => s.CompanyId == companyId && s.DocumentType == doc, ct))
+                return;
+            _db.NumberSequences.Add(new NumberSequence
+            {
+                CompanyId = companyId,
+                DocumentType = doc,
+                Prefix = prefix,
+                NextValue = 1,
+                Padding = 6,
+                Gapless = false,
+                CreatedBy = "system"
+            });
+        }
+
+        await EnsureSequence("RFQ", "RFQ-");
+        await EnsureSequence("VQ", "VQ-");
 
         var accounts = await _db.GlAccounts.IgnoreQueryFilters()
             .Where(a => a.CompanyId == companyId)
@@ -277,6 +298,7 @@ public sealed class EnterprisePlatformSeeder
         EnsureMap("Payment", "Bank", "1110");
         EnsureMap("Payment", "Receivable", "1200");
         EnsureMap("Payment", "Payable", "2100");
+        EnsureMap("Payment", "WithholdingTaxPayable", "2210");
         // Sales return reverses sales invoice economics
         EnsureMap("SalesReturn", "Receivable", "1200");
         EnsureMap("SalesReturn", "Revenue", "4100");
@@ -348,6 +370,7 @@ public sealed class EnterprisePlatformSeeder
             ("Payment", "Bank"),
             ("Payment", "Receivable"),
             ("Payment", "Payable"),
+            ("Payment", "WithholdingTaxPayable"),
             ("InventoryTransfer", "Inventory"),
             ("InventoryTransfer", "GoodsInTransit"),
             ("CashierShift", "Cash"),

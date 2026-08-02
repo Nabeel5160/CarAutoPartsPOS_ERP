@@ -272,6 +272,244 @@ public sealed class CustomerDto
     public decimal Balance { get; set; }
     public decimal CreditLimit { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Salesperson commission % applied on invoices linked to this customer.</summary>
+    public decimal CommissionPercent { get; set; }
+}
+
+public sealed class LeadDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Source { get; set; }
+    public int Status { get; set; }
+    public string? Notes { get; set; }
+    public string? LostReason { get; set; }
+    public int? OwnerUserId { get; set; }
+    public int? ConvertedCustomerId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public int Score { get; set; }
+}
+
+public sealed class LeadCreateDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Source { get; set; }
+    public string? Notes { get; set; }
+    public int? OwnerUserId { get; set; }
+    public bool ConfirmDuplicate { get; set; }
+}
+
+public sealed class LeadUpdateDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Source { get; set; }
+    public string? Notes { get; set; }
+    public int? OwnerUserId { get; set; }
+    public int Status { get; set; }
+    public string? LostReason { get; set; }
+    public bool ConfirmDuplicate { get; set; } = true;
+}
+
+public sealed class LeadDuplicateDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public int Status { get; set; }
+    public string Kind { get; set; } = string.Empty;
+}
+
+public sealed class CrmActivityDto
+{
+    public int Id { get; set; }
+    public int Type { get; set; }
+    public string Subject { get; set; } = string.Empty;
+    public DateTime? DueAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int? LeadId { get; set; }
+    public int? CustomerId { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public string? Notes { get; set; }
+    public string? AttachmentPath { get; set; }
+    public string? AttachmentName { get; set; }
+}
+
+public sealed class CrmActivityCreateDto
+{
+    public int Type { get; set; } = 4;
+    public string Subject { get; set; } = string.Empty;
+    public DateTime? DueAt { get; set; }
+    public int? LeadId { get; set; }
+    public int? CustomerId { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class OpportunityDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int? LeadId { get; set; }
+    public int? CustomerId { get; set; }
+    public int Stage { get; set; }
+    public decimal Value { get; set; }
+    public int Probability { get; set; }
+    public decimal WeightedValue { get; set; }
+    public DateTime? ExpectedCloseDate { get; set; }
+    public int? QuotationId { get; set; }
+    public string? LostReason { get; set; }
+    public string? WinReason { get; set; }
+    public DateTime? StageChangedAt { get; set; }
+}
+
+public sealed class OpportunityCreateDto
+{
+    public string Name { get; set; } = string.Empty;
+    public int? LeadId { get; set; }
+    public int? CustomerId { get; set; }
+    public decimal Value { get; set; }
+    public int Probability { get; set; }
+    public DateTime? ExpectedCloseDate { get; set; }
+}
+
+public sealed class OpportunityStageChangeDto
+{
+    public int Stage { get; set; }
+    public string? LostReason { get; set; }
+    public string? WinReason { get; set; }
+    public string? Note { get; set; }
+}
+
+public sealed class CrmPipelineDashboardDto
+{
+    public decimal OpenValue { get; set; }
+    public decimal WeightedValue { get; set; }
+    public int OpenCount { get; set; }
+    public int WonCount { get; set; }
+    public int LostCount { get; set; }
+    public double WinRate { get; set; }
+    public List<CrmStageBucketDto> ByStage { get; set; } = new();
+}
+
+public sealed class CrmStageBucketDto
+{
+    public int Stage { get; set; }
+    public int Count { get; set; }
+    public decimal Value { get; set; }
+    public decimal WeightedValue { get; set; }
+}
+
+public sealed class Customer360Dto
+{
+    public int CustomerId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public decimal CreditLimit { get; set; }
+    public decimal Balance { get; set; }
+    public decimal Outstanding { get; set; }
+    public decimal Profitability { get; set; }
+    public List<LeadDto> ConvertedLeads { get; set; } = new();
+    public List<CrmActivityDto> Activities { get; set; } = new();
+    public List<OpportunityDto> Opportunities { get; set; } = new();
+    public List<Customer360DocDto> Invoices { get; set; } = new();
+    public List<Customer360DocDto> Orders { get; set; } = new();
+    public List<Customer360DocDto> Returns { get; set; } = new();
+}
+
+public sealed class Customer360DocDto
+{
+    public int Id { get; set; }
+    public string Number { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
+    public decimal Amount { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
+public sealed class CrmAssignmentRuleDto
+{
+    public int Id { get; set; }
+    public string? Source { get; set; }
+    public int? OwnerUserId { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class CrmEmailTemplateDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+}
+
+// Program C1 — Service Light
+public sealed class ServiceTicketDto
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public string Subject { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int Status { get; set; }
+    public int Priority { get; set; }
+    public bool IsWarrantyClaim { get; set; }
+    public string? WarrantyReference { get; set; }
+    public string? AmcReference { get; set; }
+    public int? ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public DateTime OpenedAt { get; set; }
+    public DateTime? DueAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public string? Notes { get; set; }
+    public string? ResolutionNotes { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class ServiceTicketCreateDto
+{
+    public int CustomerId { get; set; }
+    public string Subject { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int Priority { get; set; } = 1;
+    public bool IsWarrantyClaim { get; set; }
+    public string? WarrantyReference { get; set; }
+    public string? AmcReference { get; set; }
+    public int? ProductId { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public DateTime? DueAt { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class ServiceTicketUpdateDto
+{
+    public string Subject { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int Priority { get; set; } = 1;
+    public bool IsWarrantyClaim { get; set; }
+    public string? WarrantyReference { get; set; }
+    public string? AmcReference { get; set; }
+    public int? ProductId { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public DateTime? DueAt { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class ServiceTicketStatusChangeDto
+{
+    public int Status { get; set; }
+    public string? ResolutionNotes { get; set; }
 }
 
 public sealed class LedgerEntryDto

@@ -88,6 +88,7 @@ public static class ModuleKeys
     public const string SalesInvoices = "sales.invoices";
     public const string SalesReturns = "sales.returns";
     public const string SalesFbr = "sales.fbr";
+    public const string SalesCrm = "sales.crm";
     public const string FinanceCompany = "finance.company";
     public const string FinanceCoa = "finance.coa";
     public const string FinanceJournals = "finance.journals";
@@ -98,6 +99,7 @@ public static class ModuleKeys
     public const string FinanceMaps = "finance.mappings";
     public const string InsightsReports = "insights.reports";
     public const string InsightsAnalytics = "insights.analytics";
+    public const string ServiceTickets = "service.tickets";
 
     public const string FieldProductOem = "product.oem";
     public const string FieldProductPartNumber = "product.partNumber";

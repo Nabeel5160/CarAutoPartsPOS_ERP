@@ -28,6 +28,17 @@
             <div class="mb-2"><label class="form-label">Method</label><input class="form-control" @bind="_payment.PaymentMethod" /></div>
             <div class="mb-2"><label class="form-label">Reference</label><input class="form-control" @bind="_payment.Reference" /></div>
             <div class="mb-2"><label class="form-label">Notes</label><input class="form-control" @bind="_payment.Notes" /></div>
+            <div class="mb-2">
+                <label class="form-label">Withholding tax rate %</label>
+                <input type="number" step="0.01" min="0" max="100" class="form-control" @bind="_payment.WithholdingTaxRate" />
+                @if (_payment.WithholdingTaxRate > 0 && _payment.Amount > 0)
+                {
+                    <div class="form-text">
+                        WHT @((_payment.Amount * _payment.WithholdingTaxRate / 100m).ToString("N2")) ·
+                        Net cash @((_payment.Amount - _payment.Amount * _payment.WithholdingTaxRate / 100m).ToString("N2"))
+                    </div>
+                }
+            </div>
             <button class="btn btn-cap" @onclick="PostPaymentAsync">Post payment</button>
             @if (_paymentJournal is not null)
             {
