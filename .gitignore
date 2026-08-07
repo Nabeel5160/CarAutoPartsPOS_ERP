@@ -59,6 +59,6 @@ artifacts/
 *.db
 *.mdf
 *.ldf
-!dabase/*.mdf
-!dabase/*.ldf
+!database/*.mdf
+!database/*.ldf
 **/node_modules/

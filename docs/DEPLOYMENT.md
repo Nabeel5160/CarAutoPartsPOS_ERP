@@ -107,10 +107,35 @@ Flip **without code change**:
 
 ## Backup / restore
 
-- Use Backup UI or `IBackupService` API
-- Verify restore on a staging DB before production cutover
-- Keep at least one off-box copy of nightly backups
-- After restore: confirm `/health/ready`, open fiscal period, and sample GRN→AP→TB path
+### Schedule (ops)
+
+| Setting | Where | Default (seed) |
+|---------|--------|----------------|
+| Auto backup on/off | Web **Settings** → Company (`AutoBackupEnabled`) | On |
+| Interval (hours) | Same form (`AutoBackupIntervalHours`) | 24 |
+| Hosted poll | `BackupBackgroundService` (~15 min) | Creates SQL `.bak` when due |
+| Manual | Web **/backup** or `POST /api/backups` | Anytime |
+
+**File path:** `%LocalAppData%\CarAutoParts\Backups\` (`{DatabaseName}_{yyyyMMdd_HHmmss}.bak`). Keep at least one **off-box** copy of nightly backups.
+
+### Restore-on-staging checklist
+
+1. Take a fresh manual backup from production (or copy the latest successful `.bak`).
+2. Restore onto a **staging** SQL instance via Backup UI (`/backup` → Restore from file) or `RESTORE DATABASE` — never restore over live without a freeze window.
+3. Point staging API connection string at the restored DB; restart API.
+4. Confirm `GET /health/ready` green; open fiscal period if required.
+5. Smoke: login → GRN/AP sample or POS checkout → Trial Balance / aging glance.
+6. Record date, operator, and result (pass/fail) in the pilot log.
+
+### Restore drill cadence
+
+- **Suggested:** every **D+7** during first pilots, then monthly in production.
+- Ownership: site Admin / deployer named in the pilot sheet.
+- Failure: if auto backup missing for > 1.5× interval, check Settings toggle, API host disk, and SQL `BACKUP` permissions; create a manual backup immediately.
+
+### After any restore (prod or staging)
+
+- Confirm `/health/ready`, open fiscal period, and sample GRN→AP→TB (or POS) path.
 
 ## Go-live checklist
 

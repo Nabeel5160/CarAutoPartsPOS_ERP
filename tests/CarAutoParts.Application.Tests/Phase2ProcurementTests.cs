@@ -109,11 +109,11 @@ public class Phase2ProcurementTests
         var outbox = new Mock<IOutboxWriter>();
         var periods = new AccountingPeriodService(enterprise, companyCtx);
         var gl = new GlPostingService(enterprise, companyCtx, outbox.Object, periods);
-        var inv = new EnterpriseInventoryService(enterprise, companyCtx, gl);
+        var inv = new EnterpriseInventoryService(enterprise, companyCtx, gl, OpsSlaTestDoubles.NoOp);
         var approvals = new Mock<IApprovalWorkflowService>();
         approvals.Setup(a => a.EnsureApprovedOrQueueAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Application.Common.Result.Success());
-        var purchase = new EnterprisePurchaseService(enterprise, companyCtx, gl, outbox.Object, approvals.Object);
+        var purchase = new EnterprisePurchaseService(enterprise, companyCtx, gl, outbox.Object, approvals.Object, OpsSlaTestDoubles.NoOp);
         return (db, enterprise, inv, purchase, companyCtx);
     }
 

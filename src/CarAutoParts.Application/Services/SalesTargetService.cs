@@ -13,7 +13,9 @@ public record SalesTargetDto(
     int PeriodYear,
     int PeriodMonth,
     decimal TargetAmount,
-    string? Notes);
+    string? Notes,
+    decimal ActualAmount = 0,
+    decimal AttainmentPercent = 0);
 
 public record SalesTargetUpsertRequest(
     int UserId,
@@ -22,7 +24,7 @@ public record SalesTargetUpsertRequest(
     decimal TargetAmount,
     string? Notes = null);
 
-/// <summary>Thin CRUD for monthly salesperson targets (Program B — sales thin).</summary>
+/// <summary>Thin CRUD for monthly salesperson targets (Program B — sales thin; C2 adds attainment).</summary>
 public interface ISalesTargetService
 {
     Task<IReadOnlyList<SalesTargetDto>> GetAllAsync(int? userId = null, int? year = null, CancellationToken ct = default);
@@ -54,7 +56,11 @@ public sealed class SalesTargetService : ISalesTargetService
         var items = await q
             .OrderByDescending(t => t.PeriodYear).ThenByDescending(t => t.PeriodMonth).ThenBy(t => t.UserId)
             .ToListAsync(ct);
-        return items.Select(Map).ToList();
+
+        var result = new List<SalesTargetDto>();
+        foreach (var t in items)
+            result.Add(await MapWithAttainmentAsync(t, ct));
+        return result;
     }
 
     public async Task<Result<SalesTargetDto>> CreateAsync(SalesTargetUpsertRequest request, CancellationToken ct = default)
@@ -88,7 +94,7 @@ public sealed class SalesTargetService : ISalesTargetService
         await _db.SaveChangesAsync(ct);
 
         var loaded = await _db.SalesTargets.AsNoTracking().Include(t => t.User).FirstAsync(t => t.Id == entity.Id, ct);
-        return Result<SalesTargetDto>.Success(Map(loaded));
+        return Result<SalesTargetDto>.Success(await MapWithAttainmentAsync(loaded, ct));
     }
 
     public async Task<Result<SalesTargetDto>> UpdateAsync(int id, SalesTargetUpsertRequest request, CancellationToken ct = default)
@@ -119,7 +125,7 @@ public sealed class SalesTargetService : ISalesTargetService
         await _db.SaveChangesAsync(ct);
 
         var loaded = await _db.SalesTargets.AsNoTracking().Include(t => t.User).FirstAsync(t => t.Id == id, ct);
-        return Result<SalesTargetDto>.Success(Map(loaded));
+        return Result<SalesTargetDto>.Success(await MapWithAttainmentAsync(loaded, ct));
     }
 
     public async Task<Result> DeleteAsync(int id, CancellationToken ct = default)
@@ -134,6 +140,19 @@ public sealed class SalesTargetService : ISalesTargetService
         return Result.Success();
     }
 
+    private async Task<SalesTargetDto> MapWithAttainmentAsync(SalesTarget t, CancellationToken ct)
+    {
+        var start = new DateTime(t.PeriodYear, t.PeriodMonth, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        var actual = await _db.SalesCommissions.AsNoTracking()
+            .Where(c => !c.IsDeleted && c.UserId == t.UserId
+                        && c.InvoiceDate >= start && c.InvoiceDate <= end)
+            .SumAsync(c => (decimal?)c.InvoiceAmount, ct) ?? 0m;
+        var pct = t.TargetAmount == 0 ? 0m : Math.Round(actual / t.TargetAmount * 100m, 2);
+        return new SalesTargetDto(
+            t.Id, t.UserId, t.User?.Username, t.PeriodYear, t.PeriodMonth, t.TargetAmount, t.Notes, actual, pct);
+    }
+
     private static string? Validate(SalesTargetUpsertRequest request)
     {
         if (request.PeriodMonth is < 1 or > 12)
@@ -144,7 +163,4 @@ public sealed class SalesTargetService : ISalesTargetService
             return "Target amount cannot be negative.";
         return null;
     }
-
-    private static SalesTargetDto Map(SalesTarget t) => new(
-        t.Id, t.UserId, t.User?.Username, t.PeriodYear, t.PeriodMonth, t.TargetAmount, t.Notes);
 }

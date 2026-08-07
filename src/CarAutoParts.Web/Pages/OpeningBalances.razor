@@ -10,15 +10,39 @@
     <div class="row g-2">
         <div class="col-md-3"><label class="form-label">Cutover date</label><input type="date" class="form-control" @bind="_cutover" /></div>
         <div class="col-md-9"><label class="form-label">Notes</label><input class="form-control" @bind="_notes" /></div>
-        <div class="col-md-3"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_invProductId" /></div>
-        <div class="col-md-2"><label class="form-label">Warehouse</label><input type="number" class="form-control" @bind="_invWarehouseId" /></div>
+        <div class="col-md-3">
+            <label class="form-label">Product</label>
+            <select class="form-select" @bind="_invProductId">
+                <option value="0">Select…</option>
+                @foreach (var p in _products) { <option value="@p.Id">@p.Name (@p.Sku)</option> }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Warehouse</label>
+            <select class="form-select" @bind="_invWarehouseId">
+                <option value="0">Select…</option>
+                @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+            </select>
+        </div>
         <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_invQty" /></div>
         <div class="col-md-2"><label class="form-label">Unit cost</label><input type="number" class="form-control" @bind="_invCost" /></div>
         <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddInv">Add inventory line</button></div>
-        <div class="col-md-3"><label class="form-label">Customer Id</label><input type="number" class="form-control" @bind="_arCustomerId" /></div>
+        <div class="col-md-3">
+            <label class="form-label">Customer</label>
+            <select class="form-select" @bind="_arCustomerId">
+                <option value="0">Select…</option>
+                @foreach (var c in _customers) { <option value="@c.Id">@c.Name</option> }
+            </select>
+        </div>
         <div class="col-md-3"><label class="form-label">AR amount</label><input type="number" class="form-control" @bind="_arAmount" /></div>
         <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddAr">Add AR</button></div>
-        <div class="col-md-3"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_apSupplierId" /></div>
+        <div class="col-md-3">
+            <label class="form-label">Supplier</label>
+            <select class="form-select" @bind="_apSupplierId">
+                <option value="0">Select…</option>
+                @foreach (var s in _suppliers) { <option value="@s.Id">@s.Name</option> }
+            </select>
+        </div>
         <div class="col-md-3"><label class="form-label">AP amount</label><input type="number" class="form-control" @bind="_apAmount" /></div>
         <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddAp">Add AP</button></div>
     </div>
@@ -57,6 +81,10 @@
     private readonly List<ArLine> _ar = [];
     private readonly List<ApLine> _ap = [];
     private List<OpeningBalanceBatchDto>? _batches;
+    private List<WarehouseDto> _warehouses = [];
+    private List<ProductListDto> _products = [];
+    private List<CustomerDto> _customers = [];
+    private List<SupplierDto> _suppliers = [];
 
     private sealed class InvLine { public int ProductId { get; set; } public int WarehouseId { get; set; } public decimal Quantity { get; set; } public decimal UnitCost { get; set; } }
     private sealed class ArLine { public int CustomerId { get; set; } public decimal Amount { get; set; } }
@@ -64,6 +92,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var (wh, _, _) = await Api.GetWarehousesAsync();
+        _warehouses = wh ?? [];
+        if (_warehouses.FirstOrDefault() is { } w) _invWarehouseId = w.Id;
+        var (prod, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _products = prod?.Items ?? [];
+        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _customers = cust?.Items ?? [];
+        var (sup, _, _) = await Api.GetSuppliersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _suppliers = sup?.Items ?? [];
         var (data, error, _) = await Api.GetOpeningBalancesAsync();
         _batches = data; _error = error;
     }

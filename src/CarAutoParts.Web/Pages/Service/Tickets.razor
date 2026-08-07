@@ -1,9 +1,11 @@
 @page "/service/tickets"
 @attribute [Authorize]
+@using CarAutoParts.Web.Auth
 @inject CapApiService Api
 @inject IToastService Toast
 @inject PermissionService Perms
 @inject NavigationManager Nav
+@inject JwtAuthStateProvider AuthState
 
 <PageHeader Title="Service Tickets" Subtitle="Tickets, warranty claims, and AMC follow-ups (Service Light)" />
 <LoadingState Busy="@_busy" Error="@_error" />
@@ -37,6 +39,26 @@
                 @foreach (var c in _customers)
                 {
                     <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">SLA</label>
+            <select class="form-select" @bind="_filterSla">
+                <option value="">All</option>
+                <option value="warning">Warning</option>
+                <option value="breached">Breached</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Assignee</label>
+            <select class="form-select" @bind="_filterAssignee">
+                <option value="0">All</option>
+                <option value="-1">Unassigned</option>
+                <option value="-2">Mine</option>
+                @foreach (var u in _users)
+                {
+                    <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
                 }
             </select>
         </div>
@@ -97,6 +119,27 @@
                 <div class="col-md-3"><input class="form-control" placeholder="Warranty reference" @bind="_form.WarrantyReference" /></div>
             }
             <div class="col-md-3"><input class="form-control" placeholder="AMC reference (optional)" @bind="_form.AmcReference" /></div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_formAmcId" title="AMC contract">
+                    <option value="0">AMC contract…</option>
+                    @foreach (var a in _amcOptions)
+                    {
+                        <option value="@a.Id">@a.ContractNumber</option>
+                    }
+                </select>
+            </div>
+            @if (_canManage)
+            {
+                <div class="col-md-3">
+                    <select class="form-select" @bind="_formSlaPolicyId" title="SLA policy override">
+                        <option value="0">SLA policy (auto)</option>
+                        @foreach (var p in _slaPolicies)
+                        {
+                            <option value="@p.Id">@p.Name</option>
+                        }
+                    </select>
+                </div>
+            }
         </div>
     </div>
 }
@@ -118,7 +161,9 @@
                         <th>Type</th>
                         <th>Priority</th>
                         <th>Status</th>
+                        <th>SLA</th>
                         <th>Assignee</th>
+                        <th>Warranty</th>
                         <th>Opened</th>
                     </tr>
                 </thead>
@@ -131,7 +176,9 @@
                         <td>@(t.IsWarrantyClaim ? "Warranty" : (string.IsNullOrWhiteSpace(t.AmcReference) ? "General" : "AMC"))</td>
                         <td><span class="badge badge-soft">@PriorityLabel(t.Priority)</span></td>
                         <td><span class="badge badge-soft">@StatusLabel(t.Status)</span></td>
+                        <td><span class="badge badge-soft">@(_slaBadges.GetValueOrDefault(t.Id, "—"))</span></td>
                         <td>@AssigneeName(t.AssignedToUserId)</td>
+                        <td>@(t.IsWarrantyClaim ? WarrantyClaimLabel(t.WarrantyClaimStatus) : "—")</td>
                         <td>@t.OpenedAt.ToLocalTime().ToString("g")</td>
                     </tr>
                 }
@@ -150,22 +197,40 @@
     private ServiceTicketCreateDto _form = new() { Priority = 1 };
     private int _formAssignee;
     private int _formProductId;
+    private int _formAmcId;
+    private int _formSlaPolicyId;
+    private List<SlaPolicyDto> _slaPolicies = new();
+    private List<AmcContractDto> _amcAll = [];
+    private IEnumerable<AmcContractDto> _amcOptions =>
+        _form.CustomerId > 0 ? _amcAll.Where(a => a.CustomerId == _form.CustomerId && a.Status == 1) : [];
     private string _filterStatus = "";
     private string _filterPriority = "";
+    private string _filterSla = "";
     private int _filterCustomer;
+    private int _filterAssignee;
+    private int _currentUserId;
     private List<CustomerDto> _customers = new();
     private List<UserDto> _users = new();
     private List<ProductListDto> _products = new();
+    private Dictionary<int, string> _slaBadges = new();
 
     protected override async Task OnInitializedAsync()
     {
         _canManage = await Perms.HasAsync("service.manage");
+        _currentUserId = (await AuthState.GetUserAsync())?.UserId ?? 0;
         var (customers, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 500 });
         _customers = customers?.Items.ToList() ?? new();
         var (users, _, _) = await Api.GetUsersAsync();
         _users = users ?? new();
         var (products, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 500 });
         _products = products?.Items.ToList() ?? new();
+        var (amc, _, _) = await Api.GetAmcContractsAsync(status: 1);
+        _amcAll = amc ?? [];
+        if (_canManage)
+        {
+            var (pols, _, _) = await Api.GetSlaPoliciesAsync(0);
+            _slaPolicies = (pols ?? new()).Where(p => p.AppliesToEntityType == 0 && p.IsActive).ToList();
+        }
         await LoadAsync();
     }
 
@@ -176,15 +241,50 @@
         try
         {
             int? customerId = _filterCustomer > 0 ? _filterCustomer : null;
+            int? assignedId = null;
+            bool? unassigned = null;
+            if (_filterAssignee == -1) unassigned = true;
+            else if (_filterAssignee == -2 && _currentUserId > 0) assignedId = _currentUserId;
+            else if (_filterAssignee > 0) assignedId = _filterAssignee;
+
             var (data, error, _) = await Api.GetServiceTicketsAsync(
                 new QuerySpec { Page = 1, PageSize = 100 },
                 string.IsNullOrWhiteSpace(_filterStatus) ? null : _filterStatus,
                 string.IsNullOrWhiteSpace(_filterPriority) ? null : _filterPriority,
-                customerId);
+                customerId,
+                assignedId,
+                string.IsNullOrWhiteSpace(_filterSla) ? null : _filterSla,
+                unassigned);
             if (error is not null) { _error = error; return; }
             _items = data;
+            _slaBadges = new();
+            if (_items?.Items is { Count: > 0 } list)
+            {
+                foreach (var t in list.Take(40))
+                {
+                    var (sla, _, _) = await Api.GetTicketSlaAsync(t.Id);
+                    if (sla is null) continue;
+                    _slaBadges[t.Id] = SlaBadge(sla);
+                }
+            }
         }
         finally { _busy = false; }
+    }
+
+    private static string SlaBadge(SlaTicketSummaryDto sla)
+    {
+        if (sla.Timers.Any(t => t.Status == 3 || t.BreachedAt is not null)) return "Breached";
+        if (sla.Timers.Any(t => t.WarnedAt is not null && t.Status == 0)) return "Warning";
+        if (sla.Timers.Any(t => t.Status == 1)) return "Paused";
+        var rem = sla.Timers.Where(t => t.Status == 0).Select(t => t.RemainingSeconds).DefaultIfEmpty(0).Min();
+        if (rem <= 0 && sla.Timers.Any(t => t.Status == 0)) return "Due";
+        return rem > 0 ? FormatRem(rem) : "Ok";
+    }
+
+    private static string FormatRem(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}h" : $"{ts.Minutes}m";
     }
 
     private async Task CreateAsync()
@@ -200,6 +300,8 @@
         {
             _form.AssignedToUserId = _formAssignee > 0 ? _formAssignee : null;
             _form.ProductId = _formProductId > 0 ? _formProductId : null;
+            _form.AmcContractId = _formAmcId > 0 ? _formAmcId : null;
+            _form.SlaPolicyId = _formSlaPolicyId > 0 ? _formSlaPolicyId : null;
             var (data, error, _) = await Api.CreateServiceTicketAsync(_form);
             if (error is not null || data is null)
             {
@@ -207,10 +309,12 @@
                 return;
             }
 
-            Toast.ShowSuccess($"Ticket '{data.Subject}' created.");
+            Toast.ShowSuccess($"Ticket '{data.Subject}' created. SLA timers started.");
             _form = new ServiceTicketCreateDto { Priority = 1 };
             _formAssignee = 0;
             _formProductId = 0;
+            _formAmcId = 0;
+            _formSlaPolicyId = 0;
             await LoadAsync();
         }
         finally { _saving = false; }
@@ -230,5 +334,10 @@
     private static string PriorityLabel(int priority) => priority switch
     {
         0 => "Low", 1 => "Normal", 2 => "High", 3 => "Urgent", _ => priority.ToString()
+    };
+
+    private static string WarrantyClaimLabel(int s) => s switch
+    {
+        1 => "Submitted", 2 => "Approved", 3 => "Rejected", _ => "—"
     };
 }

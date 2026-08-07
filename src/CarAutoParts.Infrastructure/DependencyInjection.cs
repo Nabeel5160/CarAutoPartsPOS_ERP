@@ -65,6 +65,8 @@ public static class DependencyInjection
 
         services.AddHostedService<BackupBackgroundService>();
         services.AddHostedService<OutboxProcessor>();
+        services.AddHostedService<SlaMonitorBackgroundService>();
+        services.AddHostedService<CrmActivityMonitorBackgroundService>();
 
         return services;
     }

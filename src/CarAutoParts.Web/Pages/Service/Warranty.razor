@@ -1,0 +1,145 @@
+@page "/service/warranty"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="Warranty claims" Subtitle="Approve or reject warranty tickets (thin workflow)">
+    <button type="button" class="btn btn-outline-light btn-sm" @onclick="LoadAsync">Refresh</button>
+</PageHeader>
+
+<div class="cap-card mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Claim status</label>
+            <select class="form-select" @bind="_filterStatus">
+                <option value="Submitted">Submitted (queue)</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+                <option value="">All warranty</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Assignee user Id</label>
+            <input type="number" class="form-control" @bind="_filterAssignee" placeholder="optional" />
+        </div>
+        <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="LoadAsync">Filter</button></div>
+    </div>
+</div>
+
+<div class="cap-card mb-3">
+    <label class="form-label">Decision notes (required when rejecting)</label>
+    <input class="form-control" @bind="_decisionNotes" placeholder="Notes for approve/reject from queue" />
+</div>
+
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_items is not null)
+{
+    @if (_items.Items.Count == 0)
+    {
+        <EmptyState Title="No warranty claims" Message="Mark a ticket as warranty claim to appear here." />
+    }
+    else
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Customer</th>
+                        <th>Reference</th>
+                        <th>Evidence</th>
+                        <th>Replacement</th>
+                        <th>Claim</th>
+                        <th>Assignee</th>
+                        <th>Opened</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var t in _items.Items)
+                {
+                    <tr>
+                        <td>@t.Subject</td>
+                        <td>@(t.CustomerName ?? "—")</td>
+                        <td>@(t.WarrantyReference ?? "—")</td>
+                        <td class="small">@(t.WarrantyEvidenceNotes ?? "—")</td>
+                        <td class="small">@(t.ReplacementProductName is string rn ? $"{rn} × {t.ReplacementQuantity:N0}" : "—")</td>
+                        <td><span class="badge badge-soft">@ClaimLabel(t.WarrantyClaimStatus)</span></td>
+                        <td>@(t.AssignedToUserId?.ToString() ?? "—")</td>
+                        <td>@t.OpenedAt.ToLocalTime().ToString("g")</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => OpenTicket(t.Id)">Open</button>
+                            @if (_canManage && t.WarrantyClaimStatus is 0 or 1 && t.Status != 3)
+                            {
+                                <button type="button" class="btn btn-sm btn-success ms-1" @onclick="() => DecideAsync(t.Id, 2)">Approve</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DecideAsync(t.Id, 3)">Reject</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private string _filterStatus = "Submitted";
+    private int? _filterAssignee;
+    private string? _decisionNotes;
+    private PagedResult<ServiceTicketDto>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("service.manage");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var (data, error, _) = await Api.GetServiceTicketsAsync(
+                new QuerySpec { Page = 1, PageSize = 100 },
+                assignedToUserId: _filterAssignee is > 0 ? _filterAssignee : null,
+                warrantyOnly: true,
+                warrantyClaimStatus: string.IsNullOrWhiteSpace(_filterStatus) ? null : _filterStatus);
+            _items = data;
+            _error = error;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DecideAsync(int id, int decision)
+    {
+        if (decision == 3 && string.IsNullOrWhiteSpace(_decisionNotes))
+        {
+            Toast.ShowWarning("Notes are required when rejecting.");
+            return;
+        }
+        var (_, error, _) = await Api.DecideWarrantyClaimAsync(id, new WarrantyClaimDecisionDto
+        {
+            Decision = decision,
+            Notes = string.IsNullOrWhiteSpace(_decisionNotes)
+                ? (decision == 2 ? "Approved from queue" : null)
+                : _decisionNotes
+        });
+        if (error is not null) Toast.ShowError(error);
+        else { Toast.ShowSuccess(decision == 2 ? "Approved" : "Rejected"); await LoadAsync(); }
+    }
+
+    private void OpenTicket(int id) => Nav.NavigateTo($"/service/tickets/{id}");
+
+    private static string ClaimLabel(int s) => s switch
+    {
+        1 => "Submitted", 2 => "Approved", 3 => "Rejected", _ => "None"
+    };
+}

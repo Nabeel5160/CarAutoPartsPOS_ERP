@@ -134,6 +134,80 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.ToTable("AccountingPeriods");
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.AmcContract", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("AnnualAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContractNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("CoverageNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("CompanyId", "ContractNumber")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "CustomerId", "Status");
+
+                    b.ToTable("AmcContracts", (string)null);
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.AppConfigEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -821,6 +895,178 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.ToTable("Brands", (string)null);
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.Budget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("FiscalYearId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FiscalYearId");
+
+                    b.HasIndex("CompanyId", "FiscalYearId", "Name");
+
+                    b.ToTable("Budgets", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.BudgetLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AccountingPeriodId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BudgetId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CostCenterId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("GlAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountingPeriodId");
+
+                    b.HasIndex("CostCenterId");
+
+                    b.HasIndex("GlAccountId");
+
+                    b.HasIndex("BudgetId", "GlAccountId", "AccountingPeriodId", "CostCenterId");
+
+                    b.ToTable("BudgetLines", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.BusinessCalendar", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("HolidaysJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WorkIntervalsJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId")
+                        .IsUnique();
+
+                    b.ToTable("BusinessCalendars", (string)null);
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.CashierShift", b =>
                 {
                     b.Property<int>("Id")
@@ -1363,6 +1609,9 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<DateTime?>("SlaWarnedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Subject")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1710,6 +1959,10 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Carrier")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
 
@@ -1727,6 +1980,9 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<DateTime?>("EtaUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -1741,6 +1997,10 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<string>("TrackingNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -2773,6 +3033,68 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.HasIndex("JournalEntryId");
 
                     b.ToTable("JournalLines");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.KbArticle", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "IsPublished");
+
+                    b.HasIndex("CompanyId", "Title");
+
+                    b.ToTable("KbArticles", (string)null);
                 });
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.Lead", b =>
@@ -4833,6 +5155,78 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.ToTable("SafeDrops", (string)null);
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SalesCommission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CommissionAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CommissionPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("InvoiceAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("InvoiceDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SalesInvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("SalesInvoiceId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CompanyId", "SalesInvoiceId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "UserId", "InvoiceDate");
+
+                    b.ToTable("SalesCommissions", (string)null);
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.SalesInvoice", b =>
                 {
                     b.Property<int>("Id")
@@ -5647,6 +6041,9 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AmcContractId")
+                        .HasColumnType("int");
+
                     b.Property<string>("AmcReference")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -5695,6 +6092,13 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.Property<int?>("ProductId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ReplacementProductId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ReplacementQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
                     b.Property<string>("ResolutionNotes")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
@@ -5707,6 +6111,9 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<int?>("SlaPolicyId")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -5722,11 +6129,34 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("WarrantyClaimStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("WarrantyDecidedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("WarrantyDecidedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("WarrantyDecisionNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("WarrantyEvidenceNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("WarrantyReference")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<int?>("WarrantySalesInvoiceId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("AmcContractId");
 
                     b.HasIndex("AssignedToUserId");
 
@@ -5734,11 +6164,476 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
 
                     b.HasIndex("ProductId");
 
+                    b.HasIndex("ReplacementProductId");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.HasIndex("WarrantySalesInvoiceId");
+
                     b.HasIndex("CompanyId", "CustomerId");
 
                     b.HasIndex("CompanyId", "Status");
 
+                    b.HasIndex("CompanyId", "IsWarrantyClaim", "WarrantyClaimStatus");
+
                     b.ToTable("ServiceTickets", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceTicketPart", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ConsumedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ServiceTicketId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("UnitCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ServiceTicketId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("ServiceTicketParts", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceVisit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssignedToUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("ScheduledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ServiceTicketId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("ServiceTicketId", "Status");
+
+                    b.HasIndex("CompanyId", "AssignedToUserId", "ScheduledAt");
+
+                    b.ToTable("ServiceVisits", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SlaTimerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SlaTimerId");
+
+                    b.ToTable("SlaEvents", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaPolicy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AppliesToEntityType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ApplyToWarrantyOnly")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CalendarMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("EscalateToUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscalateToUserId");
+
+                    b.HasIndex("CompanyId", "AppliesToEntityType");
+
+                    b.HasIndex("CompanyId", "IsDefault");
+
+                    b.ToTable("SlaPolicies", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaPolicyRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CustomerType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("IsWarrantyClaim")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SlaPolicyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.HasIndex("CompanyId", "SlaPolicyId", "SortOrder");
+
+                    b.ToTable("SlaPolicyRules", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaTarget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Metric")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SlaPolicyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("WarnAtPercent")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SlaPolicyId", "Metric", "Priority")
+                        .IsUnique();
+
+                    b.ToTable("SlaTargets", (string)null);
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaTimer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ActiveSince")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("BreachedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ElapsedSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EntityType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Metric")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PauseReason")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("ServiceTicketId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SlaPolicyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SlaTargetId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TargetSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("WarnSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("WarnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServiceTicketId");
+
+                    b.HasIndex("SlaPolicyId");
+
+                    b.HasIndex("SlaTargetId");
+
+                    b.HasIndex("CompanyId", "Status");
+
+                    b.HasIndex("CompanyId", "EntityType", "EntityId", "Metric")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0 AND [Status] <> 4");
+
+                    b.ToTable("SlaTimers", (string)null);
                 });
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.StockBatch", b =>
@@ -6505,6 +7400,24 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.Navigation("FiscalYear");
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.AmcContract", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.ApprovalRequest", b =>
                 {
                     b.HasOne("CarAutoParts.Domain.Entities.ApprovalPolicy", "Policy")
@@ -6540,6 +7453,51 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.Budget", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.FiscalYear", "FiscalYear")
+                        .WithMany()
+                        .HasForeignKey("FiscalYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FiscalYear");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.BudgetLine", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.AccountingPeriod", "AccountingPeriod")
+                        .WithMany()
+                        .HasForeignKey("AccountingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.Budget", "Budget")
+                        .WithMany("Lines")
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.CostCenter", "CostCenter")
+                        .WithMany()
+                        .HasForeignKey("CostCenterId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CarAutoParts.Domain.Entities.GlAccount", "GlAccount")
+                        .WithMany()
+                        .HasForeignKey("GlAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AccountingPeriod");
+
+                    b.Navigation("Budget");
+
+                    b.Navigation("CostCenter");
+
+                    b.Navigation("GlAccount");
                 });
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.CashierShift", b =>
@@ -7444,6 +8402,32 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.Navigation("Till");
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SalesCommission", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.SalesInvoice", "SalesInvoice")
+                        .WithMany()
+                        .HasForeignKey("SalesInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("SalesInvoice");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.SalesInvoice", b =>
                 {
                     b.HasOne("CarAutoParts.Domain.Entities.CashierShift", "CashierShift")
@@ -7622,6 +8606,11 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceTicket", b =>
                 {
+                    b.HasOne("CarAutoParts.Domain.Entities.AmcContract", "AmcContract")
+                        .WithMany()
+                        .HasForeignKey("AmcContractId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CarAutoParts.Domain.Entities.AppUser", "AssignedToUser")
                         .WithMany()
                         .HasForeignKey("AssignedToUserId")
@@ -7638,11 +8627,149 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("CarAutoParts.Domain.Entities.Product", "ReplacementProduct")
+                        .WithMany()
+                        .HasForeignKey("ReplacementProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany()
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CarAutoParts.Domain.Entities.SalesInvoice", "WarrantySalesInvoice")
+                        .WithMany()
+                        .HasForeignKey("WarrantySalesInvoiceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("AmcContract");
+
                     b.Navigation("AssignedToUser");
 
                     b.Navigation("Customer");
 
                     b.Navigation("Product");
+
+                    b.Navigation("ReplacementProduct");
+
+                    b.Navigation("SlaPolicy");
+
+                    b.Navigation("WarrantySalesInvoice");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceTicketPart", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.ServiceTicket", "ServiceTicket")
+                        .WithMany("Parts")
+                        .HasForeignKey("ServiceTicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ServiceTicket");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceVisit", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.AppUser", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.ServiceTicket", "ServiceTicket")
+                        .WithMany("Visits")
+                        .HasForeignKey("ServiceTicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("ServiceTicket");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaEvent", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaTimer", "SlaTimer")
+                        .WithMany("Events")
+                        .HasForeignKey("SlaTimerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SlaTimer");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaPolicy", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.AppUser", "EscalateToUser")
+                        .WithMany()
+                        .HasForeignKey("EscalateToUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("EscalateToUser");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaPolicyRule", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany("Rules")
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SlaPolicy");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaTarget", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany("Targets")
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SlaPolicy");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaTimer", b =>
+                {
+                    b.HasOne("CarAutoParts.Domain.Entities.ServiceTicket", "ServiceTicket")
+                        .WithMany()
+                        .HasForeignKey("ServiceTicketId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaPolicy", "SlaPolicy")
+                        .WithMany()
+                        .HasForeignKey("SlaPolicyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CarAutoParts.Domain.Entities.SlaTarget", "SlaTarget")
+                        .WithMany()
+                        .HasForeignKey("SlaTargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ServiceTicket");
+
+                    b.Navigation("SlaPolicy");
+
+                    b.Navigation("SlaTarget");
                 });
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.StockBatch", b =>
@@ -7833,6 +8960,11 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
                     b.Navigation("Products");
                 });
 
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.Budget", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
             modelBuilder.Entity("CarAutoParts.Domain.Entities.CashierShift", b =>
                 {
                     b.Navigation("SafeDrops");
@@ -8016,6 +9148,25 @@ namespace CarAutoParts.Infrastructure.Data.Migrations
             modelBuilder.Entity("CarAutoParts.Domain.Entities.SerialNumber", b =>
                 {
                     b.Navigation("History");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.ServiceTicket", b =>
+                {
+                    b.Navigation("Parts");
+
+                    b.Navigation("Visits");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaPolicy", b =>
+                {
+                    b.Navigation("Rules");
+
+                    b.Navigation("Targets");
+                });
+
+            modelBuilder.Entity("CarAutoParts.Domain.Entities.SlaTimer", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("CarAutoParts.Domain.Entities.Supplier", b =>

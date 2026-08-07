@@ -1,6 +1,8 @@
 using CarAutoParts.Application.Common;
 using CarAutoParts.Application.Interfaces;
+using CarAutoParts.Application.Services;
 using CarAutoParts.Domain.Entities;
+using CarAutoParts.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarAutoParts.Application.Enterprise;
@@ -32,12 +34,18 @@ public sealed class PaymentPostingService : IPaymentPostingService
     private readonly IEnterpriseDb _db;
     private readonly ICurrentCompanyContext _company;
     private readonly IGlPostingService _gl;
+    private readonly IOpsSlaClockService _opsSla;
 
-    public PaymentPostingService(IEnterpriseDb db, ICurrentCompanyContext company, IGlPostingService gl)
+    public PaymentPostingService(
+        IEnterpriseDb db,
+        ICurrentCompanyContext company,
+        IGlPostingService gl,
+        IOpsSlaClockService opsSla)
     {
         _db = db;
         _company = company;
         _gl = gl;
+        _opsSla = opsSla;
     }
 
     public async Task<Result<int>> PostCustomerReceiptAsync(PostCustomerReceiptRequest request, CancellationToken ct = default)
@@ -85,7 +93,9 @@ public sealed class PaymentPostingService : IPaymentPostingService
                 customer.Balance = Math.Max(0, customer.Balance - request.Amount);
         }
 
+        invoice.PaymentStatus = PaymentStatus.Paid;
         await _db.SaveChangesAsync(ct);
+        await _opsSla.OnInvoicePaidOrVoidedAsync(invoice.Id, ct);
         return Result<int>.Success(gl.Data!.JournalId);
     }
 

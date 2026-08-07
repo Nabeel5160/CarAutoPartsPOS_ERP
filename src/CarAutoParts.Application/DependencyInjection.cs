@@ -49,7 +49,18 @@ public static class DependencyInjection
         services.AddScoped<IReorderService, ReorderService>();
         services.AddScoped<IPurchaseRfqService, PurchaseRfqService>();
         services.AddScoped<ISalesTargetService, SalesTargetService>();
+        services.AddScoped<IBudgetService, BudgetService>();
+        services.AddScoped<ISalesCommissionService, SalesCommissionService>();
         services.AddScoped<IServiceTicketService, ServiceTicketService>();
+        services.AddScoped<IAmcContractService, AmcContractService>();
+        services.AddScoped<IServiceFieldService, ServiceFieldService>();
+        services.AddSingleton<ISlaClockTime, SystemSlaClockTime>();
+        services.AddScoped<ISlaPolicyService, SlaPolicyService>();
+        services.AddScoped<ISlaClockService, SlaClockService>();
+        services.AddScoped<IOpsSlaClockService, OpsSlaClockService>();
+        services.AddScoped<ISlaMonitorService, SlaMonitorService>();
+        services.AddScoped<ICrmActivityMonitorService, CrmActivityMonitorService>();
+        services.AddScoped<IKnowledgeBaseService, KnowledgeBaseService>();
 
         services.AddScoped<ISalesService, SalesService>();
         services.AddScoped<IPosCheckoutService, PosCheckoutService>();

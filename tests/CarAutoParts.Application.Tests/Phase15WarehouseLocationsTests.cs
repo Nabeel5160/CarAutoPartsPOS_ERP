@@ -76,7 +76,7 @@ public class Phase15WarehouseLocationsTests
             .ReturnsAsync(Result<GlJournalDraftDto>.Success(
                 new GlJournalDraftDto(1, "JV-0001", JournalStatus.Posted, 100, 100)));
 
-        var inventory = new EnterpriseInventoryService(new EnterpriseDbAdapter(db), company, gl.Object);
+        var inventory = new EnterpriseInventoryService(new EnterpriseDbAdapter(db), company, gl.Object, OpsSlaTestDoubles.NoOp);
         var locations = new WarehouseLocationService(
             new Repository<Warehouse>(db),
             new Repository<WarehouseLocation>(db),

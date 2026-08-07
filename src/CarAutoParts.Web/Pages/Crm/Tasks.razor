@@ -8,10 +8,10 @@
 <LoadingState Busy="@_busy" Error="@_error" />
 
 <div class="btn-group mb-3">
-    <button class="btn @TabClass("myday")" @onclick="@(() => SwitchTab("myday"))">My day</button>
-    <button class="btn @TabClass("overdue")" @onclick="@(() => SwitchTab("overdue"))">Overdue</button>
-    <button class="btn @TabClass("all")" @onclick="@(() => SwitchTab("all"))">Upcoming</button>
-    <button class="btn @TabClass("cal")" @onclick="@(() => SwitchTab("cal"))">Calendar</button>
+    <button type="button" class="@TabBtn("myday")" @onclick='() => SwitchTab("myday")'>My day</button>
+    <button type="button" class="@TabBtn("overdue")" @onclick='() => SwitchTab("overdue")'>Overdue</button>
+    <button type="button" class="@TabBtn("all")" @onclick='() => SwitchTab("all")'>Upcoming</button>
+    <button type="button" class="@TabBtn("cal")" @onclick='() => SwitchTab("cal")'>Calendar</button>
 </div>
 
 @if (_canCreate)
@@ -31,7 +31,9 @@
                 </select>
             </div>
             <div class="col-md-3"><input class="form-control" placeholder="Subject *" @bind="_form.Subject" /></div>
-            <div class="col-md-2"><input type="datetime-local" class="form-control" @bind="_dueLocal" /></div>
+            <div class="col-md-2">
+                <input type="datetime-local" class="form-control" @bind="_dueLocal" @bind:format="yyyy-MM-ddTHH:mm" />
+            </div>
             <div class="col-md-2">
                 <select class="form-select" @bind="_leadId">
                     <option value="0">Lead</option>
@@ -55,11 +57,11 @@
                     <option value="0">Assignee (me)</option>
                     @foreach (var u in _users)
                     {
-                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                        <option value="@u.Id">@(string.IsNullOrWhiteSpace(u.DisplayName) ? u.Username : u.DisplayName)</option>
                     }
                 </select>
             </div>
-            <div class="col-md-1"><button class="btn btn-cap w-100" @onclick="CreateAsync">Add</button></div>
+            <div class="col-md-1"><button type="button" class="btn btn-cap w-100" @onclick="CreateAsync">Add</button></div>
         </div>
     </div>
 }
@@ -67,15 +69,22 @@
 @if (_tab == "cal")
 {
     <div class="cap-card">
-        @foreach (var day in _calendar)
+        @if (_calendar.Count == 0)
         {
-            <div class="mb-3">
-                <h6>@day.Key.ToString("ddd d MMM")</h6>
-                @foreach (var a in day)
-                {
-                    <div class="small mb-1">@a.Subject · @TypeLabel(a.Type) · @(a.DueAt?.ToLocalTime().ToString("t") ?? "")</div>
-                }
-            </div>
+            <EmptyState Title="No tasks" Message="Nothing scheduled with a due date." />
+        }
+        else
+        {
+            @foreach (var day in _calendar)
+            {
+                <div class="mb-3">
+                    <h6>@day.Key.ToString("ddd d MMM")</h6>
+                    @foreach (var a in day)
+                    {
+                        <div class="small mb-1">@a.Subject · @TypeLabel(a.Type) · @(a.DueAt?.ToLocalTime().ToString("t") ?? "")</div>
+                    }
+                </div>
+            }
         }
     </div>
 }
@@ -96,13 +105,19 @@ else if (_items is not null)
                     <tr>
                         <td>@a.Subject</td>
                         <td>@TypeLabel(a.Type)</td>
-                        <td>@(a.DueAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                        <td class="@(IsOverdue(a) ? "text-danger fw-semibold" : null)">
+                            @(a.DueAt?.ToLocalTime().ToString("g") ?? "—")
+                            @if (IsOverdue(a))
+                            {
+                                <span class="small"> · overdue</span>
+                            }
+                        </td>
                         <td>@LeadName(a.LeadId)</td>
                         <td>@CustomerName(a.CustomerId)</td>
                         <td>
                             @if (a.CompletedAt is null && _canCreate)
                             {
-                                <button class="btn btn-sm btn-outline-success" @onclick="() => CompleteAsync(a.Id)">Complete</button>
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="() => CompleteAsync(a.Id)">Complete</button>
                             }
                         </td>
                     </tr>
@@ -120,7 +135,7 @@ else if (_items is not null)
     private string _tab = "myday";
     private List<CrmActivityDto>? _items;
     private CrmActivityCreateDto _form = new();
-    private DateTime? _dueLocal = DateTime.Today.AddHours(10);
+    private DateTime _dueLocal = DateTime.Today.AddHours(10);
     private int _leadId;
     private int _customerId;
     private int _assigneeId;
@@ -131,17 +146,34 @@ else if (_items is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        _canCreate = await Perms.HasAsync("crm.activities");
-        var (users, _, _) = await Api.GetUsersAsync();
-        _users = users ?? new();
-        var (leads, _, _) = await Api.GetCrmLeadsAsync(new QuerySpec { Page = 1, PageSize = 200 });
-        _leads = leads?.Items.ToList() ?? new();
-        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
-        _customers = cust?.Items.ToList() ?? new();
-        await LoadAsync();
+        try
+        {
+            _canCreate = await Perms.HasAsync("crm.activities");
+
+            // Sales users often lack users.view → 403; keep assignee list empty.
+            var (users, _, userStatus) = await Api.GetUsersAsync();
+            _users = users ?? new();
+            if (userStatus == 403)
+                _users = new();
+
+            var (leads, _, _) = await Api.GetCrmLeadsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+            _leads = leads?.Items?.ToList() ?? new();
+
+            var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+            _customers = cust?.Items?.ToList() ?? new();
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items ??= new();
+            _busy = false;
+        }
     }
 
-    private string TabClass(string t) => _tab == t ? "btn-cap" : "btn-outline-light";
+    private string TabBtn(string t) =>
+        _tab == t ? "btn btn-cap" : "btn btn-outline-light";
 
     private async Task SwitchTab(string t)
     {
@@ -159,17 +191,34 @@ else if (_items is not null)
             bool? overdue = _tab == "overdue" ? true : null;
             var (data, error, _) = await Api.GetCrmActivitiesAsync(
                 new QuerySpec { Page = 1, PageSize = 100 }, myDay: myDay, overdue: overdue);
-            if (error is not null) { _error = error; return; }
-            _items = data?.Items.Where(a => a.CompletedAt is null || _tab == "all").ToList() ?? new();
+            if (error is not null)
+            {
+                _error = error;
+                _items = new();
+                _calendar = new();
+                return;
+            }
+
+            var list = data?.Items?.ToList() ?? new List<CrmActivityDto>();
+            _items = list.Where(a => a.CompletedAt is null || _tab == "all").ToList();
             if (_tab == "cal")
             {
-                var list = data?.Items?.ToList() ?? new List<CrmActivityDto>();
                 _calendar = list
                     .Where(a => a.DueAt is not null)
                     .GroupBy(a => a.DueAt!.Value.ToLocalTime().Date)
                     .OrderBy(g => g.Key)
                     .ToList();
             }
+            else
+            {
+                _calendar = new();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items = new();
+            _calendar = new();
         }
         finally { _busy = false; }
     }
@@ -177,7 +226,7 @@ else if (_items is not null)
     private async Task CreateAsync()
     {
         if (string.IsNullOrWhiteSpace(_form.Subject)) { Toast.ShowWarning("Subject required"); return; }
-        _form.DueAt = _dueLocal?.ToUniversalTime();
+        _form.DueAt = DateTime.SpecifyKind(_dueLocal, DateTimeKind.Local).ToUniversalTime();
         _form.LeadId = _leadId > 0 ? _leadId : null;
         _form.CustomerId = _customerId > 0 ? _customerId : null;
         _form.AssignedToUserId = _assigneeId > 0 ? _assigneeId : null;
@@ -185,6 +234,10 @@ else if (_items is not null)
         if (error is not null) { Toast.ShowError(error); return; }
         Toast.ShowSuccess("Activity created");
         _form = new CrmActivityCreateDto();
+        _dueLocal = DateTime.Today.AddHours(10);
+        _leadId = 0;
+        _customerId = 0;
+        _assigneeId = 0;
         await LoadAsync();
     }
 
@@ -194,8 +247,15 @@ else if (_items is not null)
         if (error is not null) Toast.ShowError(error); else { Toast.ShowSuccess("Completed"); await LoadAsync(); }
     }
 
-    private string LeadName(int? id) => id is null ? "—" : (_leads.FirstOrDefault(l => l.Id == id)?.Name ?? id.ToString()!);
-    private string CustomerName(int? id) => id is null ? "—" : (_customers.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString()!);
+    private string LeadName(int? id) =>
+        id is null ? "—" : (_leads.FirstOrDefault(l => l.Id == id)?.Name ?? id.ToString()!);
+
+    private string CustomerName(int? id) =>
+        id is null ? "—" : (_customers.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString()!);
+
+    private static bool IsOverdue(CrmActivityDto a) =>
+        a.CompletedAt is null && a.DueAt is DateTime due && due < DateTime.UtcNow;
+
     private static string TypeLabel(int t) => t switch
     {
         0 => "Call", 1 => "Visit", 2 => "WhatsApp", 3 => "Email", 4 => "Task", 5 => "Meeting", 6 => "Note", _ => t.ToString()

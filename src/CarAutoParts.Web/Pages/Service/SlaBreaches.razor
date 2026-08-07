@@ -1,0 +1,127 @@
+@page "/service/sla/breaches"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject PermissionService Perms
+@inject NavigationManager Nav
+
+<PageHeader Title="SLA breach queue" Subtitle="Open breached timers — tickets and thin ops docs" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <div class="row g-2">
+        <div class="col-md-3">
+            <select class="form-select" @bind="_filterEntityType">
+                <option value="">All entity types</option>
+                <option value="0">Service ticket</option>
+                <option value="1">Sales order</option>
+                <option value="2">Sales invoice</option>
+                <option value="3">GRN</option>
+                <option value="4">AP invoice</option>
+                <option value="5">Low stock</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" @bind="_filterPolicyId">
+                <option value="">All policies</option>
+                @foreach (var p in _policies)
+                {
+                    <option value="@p.Id">@p.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="LoadAsync">Filter</button></div>
+    </div>
+</div>
+
+@if (_items is not null)
+{
+    @if (_items.Count == 0)
+    {
+        <EmptyState Title="No open breaches" Message="All running SLA timers are within target." />
+    }
+    else
+    {
+        <div class="cap-card table-responsive">
+            <table class="table table-cap table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Entity</th>
+                        <th>Subject</th>
+                        <th>Policy</th>
+                        <th>Metric</th>
+                        <th>Priority</th>
+                        <th>Breached</th>
+                        <th>Elapsed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var b in _items)
+                {
+                    <tr style="cursor:pointer" @onclick="@(() => OpenItem(b))">
+                        <td>@EntityLabel(b.EntityType)</td>
+                        <td>@b.Subject</td>
+                        <td>@(b.PolicyName ?? "—")</td>
+                        <td>@(b.Metric == 0 ? "First response" : "Resolution")</td>
+                        <td>@(b.Priority is int p ? PriorityLabel(p) : "—")</td>
+                        <td>@b.BreachedAt.ToLocalTime().ToString("g")</td>
+                        <td>@FormatElapsed(b.ElapsedSeconds) / @FormatElapsed(b.TargetSeconds)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    <p class="mt-3"><a href="/service/sla">← SLA policies</a> · <a href="/service/tickets">Tickets</a></p>
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private string _filterEntityType = "";
+    private string _filterPolicyId = "";
+    private List<SlaBreachQueueItemDto>? _items;
+    private List<SlaPolicyDto> _policies = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await Perms.HasAsync("service.view"))
+        {
+            _error = "service.view required";
+            _busy = false;
+            return;
+        }
+        var (pols, _, _) = await Api.GetSlaPoliciesAsync();
+        _policies = pols ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        int? et = int.TryParse(_filterEntityType, out var e) ? e : null;
+        int? pid = int.TryParse(_filterPolicyId, out var p) ? p : null;
+        var (data, err, _) = await Api.GetSlaBreachesAsync(et, pid);
+        _error = err;
+        _items = data ?? new();
+        _busy = false;
+    }
+
+    private void OpenItem(SlaBreachQueueItemDto b)
+    {
+        if (!string.IsNullOrWhiteSpace(b.DeepLink))
+            Nav.NavigateTo("/" + b.DeepLink.TrimStart('/'));
+        else if (b.TicketId is int tid)
+            Nav.NavigateTo($"/service/tickets/{tid}");
+    }
+
+    private static string PriorityLabel(int p) => p switch { 0 => "Low", 1 => "Normal", 2 => "High", 3 => "Urgent", _ => p.ToString() };
+    private static string EntityLabel(int et) => et switch
+    {
+        0 => "Ticket", 1 => "SO", 2 => "Invoice", 3 => "GRN", 4 => "AP", 5 => "Low stock", _ => et.ToString()
+    };
+    private static string FormatElapsed(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}h {ts.Minutes}m" : $"{ts.Minutes}m";
+    }
+}

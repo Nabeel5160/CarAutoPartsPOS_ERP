@@ -47,6 +47,7 @@ builder.Services.AddScoped(sp =>
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<AuthApiService>();
 builder.Services.AddScoped<CapApiService>();
+builder.Services.AddScoped<WebGlobalSearchService>();
 builder.Services.AddScoped<LocaleService>();
 builder.Services.AddScoped<WebAppConfigService>();
 builder.Services.AddScoped<OfflineCheckoutQueue>();

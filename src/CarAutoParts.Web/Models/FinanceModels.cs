@@ -214,3 +214,86 @@ public sealed class BankReconReportDto
     public List<BankStatementLineDto> UnclearedStatementLines { get; set; } = [];
     public List<UnclearedBankGlLineDto> UnclearedGlLines { get; set; } = [];
 }
+
+public sealed class BankMatchSuggestionDto
+{
+    public int StatementLineId { get; set; }
+    public int JournalLineId { get; set; }
+    public string JournalNumber { get; set; } = "";
+    public DateTime JournalDate { get; set; }
+    public decimal StatementAmount { get; set; }
+    public decimal GlNetAmount { get; set; }
+    public int Score { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public sealed class BankAutoMatchResultDto
+{
+    public int MatchedCount { get; set; }
+    public int SkippedCount { get; set; }
+    public List<BankMatchSuggestionDto> Applied { get; set; } = [];
+}
+
+public sealed class BudgetLineDto
+{
+    public int Id { get; set; }
+    public int GlAccountId { get; set; }
+    public string? AccountCode { get; set; }
+    public string? AccountName { get; set; }
+    public int? CostCenterId { get; set; }
+    public string? CostCenterCode { get; set; }
+    public int AccountingPeriodId { get; set; }
+    public string? PeriodName { get; set; }
+    public decimal Amount { get; set; }
+    public decimal ActualAmount { get; set; }
+    public decimal Variance { get; set; }
+    public decimal? VariancePercent { get; set; }
+}
+
+public sealed class BudgetDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public int FiscalYearId { get; set; }
+    public string? FiscalYearName { get; set; }
+    public string Status { get; set; } = "";
+    public string? Notes { get; set; }
+    public List<BudgetLineDto> Lines { get; set; } = [];
+}
+
+public sealed class BudgetCreateRequest
+{
+    public string Name { get; set; } = "";
+    public int FiscalYearId { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class BudgetUpdateRequest
+{
+    public string Name { get; set; } = "";
+    public string Status { get; set; } = "Draft";
+    public string? Notes { get; set; }
+}
+
+public sealed class BudgetLineUpsertRequest
+{
+    public int GlAccountId { get; set; }
+    public int AccountingPeriodId { get; set; }
+    public decimal Amount { get; set; }
+    public int? CostCenterId { get; set; }
+}
+
+public sealed class SalesCommissionDto
+{
+    public int Id { get; set; }
+    public int SalesInvoiceId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public int CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public int? UserId { get; set; }
+    public string? UserName { get; set; }
+    public decimal CommissionPercent { get; set; }
+    public decimal CommissionAmount { get; set; }
+    public decimal InvoiceAmount { get; set; }
+    public DateTime InvoiceDate { get; set; }
+}

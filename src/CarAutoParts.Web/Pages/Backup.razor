@@ -10,6 +10,14 @@
 <div class="cap-card mb-3">
     <label class="form-label">Restore from file</label>
     <InputFile OnChange="RestoreAsync" class="form-control" />
+    @if (_items is { Count: > 0 })
+    {
+        var last = _items.OrderByDescending(b => b.BackupDate).First();
+        <p class="small text-secondary mt-2 mb-0">
+            Last backup: <strong>@last.BackupDate.ToLocalTime().ToString("g")</strong>
+            (@last.BackupType) — @(last.IsSuccessful ? "OK" : "failed")
+        </p>
+    }
 </div>
 
 <LoadingState Busy="@_busy" Error="@_error" />

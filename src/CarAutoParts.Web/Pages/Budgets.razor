@@ -1,0 +1,223 @@
+@page "/budgets"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+
+<PageHeader Title="Budgets" Subtitle="GL budget vs actual by period" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+<div class="cap-card mb-3">
+    <h5>New budget</h5>
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small mb-0">Name</label>
+            <input class="form-control" @bind="_create.Name" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small mb-0">Fiscal year</label>
+            <select class="form-select" @bind="_create.FiscalYearId">
+                <option value="0">Select…</option>
+                @foreach (var fy in _fiscalYears)
+                {
+                    <option value="@fy.Id">@fy.Label</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small mb-0">Notes</label>
+            <input class="form-control" @bind="_create.Notes" />
+        </div>
+        <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="CreateAsync">Create</button></div>
+    </div>
+</div>
+
+@if (_selected is not null)
+{
+    <div class="cap-card mb-3">
+        <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+            <div>
+                <label class="form-label small mb-0">Name</label>
+                <input class="form-control" @bind="_edit.Name" />
+            </div>
+            <div>
+                <label class="form-label small mb-0">Status</label>
+                <select class="form-select" @bind="_edit.Status">
+                    <option>Draft</option>
+                    <option>Active</option>
+                    <option>Closed</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label small mb-0">Notes</label>
+                <input class="form-control" @bind="_edit.Notes" />
+            </div>
+            <button class="btn btn-outline-light" @onclick="SaveHeaderAsync">Save header</button>
+            <button class="btn btn-outline-danger" @onclick="DeleteBudgetAsync">Delete</button>
+        </div>
+
+        <h6>@_selected.Name — @_selected.FiscalYearName · @_selected.Status</h6>
+        <table class="table table-cap table-striped mb-3">
+            <thead>
+                <tr>
+                    <th>Account</th><th>Period</th><th>CC</th>
+                    <th>Budget</th><th>Actual</th><th>Variance</th><th>%</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var l in _selected.Lines)
+            {
+                <tr>
+                    <td>@(l.AccountCode) @l.AccountName</td>
+                    <td>@l.PeriodName</td>
+                    <td>@(l.CostCenterCode ?? "—")</td>
+                    <td>@l.Amount.ToString("N2")</td>
+                    <td>@l.ActualAmount.ToString("N2")</td>
+                    <td>@l.Variance.ToString("N2")</td>
+                    <td>@(l.VariancePercent?.ToString("N1") ?? "—")</td>
+                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteLineAsync(l.Id)">Del</button></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <h6>Add line</h6>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Account</label>
+                <select class="form-select" @bind="_line.GlAccountId">
+                    <option value="0">Select…</option>
+                    @foreach (var a in _accounts)
+                    {
+                        <option value="@a.Id">@a.Code — @a.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Period</label>
+                <select class="form-select" @bind="_line.AccountingPeriodId">
+                    <option value="0">Select…</option>
+                    @foreach (var p in _periodsForFy)
+                    {
+                        <option value="@p.Id">@p.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Amount</label>
+                <input type="number" step="0.01" class="form-control" @bind="_line.Amount" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0">Cost center Id</label>
+                <input type="number" class="form-control" @bind="_ccId" />
+            </div>
+            <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="AddLineAsync">Add</button></div>
+        </div>
+    </div>
+}
+
+<div class="cap-card">
+    <table class="table table-cap mb-0">
+        <thead><tr><th>Name</th><th>FY</th><th>Status</th><th>Lines</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var b in _budgets ?? [])
+        {
+            <tr>
+                <td>@b.Name</td>
+                <td>@(b.FiscalYearName ?? b.FiscalYearId.ToString())</td>
+                <td>@b.Status</td>
+                <td>@b.Lines.Count</td>
+                <td><button class="btn btn-sm btn-outline-light" @onclick="() => Select(b)">Open</button></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private List<BudgetDto>? _budgets;
+    private BudgetDto? _selected;
+    private BudgetCreateRequest _create = new();
+    private BudgetUpdateRequest _edit = new();
+    private BudgetLineUpsertRequest _line = new();
+    private int? _ccId;
+    private List<GlAccountDto> _accounts = [];
+    private List<AccountingPeriodDto> _allPeriods = [];
+    private List<(int Id, string Label)> _fiscalYears = [];
+
+    private IEnumerable<AccountingPeriodDto> _periodsForFy =>
+        _selected is null ? [] : _allPeriods.Where(p => p.FiscalYearId == _selected.FiscalYearId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (coa, _, _) = await Api.GetCoaAsync();
+        _accounts = (coa ?? []).Where(a => a.IsPostable).OrderBy(a => a.Code).ToList();
+        var (periods, _, _) = await Api.GetPeriodsAsync();
+        _allPeriods = periods ?? [];
+        _fiscalYears = _allPeriods
+            .GroupBy(p => p.FiscalYearId)
+            .Select(g => (g.Key, $"FY #{g.Key} ({g.Min(x => x.StartDate):yyyy}–{g.Max(x => x.EndDate):yyyy})"))
+            .OrderByDescending(x => x.Item1)
+            .ToList();
+        if (_fiscalYears.Count > 0)
+            _create.FiscalYearId = _fiscalYears[0].Id;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+        var (data, error, _) = await Api.GetBudgetsAsync();
+        _budgets = data; _error = error; _busy = false;
+        if (_selected is not null)
+            _selected = _budgets?.FirstOrDefault(b => b.Id == _selected.Id);
+    }
+
+    private void Select(BudgetDto b)
+    {
+        _selected = b;
+        _edit = new BudgetUpdateRequest { Name = b.Name, Status = b.Status, Notes = b.Notes };
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_create.FiscalYearId <= 0) { Toast.ShowError("Select a fiscal year"); return; }
+        var (data, error, _) = await Api.CreateBudgetAsync(_create);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Budget created"); await ReloadAsync(); Select(data); }
+    }
+
+    private async Task SaveHeaderAsync()
+    {
+        if (_selected is null) return;
+        var (data, error, _) = await Api.UpdateBudgetAsync(_selected.Id, _edit);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Saved"); await ReloadAsync(); Select(data); }
+    }
+
+    private async Task AddLineAsync()
+    {
+        if (_selected is null) return;
+        _line.CostCenterId = _ccId is > 0 ? _ccId : null;
+        var (data, error, _) = await Api.AddBudgetLineAsync(_selected.Id, _line);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Line added"); await ReloadAsync(); Select(data); _line = new(); _ccId = null; }
+    }
+
+    private async Task DeleteLineAsync(int lineId)
+    {
+        if (_selected is null) return;
+        var (ok, error, _) = await Api.DeleteBudgetLineAsync(_selected.Id, lineId);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Deleted"); await ReloadAsync(); if (_selected is not null) Select(_selected); }
+    }
+
+    private async Task DeleteBudgetAsync()
+    {
+        if (_selected is null) return;
+        var (ok, error, _) = await Api.DeleteBudgetAsync(_selected.Id);
+        if (!ok) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Budget deleted"); _selected = null; await ReloadAsync(); }
+    }
+}

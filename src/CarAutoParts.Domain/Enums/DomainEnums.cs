@@ -29,3 +29,27 @@ public enum VendorQuoteStatus { Draft = 0, Received = 1, Selected = 2, Rejected 
 // Service Light (Program C1)
 public enum ServiceTicketStatus { Open = 0, InProgress = 1, Resolved = 2, Closed = 3 }
 public enum ServiceTicketPriority { Low = 0, Normal = 1, High = 2, Urgent = 3 }
+/// <summary>Thin warranty claim decision on a ticket marked IsWarrantyClaim.</summary>
+public enum WarrantyClaimStatus { None = 0, Submitted = 1, Approved = 2, Rejected = 3 }
+
+/// <summary>AMC contract lifecycle (Phase 8 Wave 1).</summary>
+public enum AmcContractStatus { Draft = 0, Active = 1, Expired = 2, Cancelled = 3 }
+
+/// <summary>Technician visit status (Phase 8 Wave 2).</summary>
+public enum ServiceVisitStatus { Scheduled = 0, InProgress = 1, Completed = 2, Cancelled = 3 }
+
+// SLA (Program C2 — Phase 8)
+public enum SlaMetric { FirstResponse = 0, Resolution = 1 }
+public enum SlaCalendarMode { AlwaysOn = 0, BusinessHours = 1 }
+public enum SlaTimerStatus { Running = 0, Paused = 1, Met = 2, Breached = 3, Cancelled = 4 }
+public enum SlaEventKind { Started = 0, Paused = 1, Resumed = 2, Warned = 3, Breached = 4, Met = 5, Cancelled = 6 }
+public enum SlaPauseReason { WaitingOnCustomer = 0, WaitingOnParts = 1, Other = 2 }
+public enum SlaEntityType
+{
+    ServiceTicket = 0,
+    SalesOrder = 1,
+    SalesInvoice = 2,
+    GoodsReceiptNote = 3,
+    PurchaseInvoice = 4,
+    InventoryLowStock = 5
+}

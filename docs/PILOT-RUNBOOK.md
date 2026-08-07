@@ -56,10 +56,11 @@ Demo users exist only when `Seed:DemoData=true` (dev). Pilots: create real users
 
 ## 6. Backup & health
 
-1. Settings/Backup or scheduled backup service — verify restore on staging once per pilot.
-2. Nightly off-box copy.
-3. After restore: `/health/ready`, open fiscal period, sample GRN→AP→POS.
-4. Rate limit / CORS issues → check DEPLOYMENT LAN notes.
+1. **Enable schedule:** Settings → Company — Auto backup on, interval hours (default 24). Confirm last backup on **/backup**.
+2. **Path:** `%LocalAppData%\CarAutoParts\Backups\` on the API host; copy nightly off-box.
+3. **Restore drill (staging):** once per pilot at cutover, then **D+7** — restore `.bak` to staging, `/health/ready`, open period, sample GRN→AP→POS. Log pass/fail.
+4. After any restore: `/health/ready`, open fiscal period, sample GRN→AP→POS.
+5. Rate limit / CORS issues → check DEPLOYMENT LAN notes. Full playbook: [DEPLOYMENT.md](DEPLOYMENT.md) § Backup / restore.
 
 ## 7. First-week support loop
 

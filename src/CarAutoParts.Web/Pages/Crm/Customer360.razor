@@ -57,6 +57,10 @@
                             <li class="mb-2 border-bottom border-secondary pb-2">
                                 <a href="@($"/service/tickets/{t.Id}")">@t.Subject</a>
                                 <span class="badge badge-soft ms-1">@TicketStatusLabel(t.Status)</span>
+                                @if (_slaBadges.TryGetValue(t.Id, out var slaBadge))
+                                {
+                                    <span class="badge badge-soft ms-1">@slaBadge</span>
+                                }
                                 @if (t.IsWarrantyClaim) { <span class="badge badge-soft ms-1">Warranty</span> }
                                 <div class="small text-secondary">@t.OpenedAt.ToLocalTime().ToString("g")</div>
                             </li>
@@ -124,6 +128,7 @@
     private string? _error;
     private Customer360Dto? _dto;
     private List<ServiceTicketDto> _tickets = new();
+    private Dictionary<int, string> _slaBadges = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,8 +138,24 @@
 
         var (tickets, _, _) = await Api.GetCustomerServiceTicketsAsync(CustomerId);
         _tickets = tickets ?? new();
+        _slaBadges = new();
+        foreach (var t in _tickets.Where(x => x.Status is 0 or 1).Take(15))
+        {
+            var (sla, _, _) = await Api.GetTicketSlaAsync(t.Id);
+            if (sla is null) continue;
+            _slaBadges[t.Id] = SlaBadge(sla);
+        }
 
         _busy = false;
+    }
+
+    private static string SlaBadge(SlaTicketSummaryDto sla)
+    {
+        if (sla.Timers.Any(t => t.Status == 3 || t.BreachedAt is not null)) return "SLA Breached";
+        if (sla.Timers.Any(t => t.WarnedAt is not null && t.Status == 0)) return "SLA Warning";
+        if (sla.Timers.Any(t => t.Status == 1)) return "SLA Paused";
+        if (sla.Timers.Any(t => t.Status == 0)) return "SLA Ok";
+        return "SLA";
     }
 
     private static string TicketStatusLabel(int status) => status switch

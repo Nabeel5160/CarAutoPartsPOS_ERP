@@ -37,6 +37,8 @@ public class CrmActivity : CompanyEntity
     public string? Notes { get; set; }
     public string? AttachmentPath { get; set; }
     public string? AttachmentName { get; set; }
+    /// <summary>Set when CRM DueAt warn notification was sent (once).</summary>
+    public DateTime? SlaWarnedAt { get; set; }
 }
 
 /// <summary>Light sales opportunity / pipeline deal (W3 links quotations).</summary>

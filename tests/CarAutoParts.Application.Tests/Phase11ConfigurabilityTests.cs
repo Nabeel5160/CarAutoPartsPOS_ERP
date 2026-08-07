@@ -112,7 +112,8 @@ public class Phase11ConfigurabilityTests
             new CurrentUserService(),
             salesEnt.Object,
             new AtpService(new EnterpriseDbAdapter(db)),
-            gate);
+            gate,
+            Mock.Of<ISalesCommissionService>());
 
         var result = await pos.CheckoutAsync(new PosCheckoutDto(
             1, null, null, "Cash", 0, null, null, null,

@@ -122,9 +122,24 @@ public class ApplicationDbContext : DbContext
     public DbSet<VendorQuote> VendorQuotes => Set<VendorQuote>();
     public DbSet<VendorQuoteLine> VendorQuoteLines => Set<VendorQuoteLine>();
     public DbSet<SalesTarget> SalesTargets => Set<SalesTarget>();
+    public DbSet<Budget> Budgets => Set<Budget>();
+    public DbSet<BudgetLine> BudgetLines => Set<BudgetLine>();
+    public DbSet<SalesCommission> SalesCommissions => Set<SalesCommission>();
 
     // Program C1 — Service Light
     public DbSet<ServiceTicket> ServiceTickets => Set<ServiceTicket>();
+    public DbSet<KbArticle> KbArticles => Set<KbArticle>();
+    public DbSet<AmcContract> AmcContracts => Set<AmcContract>();
+    public DbSet<ServiceVisit> ServiceVisits => Set<ServiceVisit>();
+    public DbSet<ServiceTicketPart> ServiceTicketParts => Set<ServiceTicketPart>();
+
+    // Program C2 — SLA
+    public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
+    public DbSet<SlaPolicyRule> SlaPolicyRules => Set<SlaPolicyRule>();
+    public DbSet<SlaTarget> SlaTargets => Set<SlaTarget>();
+    public DbSet<SlaTimer> SlaTimers => Set<SlaTimer>();
+    public DbSet<SlaEvent> SlaEvents => Set<SlaEvent>();
+    public DbSet<BusinessCalendar> BusinessCalendars => Set<BusinessCalendar>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -171,21 +171,60 @@ public class ServiceTicketTests
         return db;
     }
 
-    private static ServiceTicketService CreateSvc(ApplicationDbContext db, CurrentCompanyContext company, ICurrentUserService user)
+    internal static ServiceTicketService CreateSvc(
+        ApplicationDbContext db,
+        CurrentCompanyContext company,
+        ICurrentUserService user,
+        INotificationService? notifications = null)
     {
-        var notifications = new Mock<INotificationService>();
-        notifications.Setup(n => n.CreateNotificationAsync(
-                It.IsAny<NotificationType>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        if (notifications is null)
+        {
+            var mock = new Mock<INotificationService>();
+            mock.Setup(n => n.CreateNotificationAsync(
+                    It.IsAny<NotificationType>(), It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            notifications = mock.Object;
+        }
+
+        var clockTime = new FakeSlaClockTime { UtcNow = DateTime.UtcNow };
+        var policySvc = new SlaPolicyService(
+            new Repository<SlaPolicy>(db),
+            new Repository<SlaPolicyRule>(db),
+            new Repository<SlaTarget>(db),
+            new Repository<SlaTimer>(db),
+            new Repository<BusinessCalendar>(db),
+            new Repository<ServiceTicket>(db),
+            new Repository<Customer>(db),
+            new Repository<AppUser>(db),
+            new UnitOfWork(db),
+            company,
+            user);
+        var clock = new SlaClockService(
+            new Repository<SlaPolicy>(db),
+            new Repository<SlaPolicyRule>(db),
+            new Repository<SlaTimer>(db),
+            new Repository<SlaEvent>(db),
+            new Repository<ServiceTicket>(db),
+            new Repository<Customer>(db),
+            new Repository<BusinessCalendar>(db),
+            policySvc,
+            new UnitOfWork(db),
+            company,
+            clockTime,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SlaClockService>.Instance);
 
         return new ServiceTicketService(
             new Repository<ServiceTicket>(db),
             new Repository<Customer>(db),
             new Repository<Product>(db),
+            new Repository<AmcContract>(db),
+            new Repository<SalesInvoice>(db),
+            new Repository<SlaTimer>(db),
             new UnitOfWork(db),
             company,
             user,
-            notifications.Object);
+            notifications,
+            clock);
     }
 }

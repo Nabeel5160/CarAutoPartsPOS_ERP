@@ -152,6 +152,8 @@ public class DeliveryNoteConfiguration : IEntityTypeConfiguration<DeliveryNote>
     {
         builder.HasIndex(x => new { x.CompanyId, x.DeliveryNumber }).IsUnique();
         builder.Property(x => x.DeliveryNumber).HasMaxLength(40);
+        builder.Property(x => x.Carrier).HasMaxLength(100);
+        builder.Property(x => x.TrackingNumber).HasMaxLength(100);
         builder.HasOne(x => x.SalesOrder).WithMany().HasForeignKey(x => x.SalesOrderId);
         builder.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId);
         builder.Property(x => x.RowVersion).IsRowVersion();

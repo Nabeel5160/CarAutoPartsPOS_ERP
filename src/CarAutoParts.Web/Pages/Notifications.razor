@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject CapApiService Api
 @inject IToastService Toast
+@inject NavigationManager Nav
 
 <PageHeader Title="Notifications" Subtitle="Inbox & create alerts">
     <button class="btn btn-outline-light btn-sm" @onclick="() => LoadAsync(true)">Unread only</button>
@@ -31,6 +32,10 @@
                     <div class="small">@n.CreatedAt.ToLocalTime().ToString("g") · @n.Type</div>
                 </div>
                 <div class="cap-actions">
+                    @if (CanOpenTicket(n))
+                    {
+                        <button type="button" class="btn btn-sm btn-cap" @onclick="() => OpenRelated(n)">Open</button>
+                    }
                     @if (!n.IsRead)
                     {
                         <button type="button" class="btn btn-sm btn-outline-light" @onclick="() => MarkAsync(n.Id)">Mark read</button>
@@ -75,6 +80,16 @@
     {
         var (ok, error, _) = await Api.MarkNotificationReadAsync(id);
         if (!ok) Toast.ShowError(error ?? "Failed"); else await ReloadAsync();
+    }
+
+    private static bool CanOpenTicket(NotificationDto n) =>
+        string.Equals(n.RelatedEntityType, "ServiceTicket", StringComparison.OrdinalIgnoreCase)
+        && n.RelatedEntityId is > 0;
+
+    private void OpenRelated(NotificationDto n)
+    {
+        if (!CanOpenTicket(n)) return;
+        Nav.NavigateTo($"/service/tickets/{n.RelatedEntityId}");
     }
 
     private async Task CreateAsync()

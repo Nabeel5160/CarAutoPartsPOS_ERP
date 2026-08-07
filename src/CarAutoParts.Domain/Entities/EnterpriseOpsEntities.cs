@@ -160,6 +160,10 @@ public class DeliveryNote : CompanyEntity
     public Warehouse Warehouse { get; set; } = null!;
     public DateTime DeliveryDate { get; set; } = DateTime.UtcNow;
     public DeliveryStatus Status { get; set; } = DeliveryStatus.Draft;
+    /// <summary>Carrier / courier name (Program C2 — thin delivery tracking).</summary>
+    public string? Carrier { get; set; }
+    public string? TrackingNumber { get; set; }
+    public DateTime? EtaUtc { get; set; }
     public ICollection<DeliveryNoteLine> Lines { get; set; } = new List<DeliveryNoteLine>();
 }
 

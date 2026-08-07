@@ -198,7 +198,7 @@ public class Phase4FinanceTests
         var approvals = new Mock<IApprovalWorkflowService>();
         approvals.Setup(a => a.EnsureApprovedOrQueueAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Application.Common.Result.Success());
-        var purchase = new EnterprisePurchaseService(enterprise, company, gl, outbox.Object, approvals.Object);
+        var purchase = new EnterprisePurchaseService(enterprise, company, gl, outbox.Object, approvals.Object, OpsSlaTestDoubles.NoOp);
 
         db.PurchaseInvoices.Add(new PurchaseInvoice
         {

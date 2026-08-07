@@ -141,4 +141,60 @@ public class ServiceApiTests : IAsyncLifetime
             new ServiceTicketStatusChangeDto(ServiceTicketStatus.Open, null));
         reopen.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task Sla_Smoke_And_Policy_List_And_Ticket_Sla()
+    {
+        using var client = ServiceClient();
+
+        var smoke = await client.GetAsync("/api/service/sla/smoke");
+        smoke.StatusCode.Should().Be(HttpStatusCode.OK);
+        var smokeBody = await smoke.Content.ReadFromJsonAsync<JsonElement>();
+        smokeBody.GetProperty("ok").GetBoolean().Should().BeTrue();
+        smokeBody.GetProperty("hasDefaultSla").GetBoolean().Should().BeTrue();
+        smokeBody.GetProperty("breachesOk").GetBoolean().Should().BeTrue();
+
+        var policies = await client.GetAsync("/api/service/sla/policies");
+        policies.StatusCode.Should().Be(HttpStatusCode.OK);
+        var list = await policies.Content.ReadFromJsonAsync<List<SlaPolicyDto>>(Json);
+        list.Should().NotBeNull().And.NotBeEmpty();
+        list!.Should().Contain(p => p.IsDefault);
+
+        var create = await client.PostAsJsonAsync("/api/service/tickets",
+            new ServiceTicketCreateDto(_customerId, "SLA attach", null,
+                ServiceTicketPriority.High, false, null, null, null, null, null, null));
+        create.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ticket = await create.Content.ReadFromJsonAsync<ServiceTicketDto>(Json);
+
+        var sla = await client.GetAsync($"/api/service/tickets/{ticket!.Id}/sla");
+        sla.StatusCode.Should().Be(HttpStatusCode.OK);
+        var summary = await sla.Content.ReadFromJsonAsync<SlaTicketSummaryDto>(Json);
+        summary!.Timers.Should().HaveCount(2);
+
+        var breaches = await client.GetAsync("/api/service/sla/breaches");
+        breaches.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Sla_Pause_And_Resume_Roundtrip()
+    {
+        using var client = ServiceClient();
+        var create = await client.PostAsJsonAsync("/api/service/tickets",
+            new ServiceTicketCreateDto(_customerId, "Pause me", null,
+                ServiceTicketPriority.Normal, false, null, null, null, null, null, null));
+        var ticket = await create.Content.ReadFromJsonAsync<ServiceTicketDto>(Json);
+
+        var pause = await client.PostAsJsonAsync($"/api/service/tickets/{ticket!.Id}/sla/pause",
+            new SlaPauseDto(SlaPauseReason.WaitingOnParts, "awaiting stock"));
+        pause.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterPause = await client.GetFromJsonAsync<SlaTicketSummaryDto>($"/api/service/tickets/{ticket.Id}/sla", Json);
+        afterPause!.Timers.Should().OnlyContain(t => t.Status == SlaTimerStatus.Paused);
+
+        var resume = await client.PostAsJsonAsync($"/api/service/tickets/{ticket.Id}/sla/resume", new { });
+        resume.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterResume = await client.GetFromJsonAsync<SlaTicketSummaryDto>($"/api/service/tickets/{ticket.Id}/sla", Json);
+        afterResume!.Timers.Should().OnlyContain(t => t.Status == SlaTimerStatus.Running);
+    }
 }

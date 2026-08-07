@@ -241,7 +241,8 @@ public class Phase13CatalogDepthTests
             new CurrentUserService(),
             salesEnt.Object,
             new AtpService(new EnterpriseDbAdapter(db)),
-            PosCheckoutServiceTests.CreateFeatureGate(fitment: fitment, supersession: supersession));
+            PosCheckoutServiceTests.CreateFeatureGate(fitment: fitment, supersession: supersession),
+            Mock.Of<ISalesCommissionService>());
     }
 
     private static ProductService CreateProducts(ApplicationDbContext db)

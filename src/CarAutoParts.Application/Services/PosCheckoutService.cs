@@ -39,6 +39,7 @@ public class PosCheckoutService : IPosCheckoutService
     private readonly IEnterpriseSalesService _salesEnterprise;
     private readonly IAtpService _atp;
     private readonly IFeatureGate _features;
+    private readonly ISalesCommissionService _commissions;
 
     public PosCheckoutService(
         IRepository<Product> products,
@@ -62,7 +63,8 @@ public class PosCheckoutService : IPosCheckoutService
         ICurrentUserService currentUser,
         IEnterpriseSalesService salesEnterprise,
         IAtpService atp,
-        IFeatureGate features)
+        IFeatureGate features,
+        ISalesCommissionService commissions)
     {
         _products = products;
         _invoices = invoices;
@@ -86,6 +88,7 @@ public class PosCheckoutService : IPosCheckoutService
         _salesEnterprise = salesEnterprise;
         _atp = atp;
         _features = features;
+        _commissions = commissions;
     }
 
     /// <summary>
@@ -483,6 +486,8 @@ public class PosCheckoutService : IPosCheckoutService
 
         if (invoice is null)
             throw new InvalidOperationException("Checkout produced no invoice.");
+
+        await _commissions.RecordForInvoiceAsync(invoice, ct);
 
         // Sale is already committed. FBR must never roll back checkout — catch all failures + enqueue retry.
         var fbrEnabled = await _features.BehaviorEnabledAsync(ConfigKeys.BehFbrEnabled, ct);

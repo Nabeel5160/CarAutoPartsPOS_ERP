@@ -24,12 +24,18 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
     private readonly IEnterpriseDb _db;
     private readonly ICurrentCompanyContext _company;
     private readonly IGlPostingService _gl;
+    private readonly IOpsSlaClockService _opsSla;
 
-    public EnterpriseInventoryService(IEnterpriseDb db, ICurrentCompanyContext company, IGlPostingService gl)
+    public EnterpriseInventoryService(
+        IEnterpriseDb db,
+        ICurrentCompanyContext company,
+        IGlPostingService gl,
+        IOpsSlaClockService opsSla)
     {
         _db = db;
         _company = company;
         _gl = gl;
+        _opsSla = opsSla;
     }
 
     public async Task<PagedResult<GoodsReceiptNoteDto>> GetGrnsAsync(QuerySpec? query = null, CancellationToken ct = default)
@@ -285,6 +291,7 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
 
         _db.GoodsReceiptNotes.Add(grn);
         await _db.SaveChangesAsync(ct);
+        await _opsSla.OnGrnOpenedAsync(grn.Id, companyId, ct);
         return Result<GoodsReceiptNoteDto>.Success(MapGrn(grn));
     }
 
@@ -418,6 +425,8 @@ public sealed class EnterpriseInventoryService : IEnterpriseInventoryService
         grn.Status = holdForQc ? GrnStatus.QcHold : GrnStatus.Posted;
         grn.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
+        await _opsSla.OnGrnClosedAsync(grnId, ct);
+        await _opsSla.SyncLowStockAsync(ct: ct);
         return Result<GoodsReceiptNoteDto>.Success(MapGrn(grn));
     }
 

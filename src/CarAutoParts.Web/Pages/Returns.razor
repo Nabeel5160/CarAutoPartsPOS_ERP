@@ -42,8 +42,20 @@
     <div class="cap-card mb-3">
         <h5>Create sales credit note</h5>
         <div class="row g-2">
-            <div class="col-md-3"><label class="form-label">Invoice Id</label><input type="number" class="form-control" @bind="_sales.SalesInvoiceId" /></div>
-            <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_sales.WarehouseId" /></div>
+            <div class="col-md-3">
+                <label class="form-label">Invoice</label>
+                <select class="form-select" @bind="_sales.SalesInvoiceId">
+                    <option value="">Select…</option>
+                    @foreach (var inv in _invoices) { <option value="@inv.Id">@inv.InvoiceNumber</option> }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Warehouse</label>
+                <select class="form-select" @bind="_sales.WarehouseId">
+                    <option value="0">Select…</option>
+                    @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                </select>
+            </div>
             <div class="col-md-3"><label class="form-label">Reason code</label>
                 <select class="form-select" @bind="_sales.ReasonCode">
                     <option value="CUSTOMER">CUSTOMER</option>
@@ -57,7 +69,13 @@
                 <label class="form-check-label" for="stockAff">Affect stock (restock)</label>
             </div>
             <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_sales.Notes" /></div>
-            <div class="col-md-2"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_salesLine.ProductId" /></div>
+            <div class="col-md-2">
+                <label class="form-label">Product</label>
+                <select class="form-select" @bind="_salesLine.ProductId">
+                    <option value="0">Select…</option>
+                    @foreach (var p in _products) { <option value="@p.Id">@p.Name (@p.Sku)</option> }
+                </select>
+            </div>
             <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_salesLine.Quantity" /></div>
             <div class="col-md-2"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_salesLine.UnitPrice" /></div>
             <div class="col-md-2"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_salesLine.TaxRate" /></div>
@@ -68,8 +86,20 @@
     <div class="cap-card">
         <h5>Apply credit to invoice</h5>
         <div class="row g-2">
-            <div class="col-md-3"><label class="form-label">Sales return / CN Id</label><input type="number" class="form-control" @bind="_applyReturnId" /></div>
-            <div class="col-md-3"><label class="form-label">Invoice Id</label><input type="number" class="form-control" @bind="_applyInvoiceId" /></div>
+            <div class="col-md-3">
+                <label class="form-label">Sales return / CN</label>
+                <select class="form-select" @bind="_applyReturnId">
+                    <option value="0">Select…</option>
+                    @foreach (var r in _items?.Items ?? []) { <option value="@r.Id">@(r.CreditNoteNumber ?? r.ReturnNumber)</option> }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Invoice</label>
+                <select class="form-select" @bind="_applyInvoiceId">
+                    <option value="0">Select…</option>
+                    @foreach (var inv in _invoices) { <option value="@inv.Id">@inv.InvoiceNumber</option> }
+                </select>
+            </div>
             <div class="col-md-3"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_applyAmount" /></div>
             <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light w-100" @onclick="ApplySalesAsync">Apply</button></div>
         </div>
@@ -81,8 +111,20 @@ else
         <h5>Create supplier credit note</h5>
         <p class="text-muted small">Optionally deducts stock, reduces supplier balance, posts PurchaseReturn GL.</p>
         <div class="row g-2">
-            <div class="col-md-3"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_purchase.SupplierId" /></div>
-            <div class="col-md-3"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_purchase.WarehouseId" /></div>
+            <div class="col-md-3">
+                <label class="form-label">Supplier</label>
+                <select class="form-select" @bind="_purchase.SupplierId">
+                    <option value="0">Select…</option>
+                    @foreach (var s in _suppliers) { <option value="@s.Id">@s.Name</option> }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Warehouse</label>
+                <select class="form-select" @bind="_purchase.WarehouseId">
+                    <option value="0">Select…</option>
+                    @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                </select>
+            </div>
             <div class="col-md-3"><label class="form-label">Reason code</label>
                 <select class="form-select" @bind="_purchase.ReasonCode">
                     <option value="DEFECT">DEFECT</option>
@@ -96,7 +138,13 @@ else
                 <label class="form-check-label" for="pStock">Affect stock</label>
             </div>
             <div class="col-md-3"><label class="form-label">Notes</label><input class="form-control" @bind="_purchase.Notes" /></div>
-            <div class="col-md-2"><label class="form-label">Product Id</label><input type="number" class="form-control" @bind="_purchaseLine.ProductId" /></div>
+            <div class="col-md-2">
+                <label class="form-label">Product</label>
+                <select class="form-select" @bind="_purchaseLine.ProductId">
+                    <option value="0">Select…</option>
+                    @foreach (var p in _products) { <option value="@p.Id">@p.Name (@p.Sku)</option> }
+                </select>
+            </div>
             <div class="col-md-2"><label class="form-label">Qty</label><input type="number" class="form-control" @bind="_purchaseLine.Quantity" /></div>
             <div class="col-md-2"><label class="form-label">Unit price</label><input type="number" class="form-control" @bind="_purchaseLine.UnitPrice" /></div>
             <div class="col-md-2"><label class="form-label">Tax %</label><input type="number" class="form-control" @bind="_purchaseLine.TaxRate" /></div>
@@ -108,7 +156,13 @@ else
         <h5>Apply supplier credit to AP invoice</h5>
         <div class="row g-2">
             <div class="col-md-3"><label class="form-label">Purchase return Id</label><input type="number" class="form-control" @bind="_applyPurchaseReturnId" /></div>
-            <div class="col-md-3"><label class="form-label">Purchase invoice Id</label><input type="number" class="form-control" @bind="_applyPurchaseInvoiceId" /></div>
+            <div class="col-md-3">
+                <label class="form-label">Purchase invoice</label>
+                <select class="form-select" @bind="_applyPurchaseInvoiceId">
+                    <option value="0">Select…</option>
+                    @foreach (var inv in _apInvoices) { <option value="@inv.Id">@inv.InvoiceNumber</option> }
+                </select>
+            </div>
             <div class="col-md-3"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_applyPurchaseAmount" /></div>
             <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-light w-100" @onclick="ApplyPurchaseAsync">Apply</button></div>
         </div>
@@ -130,8 +184,26 @@ else
     private decimal _applyAmount;
     private int _applyPurchaseReturnId, _applyPurchaseInvoiceId;
     private decimal _applyPurchaseAmount;
+    private List<WarehouseDto> _warehouses = [];
+    private List<ProductListDto> _products = [];
+    private List<SupplierDto> _suppliers = [];
+    private List<SalesInvoiceListDto> _invoices = [];
+    private List<PurchaseInvoiceDto> _apInvoices = [];
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var (wh, _, _) = await Api.GetWarehousesAsync();
+        _warehouses = wh ?? [];
+        var (prod, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _products = prod?.Items ?? [];
+        var (sup, _, _) = await Api.GetSuppliersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _suppliers = sup?.Items ?? [];
+        var (inv, _, _) = await Api.GetInvoicesAsync(new QuerySpec { Page = 1, PageSize = 100 });
+        _invoices = inv?.Items ?? [];
+        var (ap, _, _) = await Api.GetApInvoicesAsync(new QuerySpec { Page = 1, PageSize = 100 });
+        _apInvoices = ap?.Items ?? [];
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

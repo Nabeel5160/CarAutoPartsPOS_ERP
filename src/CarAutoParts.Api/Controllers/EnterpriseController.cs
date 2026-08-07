@@ -176,6 +176,12 @@ public class EnterpriseController : ApiControllerBase
     public async Task<IActionResult> ShipDelivery(int id, CancellationToken ct) =>
         FromResult(await _sales.ShipDeliveryAsync(id, ct));
 
+    [HttpPut("deliveries/{id:int}/tracking")]
+    [Authorize(Policy = Permissions.DeliveriesManage)]
+    [RequireFeature(ConfigKeys.ModSalesDeliveries)]
+    public async Task<IActionResult> UpdateDeliveryTracking(int id, [FromBody] UpdateDeliveryTrackingRequest request, CancellationToken ct) =>
+        FromResult(await _sales.UpdateDeliveryTrackingAsync(id, request, ct));
+
     [HttpPost("deliveries/{id:int}/create-invoice")]
     [Authorize(Policy = Permissions.SalesView)]
     [RequireFeature(ConfigKeys.ModSalesInvoices)]

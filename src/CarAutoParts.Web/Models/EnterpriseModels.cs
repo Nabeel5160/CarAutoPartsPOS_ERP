@@ -226,6 +226,16 @@ public sealed class DeliveryNoteDto
     public int? InvoiceId { get; set; }
     public string? InvoiceNumber { get; set; }
     public bool AllLinesPicked { get; set; }
+    public string? Carrier { get; set; }
+    public string? TrackingNumber { get; set; }
+    public DateTime? EtaUtc { get; set; }
+}
+
+public sealed class UpdateDeliveryTrackingRequest
+{
+    public string? Carrier { get; set; }
+    public string? TrackingNumber { get; set; }
+    public DateTime? EtaUtc { get; set; }
 }
 
 public sealed class WholesaleSalesOrderLineDto
@@ -685,6 +695,8 @@ public sealed class SalesTargetDto
     public int PeriodMonth { get; set; }
     public decimal TargetAmount { get; set; }
     public string? Notes { get; set; }
+    public decimal ActualAmount { get; set; }
+    public decimal AttainmentPercent { get; set; }
 }
 
 public sealed class SalesTargetUpsertRequest

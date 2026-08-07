@@ -1,5 +1,118 @@
 # Enterprise Mid-Market Hardening — Changelog
 
+## 2026-08-07 — SLA expansion 1A + 2C (multi-pipeline + thin ops clocks)
+
+Reopens Light SLA freeze per [SLA-EXPANSION.md](SLA-EXPANSION.md) / [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md).
+
+- **2C Service multi-pipeline:** `SlaPolicyRule` routing; policy override on ticket create; per-policy dashboard compliance; Web rules UI + breach filters
+- **1A Thin ops clocks:** polymorphic `SlaTimer.EntityType`/`EntityId`; policies for SO / unpaid invoice / GRN / AP / low-stock; enterprise hooks + monitor low-stock sync; list badges
+- Migration `SlaExpansionMultiPipelineOpsClocks` (backfill ticket EntityId); still **no** POS-line / journal / WPF SLA
+
+## 2026-08-07 — Ops/UX polish (pickers / backup / web search)
+
+AMC verify closeout (already shipped) + Phase 13/14 ops polish.
+
+- **Pickers:** `<select>` for warehouses/products/suppliers/customers/docs on Returns, GRN, Inventory, Purchases, AP invoices, Deliveries, POS (warehouse/customer), Opening balances, Receipts
+- **Backup:** Settings wires `AutoBackupEnabled` / `AutoBackupIntervalHours`; Backup page last-backup hint; DEPLOYMENT + PILOT restore-drill playbook (path, D+7 cadence)
+- **Web global search:** topbar MVP via `WebGlobalSearchService` (products, customers, suppliers, POs, invoices; permission-aware)
+
+## 2026-08-07 — Phase 8 Service depth (AMC → visits/parts → warranty)
+
+Post-SLA leftovers for parts-shop service (portal still deferred).
+
+- **AMC:** `AmcContract` entity + `/api/service/amc` + `/service/amc`; tickets link via `AmcContractId` (customer match enforced)
+- **Visits:** `ServiceVisit` schedule/start/complete; ticket UI + `/m/service` my-visits today
+- **Parts:** `ServiceTicketPart` consume deducts inventory; ticket parts strip
+- **Warranty depth:** evidence notes, optional invoice id, replacement product/qty on approve; reject requires notes; queue filters/columns
+- Migration `Phase8ServiceDepthAmcVisitsWarranty`; tests `Phase8ServiceDepthTests`
+
+---
+
+## 2026-08-07 — Program C2: Finance / Sales depth (first ship)
+
+Per [MASTER-ROADMAP.md](MASTER-ROADMAP.md) Program C2 (not SLA). Budgets + bank auto-match + commission/targets + thin delivery tracking.
+
+- **Budgets:** `Budget` / `BudgetLine`, `IBudgetService`, `/api/v1/budgets`, Web `/budgets` with vs-actual from posted journals
+- **Bank recon:** `SuggestBankMatches` / `AutoMatchBank` (amount ± tolerance, date window, ref contains); Unclear in UI
+- **Sales:** `SalesCommission` on wholesale + POS invoice post; target attainment on `/sales-targets`; `/api/v1/sales-commissions`
+- **Deliveries:** `Carrier` / `TrackingNumber` / `EtaUtc` + tracking editor on `/deliveries`
+- Migration `ProgramC2FinanceSalesDepth`; tests `ProgramC2FinanceSalesTests`
+
+---
+
+## 2026-08-07 — Service: technician assign polish + warranty claim workflow
+
+- Ticket list assignee filter: All / Unassigned / Mine / specific user; notify on assign (create + reassign) with ServiceTicket deep-link
+- `WarrantyClaimStatus` (None/Submitted/Approved/Rejected) + decision notes/audit fields; migration `ProgramC1AssignWarrantyWorkflow`
+- `POST /api/service/tickets/{id}/warranty-decision`; Web `/service/warranty` queue + ticket detail Approve/Reject
+- Filters: `warrantyOnly`, `warrantyClaimStatus`, `unassigned`
+
+---
+
+## 2026-08-07 — Program C1+ : Knowledge base stub (Service Light)
+
+Internal staff KB only — not a customer self-service portal.
+
+- `KbArticle` (`CompanyEntity`): title, category, body, tags, `IsPublished`; migration `ProgramC1KnowledgeBaseStub`
+- `IKnowledgeBaseService` + `/api/service/kb` CRUD (view/manage permissions; `service.tickets` module)
+- Web `/service/kb` list/search/edit; ticket detail related-article strip
+- Demo seed: battery checklist + warranty filter + draft brakes article
+
+---
+
+## 2026-08-07 — SLA claim honesty lock (docs)
+
+Freeze light Service SLA scope in docs only (no code): where-SLA-is / is-not matrix + bottom line in [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md); Phase 8 evidence + audit date in [MASTER-ROADMAP.md](MASTER-ROADMAP.md); GUIDE-BUSINESS / SLA-COMPLETE-LOOP alignment. SLA remains **service tickets only** — not ERP-wide / WPF.
+
+---
+
+## 2026-08-07 — Program C2: SLA complete loop (productization)
+
+Per [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md). Service SLA surfaces + thin CRM DueAt warn — still not ERP-wide / WPF SLA.
+
+- Demo seed: default + warranty SLA policies, escalate to manager, business calendar
+- Web: Customer 360 SLA badges, dashboard breach KPIs, ticket create toast, notification Open → ticket
+- `SlaPolicyService` validates active `EscalateToUserId`; clearer escalate notification text
+- Docs: Web-only SLA admin claim (PRODUCT-POSITIONING / GUIDE-BUSINESS)
+- CRM: `CrmActivity.SlaWarnedAt` + `CrmActivityMonitorService` / hosted poll (warn once within 2h / overdue)
+- Migration `ProgramC2SlaCompleteLoopCrmWarn`; extended `/api/service/sla/smoke`; escalate + CRM warn unit tests
+
+---
+
+## 2026-08-07 — Program C2: SLA pending gaps (warranty policy, escalate, breach queue)
+
+- `SlaPolicy.ApplyToWarrantyOnly` + `EscalateToUserId` (auto-reassign stub on breach)
+- Migration `ProgramC2SlaPendingGaps`
+- `GET /api/service/sla/breaches` + Web `/service/sla/breaches`
+- API tests for SLA smoke/policy/ticket SLA/pause-resume; warranty policy unit test
+- SLA-LOOP checklists marked Done
+
+---
+
+## 2026-08-07 — Program C2: SLA service layer (W0–W5)
+
+Light SLA on Service Light tickets per [SLA-LOOP.md](SLA-LOOP.md). Not field-service / ServiceNow parity.
+
+### Domain / Data
+- `SlaPolicy`, `SlaTarget`, `SlaTimer`, `SlaEvent`, `BusinessCalendar`; `ServiceTicket.SlaPolicyId` snapshot
+- Migration `20260806230758_ProgramC2SlaFoundation`
+- Default policy auto-seeded per company (FR + Resolution targets by priority); Mon–Sat 09:00–18:00 Asia/Karachi calendar seed
+
+### Application / API
+- `ISlaPolicyService`, `ISlaClockService`, `ISlaMonitorService` + `SlaMonitorBackgroundService` (2 min poll)
+- Hooks from `ServiceTicketService` create / status change; FR completes on Open→InProgress
+- Pause/resume API; sticky breach; `slaStatus` ticket filter; dashboard + calendar endpoints
+- Routes under `/api/service/sla/*` and `/api/service/tickets/{id}/sla`
+
+### Web
+- `/service/sla` policies + calendar + compliance strip
+- Ticket detail SLA strip; list badges + filter; mobile remaining text
+
+### Tests
+- `SlaPolicyTests`, `SlaClockTests`, `SlaMonitorTests`
+
+---
+
 ## 2026-08-03 — QA loop: Program A/B/C1 smoke, regression & API coverage
 
 QA + fix pass over Light CRM (A), Ops gaps (B), and Service Light (C1). No feature code was found broken; work was additive test coverage plus one new test project. See [QA-PROGRAM-ABC.md](QA-PROGRAM-ABC.md) for the full report.
@@ -43,7 +156,7 @@ Program C (multi-quarter remainder) starts with **C1**. See [MASTER-ROADMAP.md](
 - `ServiceTicketTests` (Application layer): create ticket, company-scoped listing, status transition, resolution-notes requirement, vertical-profile module inclusion
 
 ### Honest scope note
-This is a **thin ticket workflow**, not a field-service/SLA suite: no SLA timers, no knowledge base, no service customer portal, no technician scheduling, and warranty/AMC are free-text references (not dedicated claim/contract entities). Extended (multi-day) offline was **not** attempted in this pass — see [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md).
+This is a **thin ticket workflow** as of C1 — not a field-service suite: at C1 ship there were **no** SLA timers yet (added later in Program C2 — see entries above and [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md)); still no knowledge base, no service customer portal, no technician scheduling, and warranty/AMC are free-text references (not dedicated claim/contract entities). Extended (multi-day) offline was **not** attempted in this pass.
 
 ## 2026-08-02 — CRM W0 foundation
 

@@ -111,7 +111,7 @@ public class Phase14WholesaleLoopTests
             .ReturnsAsync(Result<GlJournalDraftDto>.Success(
                 new GlJournalDraftDto(1, "JV-0001", JournalStatus.Posted, 100, 100)));
 
-        var sales = new EnterpriseSalesService(new EnterpriseDbAdapter(db), company, gl.Object, user.Object);
+        var sales = new EnterpriseSalesService(new EnterpriseDbAdapter(db), company, gl.Object, user.Object, Mock.Of<ISalesCommissionService>(), OpsSlaTestDoubles.NoOp);
         return new Harness { Db = db, Company = company, Sales = sales, User = user, Gl = gl };
     }
 

@@ -20,7 +20,7 @@
 {
     <div class="cap-card table-responsive mb-3">
         <table class="table table-cap table-striped mb-0">
-            <thead><tr><th>User</th><th>Year</th><th>Month</th><th>Target</th><th>Notes</th><th class="cap-col-actions">Actions</th></tr></thead>
+            <thead><tr><th>User</th><th>Year</th><th>Month</th><th>Target</th><th>Actual</th><th>Attain %</th><th>Notes</th><th class="cap-col-actions">Actions</th></tr></thead>
             <tbody>
             @foreach (var t in _items)
             {
@@ -29,6 +29,8 @@
                     <td>@t.PeriodYear</td>
                     <td>@t.PeriodMonth</td>
                     <td>@t.TargetAmount.ToString("N2")</td>
+                    <td>@t.ActualAmount.ToString("N2")</td>
+                    <td>@t.AttainmentPercent.ToString("N1")%</td>
                     <td>@t.Notes</td>
                     <td class="cap-col-actions">
                         <div class="cap-actions">

@@ -44,7 +44,7 @@ Access is controlled by **roles and permissions**. Staff only see menus they are
 2. Add lines → choose customer (walk-in or account).  
 3. Take payment: Cash / Card / Bank / Credit.  
 4. System posts **sale + stock deduction + accounts** together.  
-5. Optional **FBR** e-invoicing: if FBR fails, the **sale still stands** (you can retry FBR separately).  
+5. Optional **FBR** e-invoicing: if FBR fails, the **sale still stands** (you can retry FBR separately). Details: [FBR-INTEGRATION.md](FBR-INTEGRATION.md).  
 6. Shift open/close (Z/X style) and held sales for busy counters.
 
 **Manager tip:** Use keyboard shortcuts (search, add, checkout) for speed. Credit sales need customer credit limit discipline.
@@ -137,9 +137,12 @@ Optional: assignment rules by lead source, lead score, email **template copy** (
 2. Mark warranty / AMC as a **note** when needed (simple reference — not a full contract module).  
 3. Move status: Open → In progress → Resolved → Closed (resolution notes required to close).  
 4. Work tickets on **desktop** or **mobile** (`/m/service`).  
-5. See related tickets on **Customer 360**.
+5. See related tickets on **Customer 360**.  
+6. Optional: look up **Knowledge Base** articles (`Service → Knowledge Base`) while working a ticket.
 
-**Honest limit:** No SLA timers, no technician dispatch map, no customer self-service portal yet.
+**SLA (Web):** Configure policies, routing rules, and review the breach queue under **Service → SLA**. Ticket timers start on create (optional policy override). Thin ops clocks also run on selected docs (open SO, unpaid invoice, stuck GRN/AP, low stock) — not on POS lines or journals. WPF/POS does **not** manage SLA. Matrix: [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md) · [SLA-EXPANSION.md](SLA-EXPANSION.md). CRM **tasks** use due dates (optional one-shot DueAt warn) — they are **not** Service SLA policies.
+
+**Honest limit:** Light SLA (tickets + thin ops clocks) + internal KB stub shipped — still no technician dispatch map or customer self-service portal.
 
 ---
 
@@ -209,7 +212,8 @@ Say this clearly to stakeholders so expectations stay honest:
 - Not deep HR / payroll or manufacturing MRP  
 - Not marketing automation / multi-pipeline Salesforce  
 - Not multi-day offline “store runs without server”  
-- Not full field-service (SLA, portals, scheduling)  
+- Not full field-service (portals, scheduling, dispatch) — light Web SLA on tickets only; no WPF SLA screens  
+
 - Not a native App Store app (mobile is browser-based)
 
 Roadmap for later growth is tracked for product/tech teams; ask them for timelines before promising customers.
@@ -239,4 +243,4 @@ Roadmap for later growth is tracked for product/tech teams; ask them for timelin
 
 ---
 
-*Document version: 2026-08-03 — reflects CRM light, ops gaps, and Service Light as shipped.*
+*Document version: 2026-08-07 — reflects CRM light, ops gaps, Service Light + light SLA (tickets only; see PRODUCT-POSITIONING).*

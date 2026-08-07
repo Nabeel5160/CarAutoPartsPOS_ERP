@@ -20,17 +20,23 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
     private readonly ICurrentCompanyContext _company;
     private readonly IGlPostingService _gl;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISalesCommissionService _commissions;
+    private readonly IOpsSlaClockService _opsSla;
 
     public EnterpriseSalesService(
         IEnterpriseDb db,
         ICurrentCompanyContext company,
         IGlPostingService gl,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        ISalesCommissionService commissions,
+        IOpsSlaClockService opsSla)
     {
         _db = db;
         _company = company;
         _gl = gl;
         _currentUser = currentUser;
+        _commissions = commissions;
+        _opsSla = opsSla;
     }
 
     public async Task<PagedResult<SalesQuotationDto>> GetQuotationsAsync(QuerySpec? query = null, CancellationToken ct = default)
@@ -498,6 +504,8 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
         quotation.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
+        if (_company.CompanyId is int cid)
+            await _opsSla.OnSalesOrderOpenedAsync(order.Id, cid, ct);
         return Result<ConvertQuotationResultDto>.Success(
             new ConvertQuotationResultDto(order.Id, order.OrderNumber, quotation.Id, quotation.QuotationNumber));
     }
@@ -740,6 +748,37 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
         }
 
         note.Status = DeliveryStatus.Shipped;
+        note.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        string? soNumber = null;
+        if (note.SalesOrderId is int soId)
+        {
+            soNumber = await _db.SalesOrders.AsNoTracking()
+                .Where(o => o.Id == soId)
+                .Select(o => o.OrderNumber)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return Result<DeliveryNoteDto>.Success(MapDeliveryNote(note, soNumber, null, null));
+    }
+
+    public async Task<Result<DeliveryNoteDto>> UpdateDeliveryTrackingAsync(
+        int deliveryNoteId,
+        UpdateDeliveryTrackingRequest request,
+        CancellationToken ct = default)
+    {
+        if (!EnsureCompany(out _, out var error))
+            return Result<DeliveryNoteDto>.Failure(error!);
+
+        var note = await _db.DeliveryNotes.Include(d => d.Lines)
+            .FirstOrDefaultAsync(d => d.Id == deliveryNoteId && !d.IsDeleted, ct);
+        if (note is null)
+            return Result<DeliveryNoteDto>.Failure("Delivery note not found.");
+
+        note.Carrier = string.IsNullOrWhiteSpace(request.Carrier) ? null : request.Carrier.Trim();
+        note.TrackingNumber = string.IsNullOrWhiteSpace(request.TrackingNumber) ? null : request.TrackingNumber.Trim();
+        note.EtaUtc = request.EtaUtc;
         note.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
@@ -1047,6 +1086,13 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
             await _db.SaveChangesAsync(ct);
         }
 
+        if (_company.CompanyId is int companyId)
+        {
+            await _opsSla.OnSalesOrderClosedAsync(order.Id, ct);
+            if (invoice.PaymentStatus != PaymentStatus.Paid)
+                await _opsSla.OnInvoiceUnpaidAsync(invoice.Id, companyId, ct);
+        }
+
         var glLines = new List<GlPostingLineRequest>
         {
             new("Receivable", invoice.GrandTotal, true, $"AR {invoice.InvoiceNumber}")
@@ -1080,6 +1126,8 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
 
         if (!gl.Succeeded)
             return Result<WholesaleInvoiceResultDto>.Failure(gl.Error ?? "GL posting failed.");
+
+        await _commissions.RecordForInvoiceAsync(invoice, ct);
 
         return Result<WholesaleInvoiceResultDto>.Success(new WholesaleInvoiceResultDto(
             invoice.Id,
@@ -1199,7 +1247,10 @@ public sealed class EnterpriseSalesService : IEnterpriseSalesService
             l.Id, l.ProductId, l.QuantityOrdered, l.QuantityShipped, l.FromLocationId, l.IsPicked)).ToList(),
         invoiceId,
         invoiceNumber,
-        d.Lines.Count > 0 && d.Lines.All(l => l.IsPicked));
+        d.Lines.Count > 0 && d.Lines.All(l => l.IsPicked),
+        d.Carrier,
+        d.TrackingNumber,
+        d.EtaUtc);
 
     private static PriceListDto MapPriceList(PriceList p) => new(
         p.Id,

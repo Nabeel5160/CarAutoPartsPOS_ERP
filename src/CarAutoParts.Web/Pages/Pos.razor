@@ -228,7 +228,12 @@ else
     <div class="col-lg-5">
         <div class="cap-card @(_cartFlash ? "cap-pos-cart-flash" : null)">
             <h5>Cart</h5>
-            <div class="mb-2"><label class="form-label">Warehouse Id</label><input type="number" class="form-control" @bind="_warehouseId" /></div>
+            <div class="mb-2">
+                <label class="form-label">Warehouse</label>
+                <select class="form-select" @bind="_warehouseId">
+                    @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                </select>
+            </div>
             <div class="mb-2"><label class="form-label">Primary tender</label>
                 <select class="form-select" @bind="_paymentMethod">
                     <option>Cash</option><option>Card</option><option>Bank</option><option>Credit</option>
@@ -261,8 +266,11 @@ else
                 <summary class="small text-secondary">Buyer / customer / FBR</summary>
                 <div class="mt-2">
                     <div class="mb-2">
-                        <label class="form-label">Customer Id (required for Credit)</label>
-                        <input type="number" class="form-control" @bind="_customerId" />
+                        <label class="form-label">Customer (required for Credit)</label>
+                        <select class="form-select" @bind="_customerId">
+                            <option value="">Walk-in / none</option>
+                            @foreach (var c in _customers) { <option value="@c.Id">@c.Name</option> }
+                        </select>
                     </div>
                     <div class="mb-2"><label class="form-label">Buyer</label><input class="form-control" @bind="_buyer.Name" /></div>
                     <div class="mb-2"><label class="form-label">NTN / CNIC</label><input class="form-control" @bind="_buyer.NtnCnic" /></div>
@@ -419,6 +427,8 @@ else
     private PosBuyerDto _buyer = new() { Province = "Sindh", Address = "POS", RegistrationType = "Unregistered" };
     private int _warehouseId = 1;
     private int? _customerId;
+    private List<WarehouseDto> _warehouses = [];
+    private List<CustomerDto> _customers = [];
     private string? _search;
     private string _paymentMethod = "Cash";
     private string _idempotencyKey = Guid.NewGuid().ToString();
@@ -466,7 +476,10 @@ else
         var warmCatalog = LoadProductsAsync();
 
         var wh = await Api.GetWarehousesAsync();
-        if (wh.Data?.FirstOrDefault() is { } w) _warehouseId = w.Id;
+        _warehouses = wh.Data ?? [];
+        if (_warehouses.FirstOrDefault() is { } w) _warehouseId = w.Id;
+        var (cust, _, _) = await Api.GetCustomersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _customers = cust?.Items ?? [];
         await LoadTillsAsync();
         await RefreshShiftAsync();
         if (_tills.Count == 1 && _shift is null)

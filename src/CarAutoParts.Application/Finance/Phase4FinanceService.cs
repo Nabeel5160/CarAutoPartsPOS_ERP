@@ -19,6 +19,21 @@ public interface IPhase4FinanceService
     Task<Result<BankStatementDto>> AddBankStatementLineAsync(int statementId, CreateBankStatementLineRequest request, CancellationToken ct = default);
     Task<Result> MatchBankLineAsync(int statementLineId, int journalLineId, CancellationToken ct = default);
     Task<Result> UnclearBankLineAsync(int statementLineId, CancellationToken ct = default);
+    /// <summary>
+    /// Suggest matches using amount ± tolerance, date window, optional reference contains.
+    /// Thresholds are hardcoded (no rules entity yet — Program C2).
+    /// </summary>
+    Task<IReadOnlyList<BankMatchSuggestionDto>> SuggestBankMatchesAsync(
+        int statementId,
+        decimal amountTolerance = 0.01m,
+        int dateWindowDays = 3,
+        CancellationToken ct = default);
+    /// <summary>Auto-clears each suggestion with a unique best journal line (score ≥ 50).</summary>
+    Task<Result<BankAutoMatchResultDto>> AutoMatchBankAsync(
+        int statementId,
+        decimal amountTolerance = 0.01m,
+        int dateWindowDays = 3,
+        CancellationToken ct = default);
     Task<Result<BankReconReportDto>> GetBankReconReportAsync(int statementId, CancellationToken ct = default);
     Task<IReadOnlyList<BankStatementDto>> GetBankStatementsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<UnclearedBankGlLineDto>> GetUnclearedBankGlLinesAsync(DateTime? from, DateTime? to, CancellationToken ct = default);
@@ -110,6 +125,19 @@ public record UnclearedBankGlLineDto(
     decimal Debit,
     decimal Credit,
     string? Description);
+
+/// <summary>Suggested bank line ↔ GL line pair with a 0–100 score.</summary>
+public record BankMatchSuggestionDto(
+    int StatementLineId,
+    int JournalLineId,
+    string JournalNumber,
+    DateTime JournalDate,
+    decimal StatementAmount,
+    decimal GlNetAmount,
+    int Score,
+    string Reason);
+
+public record BankAutoMatchResultDto(int MatchedCount, int SkippedCount, IReadOnlyList<BankMatchSuggestionDto> Applied);
 
 public record BankReconReportDto(
     int StatementId,
@@ -507,6 +535,103 @@ public sealed class Phase4FinanceService : IPhase4FinanceService
         line.MatchedJournalLineId = null;
         await _db.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    public async Task<IReadOnlyList<BankMatchSuggestionDto>> SuggestBankMatchesAsync(
+        int statementId,
+        decimal amountTolerance = 0.01m,
+        int dateWindowDays = 3,
+        CancellationToken ct = default)
+    {
+        // Hardcoded scoring (Program C2): amount match +40, date within window +30, reference contains +30.
+        var stmt = await _db.BankStatements.AsNoTracking().Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == statementId, ct);
+        if (stmt is null) return [];
+
+        var bank = await _db.GlAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Code == BankAccountCode, ct);
+        if (bank is null) return [];
+
+        var clearedJlIds = stmt.Lines.Where(l => l.MatchedJournalLineId.HasValue)
+            .Select(l => l.MatchedJournalLineId!.Value).ToHashSet();
+        var from = stmt.PeriodStart.AddDays(-dateWindowDays);
+        var to = stmt.PeriodEnd.AddDays(dateWindowDays);
+        var unclearedGl = await GetUnclearedBankGlLinesCoreAsync(bank.Id, from, to, clearedJlIds, ct);
+        var usedJl = new HashSet<int>();
+        var suggestions = new List<BankMatchSuggestionDto>();
+
+        foreach (var line in stmt.Lines.Where(l => !l.IsCleared).OrderBy(l => l.LineDate))
+        {
+            BankMatchSuggestionDto? best = null;
+            foreach (var gl in unclearedGl.Where(g => !usedJl.Contains(g.JournalLineId)))
+            {
+                var glNet = gl.Debit - gl.Credit;
+                var score = 0;
+                var reasons = new List<string>();
+
+                if (Math.Abs(glNet - line.Amount) <= amountTolerance)
+                {
+                    score += 40;
+                    reasons.Add("amount");
+                }
+                else
+                    continue;
+
+                if (Math.Abs((gl.JournalDate.Date - line.LineDate.Date).TotalDays) <= dateWindowDays)
+                {
+                    score += 30;
+                    reasons.Add("date");
+                }
+
+                if (!string.IsNullOrWhiteSpace(line.Reference) &&
+                    ((!string.IsNullOrWhiteSpace(gl.Description) &&
+                      gl.Description.Contains(line.Reference, StringComparison.OrdinalIgnoreCase)) ||
+                     gl.JournalNumber.Contains(line.Reference, StringComparison.OrdinalIgnoreCase)))
+                {
+                    score += 30;
+                    reasons.Add("ref");
+                }
+
+                if (best is null || score > best.Score)
+                {
+                    best = new BankMatchSuggestionDto(
+                        line.Id, gl.JournalLineId, gl.JournalNumber, gl.JournalDate,
+                        line.Amount, glNet, score, string.Join("+", reasons));
+                }
+            }
+
+            if (best is not null)
+            {
+                usedJl.Add(best.JournalLineId);
+                suggestions.Add(best);
+            }
+        }
+
+        return suggestions.OrderByDescending(s => s.Score).ToList();
+    }
+
+    public async Task<Result<BankAutoMatchResultDto>> AutoMatchBankAsync(
+        int statementId,
+        decimal amountTolerance = 0.01m,
+        int dateWindowDays = 3,
+        CancellationToken ct = default)
+    {
+        var suggestions = await SuggestBankMatchesAsync(statementId, amountTolerance, dateWindowDays, ct);
+        var applied = new List<BankMatchSuggestionDto>();
+        var skipped = 0;
+        foreach (var s in suggestions)
+        {
+            if (s.Score < 50)
+            {
+                skipped++;
+                continue;
+            }
+
+            var match = await MatchBankLineAsync(s.StatementLineId, s.JournalLineId, ct);
+            if (match.Succeeded) applied.Add(s);
+            else skipped++;
+        }
+
+        return Result<BankAutoMatchResultDto>.Success(new BankAutoMatchResultDto(applied.Count, skipped, applied));
     }
 
     public async Task<Result<BankReconReportDto>> GetBankReconReportAsync(int statementId, CancellationToken ct = default)

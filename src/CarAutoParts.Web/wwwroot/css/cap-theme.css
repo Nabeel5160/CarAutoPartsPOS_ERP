@@ -442,6 +442,58 @@ code, .mono { font-family: var(--cap-font-mono); }
   z-index: 10;
 }
 
+.cap-global-search {
+  position: relative;
+  flex: 1 1 12rem;
+  max-width: 22rem;
+  min-width: 10rem;
+}
+
+.cap-global-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 20rem;
+  overflow: auto;
+  z-index: 40;
+  background: var(--cap-surface);
+  border: var(--cap-border-width) solid var(--cap-border);
+  border-radius: var(--cap-radius, 6px);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 35%, transparent);
+}
+
+.cap-global-search-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cap-global-search-item:hover,
+.cap-global-search-item:focus-visible {
+  background: color-mix(in srgb, var(--cap-accent, #d97706) 18%, transparent);
+  outline: none;
+}
+
+.cap-global-search-item span {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.cap-global-search-empty {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
 /* Desktop collapsible sidebar (icon rail). No hover flyout — rail stays in grid. */
 @media (min-width: 992px) {
   .cap-shell {

@@ -15,19 +15,22 @@ public sealed class EnterprisePurchaseService : IEnterprisePurchaseService
     private readonly IGlPostingService _glPosting;
     private readonly IOutboxWriter _outbox;
     private readonly IApprovalWorkflowService _approvals;
+    private readonly IOpsSlaClockService _opsSla;
 
     public EnterprisePurchaseService(
         IEnterpriseDb db,
         ICurrentCompanyContext company,
         IGlPostingService glPosting,
         IOutboxWriter outbox,
-        IApprovalWorkflowService approvals)
+        IApprovalWorkflowService approvals,
+        IOpsSlaClockService opsSla)
     {
         _db = db;
         _company = company;
         _glPosting = glPosting;
         _outbox = outbox;
         _approvals = approvals;
+        _opsSla = opsSla;
     }
 
     public async Task<PagedResult<PurchaseInvoiceDto>> GetPurchaseInvoicesAsync(QuerySpec? query = null, CancellationToken ct = default)
@@ -111,6 +114,7 @@ public sealed class EnterprisePurchaseService : IEnterprisePurchaseService
 
         _db.PurchaseInvoices.Add(invoice);
         await _db.SaveChangesAsync(ct);
+        await _opsSla.OnApInvoiceOpenedAsync(invoice.Id, companyId, ct);
         return Result<PurchaseInvoiceDto>.Success(MapInvoice(invoice));
     }
 
@@ -265,6 +269,7 @@ public sealed class EnterprisePurchaseService : IEnterprisePurchaseService
         invoice.Status = PurchaseInvoiceStatus.Posted;
         invoice.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
+        await _opsSla.OnApInvoiceClosedAsync(invoice.Id, ct);
 
         return Result<PurchaseInvoiceDto>.Success(MapInvoice(invoice));
     }

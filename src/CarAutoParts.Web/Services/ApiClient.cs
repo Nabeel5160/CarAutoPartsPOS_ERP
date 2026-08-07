@@ -155,8 +155,15 @@ public sealed class ApiClient
         if (string.IsNullOrWhiteSpace(text) || status == 204)
             return (default, null, status);
 
-        var data = JsonSerializer.Deserialize<T>(text, JsonOptions);
-        return (data, null, status);
+        try
+        {
+            var data = JsonSerializer.Deserialize<T>(text, JsonOptions);
+            return (data, null, status);
+        }
+        catch (JsonException ex)
+        {
+            return (default, "Invalid API response: " + ex.Message, status);
+        }
     }
 
     private static string ExtractError(string text)

@@ -78,7 +78,7 @@ public class PosCheckoutServiceTests
             new CurrentUserService(),
             salesEnt.Object,
             new AtpService(new EnterpriseDbAdapter(db)),
-            CreateFeatureGate());
+            CreateFeatureGate(), Mock.Of<ISalesCommissionService>());
 
         var products = await service.GetPosProductsAsync(null);
 

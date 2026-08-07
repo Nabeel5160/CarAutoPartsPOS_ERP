@@ -9,7 +9,13 @@
     <div class="col-lg-6">
         <div class="cap-card">
             <h5>Customer receipt</h5>
-            <div class="mb-2"><label class="form-label">Sales invoice Id</label><input type="number" class="form-control" @bind="_receipt.SalesInvoiceId" /></div>
+            <div class="mb-2">
+                <label class="form-label">Sales invoice</label>
+                <select class="form-select" @bind="_receipt.SalesInvoiceId">
+                    <option value="0">Select…</option>
+                    @foreach (var inv in _invoices) { <option value="@inv.Id">@inv.InvoiceNumber</option> }
+                </select>
+            </div>
             <div class="mb-2"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_receipt.Amount" /></div>
             <div class="mb-2"><label class="form-label">Method</label><input class="form-control" @bind="_receipt.PaymentMethod" /></div>
             <div class="mb-2"><label class="form-label">Reference</label><input class="form-control" @bind="_receipt.Reference" /></div>
@@ -23,7 +29,13 @@
     <div class="col-lg-6">
         <div class="cap-card">
             <h5>Supplier payment</h5>
-            <div class="mb-2"><label class="form-label">Supplier Id</label><input type="number" class="form-control" @bind="_payment.SupplierId" /></div>
+            <div class="mb-2">
+                <label class="form-label">Supplier</label>
+                <select class="form-select" @bind="_payment.SupplierId">
+                    <option value="0">Select…</option>
+                    @foreach (var s in _suppliers) { <option value="@s.Id">@s.Name</option> }
+                </select>
+            </div>
             <div class="mb-2"><label class="form-label">Amount</label><input type="number" class="form-control" @bind="_payment.Amount" /></div>
             <div class="mb-2"><label class="form-label">Method</label><input class="form-control" @bind="_payment.PaymentMethod" /></div>
             <div class="mb-2"><label class="form-label">Reference</label><input class="form-control" @bind="_payment.Reference" /></div>
@@ -53,6 +65,16 @@
     private PostSupplierPaymentRequest _payment = new() { PaymentMethod = "Cash" };
     private int? _receiptJournal;
     private int? _paymentJournal;
+    private List<SalesInvoiceListDto> _invoices = [];
+    private List<SupplierDto> _suppliers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (inv, _, _) = await Api.GetInvoicesAsync(new QuerySpec { Page = 1, PageSize = 100 });
+        _invoices = inv?.Items ?? [];
+        var (sup, _, _) = await Api.GetSuppliersAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _suppliers = sup?.Items ?? [];
+    }
 
     private async Task PostReceiptAsync()
     {

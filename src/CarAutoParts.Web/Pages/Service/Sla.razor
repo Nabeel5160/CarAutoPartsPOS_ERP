@@ -1,0 +1,412 @@
+@page "/service/sla"
+@attribute [Authorize]
+@inject CapApiService Api
+@inject IToastService Toast
+@inject PermissionService Perms
+
+<PageHeader Title="SLA Policies" Subtitle="Service multi-pipeline + thin ops clocks (selected docs)" />
+<LoadingState Busy="@_busy" Error="@_error" />
+
+@if (_dash is not null)
+{
+    <div class="cap-card mb-3">
+        <div class="row g-2 small">
+            <div class="col-md-3"><strong>Open breaches</strong><div>@_dash.OpenBreachCount</div></div>
+            <div class="col-md-3"><strong>Warnings</strong><div>@_dash.OpenWarnCount</div></div>
+            <div class="col-md-3"><strong>FR met (30d)</strong><div>@_dash.FirstResponseMetPercent%</div></div>
+            <div class="col-md-3"><strong>Resolution met (30d)</strong><div>@_dash.ResolutionMetPercent%</div></div>
+        </div>
+        @if (_dash.ByPolicy.Count > 0)
+        {
+            <table class="table table-cap table-sm mt-3 mb-0">
+                <thead><tr><th>Policy</th><th>Entity</th><th>FR met %</th><th>Resolution met %</th></tr></thead>
+                <tbody>
+                @foreach (var row in _dash.ByPolicy)
+                {
+                    <tr>
+                        <td>@row.PolicyName</td>
+                        <td>@EntityLabel(row.AppliesToEntityType)</td>
+                        <td>@row.FirstResponseMetPercent%</td>
+                        <td>@row.ResolutionMetPercent%</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@if (_canManage)
+{
+    <div class="cap-card mb-3">
+        <div class="row g-2 mb-2">
+            <div class="col-md-3">
+                <select class="form-select" @bind="_filterEntityType" @bind:after="LoadAsync">
+                    <option value="">All entity types</option>
+                    <option value="0">Service ticket</option>
+                    <option value="1">Sales order</option>
+                    <option value="2">Sales invoice</option>
+                    <option value="3">GRN</option>
+                    <option value="4">AP invoice</option>
+                    <option value="5">Low stock</option>
+                </select>
+            </div>
+            <div class="col-md-9"><p class="small mb-0 mt-2"><a href="/service/sla/breaches">Open breach queue →</a></p></div>
+        </div>
+        <h6>Policy</h6>
+        <div class="row g-2">
+            <div class="col-md-3"><input class="form-control" placeholder="Name" @bind="_edit.Name" /></div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_edit.AppliesToEntityType">
+                    <option value="0">Service ticket</option>
+                    <option value="1">Sales order</option>
+                    <option value="2">Sales invoice</option>
+                    <option value="3">GRN</option>
+                    <option value="4">AP invoice</option>
+                    <option value="5">Low stock</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" @bind="_edit.CalendarMode">
+                    <option value="0">Always on (24×7)</option>
+                    <option value="1">Business hours</option>
+                </select>
+            </div>
+            <div class="col-md-2 form-check mt-2">
+                <input class="form-check-input" type="checkbox" @bind="_edit.IsDefault" id="slaDef" />
+                <label class="form-check-label" for="slaDef">Default</label>
+            </div>
+            <div class="col-md-2 form-check mt-2">
+                <input class="form-check-input" type="checkbox" @bind="_edit.IsActive" id="slaAct" />
+                <label class="form-check-label" for="slaAct">Active</label>
+            </div>
+            <div class="col-md-2 form-check mt-2">
+                <input class="form-check-input" type="checkbox" @bind="_edit.ApplyToWarrantyOnly" id="slaWar" />
+                <label class="form-check-label" for="slaWar">Warranty only</label>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" @bind="_escalateUserId">
+                    <option value="0">Escalate to (none)</option>
+                    @foreach (var u in _users)
+                    {
+                        <option value="@u.Id">@(u.DisplayName ?? u.Username)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="SavePolicyAsync">Save policy</button></div>
+        </div>
+        <p class="text-secondary small mt-2 mb-1">Targets (minutes). Ops policies typically use Resolution only.</p>
+        <table class="table table-cap table-sm">
+            <thead><tr><th>Priority</th><th>First response</th><th>Resolution</th><th>Warn %</th></tr></thead>
+            <tbody>
+            @foreach (var row in _targetRows)
+            {
+                <tr>
+                    <td>@PriorityLabel(row.Priority)</td>
+                    <td><input type="number" class="form-control form-control-sm" @bind="row.FrMinutes" /></td>
+                    <td><input type="number" class="form-control form-control-sm" @bind="row.ResMinutes" /></td>
+                    <td><input type="number" class="form-control form-control-sm" @bind="row.WarnPct" /></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cap-card mb-3">
+        <h6>Saved policies</h6>
+        <table class="table table-cap table-sm mb-0">
+            <thead><tr><th>Name</th><th>Entity</th><th>Mode</th><th>Default</th><th>Rules</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in _policies)
+            {
+                <tr>
+                    <td>@p.Name</td>
+                    <td>@EntityLabel(p.AppliesToEntityType)</td>
+                    <td>@(p.CalendarMode == 1 ? "Business hours" : "Always on")</td>
+                    <td>@(p.IsDefault ? "Yes" : "")</td>
+                    <td>@p.Rules.Count</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => EditPolicy(p)">Edit</button>
+                        @if (p.AppliesToEntityType == 0)
+                        {
+                            <button class="btn btn-sm btn-outline-light" @onclick="() => SelectRulesPolicy(p)">Rules</button>
+                        }
+                        @if (!p.IsDefault && p.AppliesToEntityType == 0)
+                        {
+                            <button class="btn btn-sm btn-outline-light" @onclick="() => SetDefaultAsync(p.Id)">Make default</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @if (_rulesPolicy is not null)
+    {
+        <div class="cap-card mb-3">
+            <h6>Routing rules — @_rulesPolicy.Name</h6>
+            <p class="small text-secondary">First matching active rule (SortOrder) selects this policy on ticket create.</p>
+            <div class="row g-2 mb-2">
+                <div class="col-md-2">
+                    <select class="form-select" @bind="_rulePriority">
+                        <option value="">Priority (any)</option>
+                        <option value="0">Low</option>
+                        <option value="1">Normal</option>
+                        <option value="2">High</option>
+                        <option value="3">Urgent</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" @bind="_ruleCustomerType">
+                        <option value="">Customer type (any)</option>
+                        <option value="0">Walk-in</option>
+                        <option value="1">Regular</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" @bind="_ruleWarranty">
+                        <option value="">Warranty (any)</option>
+                        <option value="true">Warranty claim</option>
+                        <option value="false">Non-warranty</option>
+                    </select>
+                </div>
+                <div class="col-md-1"><input type="number" class="form-control" placeholder="Order" @bind="_ruleEdit.SortOrder" /></div>
+                <div class="col-md-2 form-check mt-2">
+                    <input class="form-check-input" type="checkbox" @bind="_ruleEdit.IsActive" id="ruleAct" />
+                    <label class="form-check-label" for="ruleAct">Active</label>
+                </div>
+                <div class="col-md-2"><button class="btn btn-cap w-100" @onclick="SaveRuleAsync">Save rule</button></div>
+            </div>
+            <table class="table table-cap table-sm mb-0">
+                <thead><tr><th>Order</th><th>Priority</th><th>Customer type</th><th>Warranty</th><th>Active</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var r in _rules)
+                {
+                    <tr>
+                        <td>@r.SortOrder</td>
+                        <td>@(r.Priority is int p ? PriorityLabel(p) : "Any")</td>
+                        <td>@(r.CustomerType is int ct ? (ct == 1 ? "Regular" : "Walk-in") : "Any")</td>
+                        <td>@(r.IsWarrantyClaim is null ? "Any" : (r.IsWarrantyClaim.Value ? "Yes" : "No"))</td>
+                        <td>@(r.IsActive ? "Yes" : "No")</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-light" @onclick="() => EditRule(r)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteRuleAsync(r.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="cap-card">
+        <h6>Business calendar</h6>
+        <div class="row g-2">
+            <div class="col-md-4"><input class="form-control" placeholder="Time zone" @bind="_cal.TimeZoneId" /></div>
+            <div class="col-md-8"><textarea class="form-control" rows="2" placeholder="Work intervals JSON" @bind="_cal.WorkIntervalsJson"></textarea></div>
+            <div class="col-md-8"><textarea class="form-control" rows="1" placeholder="Holidays JSON" @bind="_cal.HolidaysJson"></textarea></div>
+            <div class="col-md-2"><button class="btn btn-outline-light w-100" @onclick="SaveCalendarAsync">Save calendar</button></div>
+        </div>
+    </div>
+}
+else
+{
+    <EmptyState Title="Manage permission required" Message="service.manage needed for SLA policies." />
+}
+
+@code {
+    private bool _busy = true;
+    private string? _error;
+    private bool _canManage;
+    private string _filterEntityType = "";
+    private List<SlaPolicyDto> _policies = new();
+    private SlaDashboardDto? _dash;
+    private SlaPolicyUpsertDto _edit = NewEdit();
+    private List<TargetRow> _targetRows = DefaultRows();
+    private BusinessCalendarUpsertDto _cal = new();
+    private List<UserDto> _users = new();
+    private int _escalateUserId;
+    private SlaPolicyDto? _rulesPolicy;
+    private List<SlaPolicyRuleDto> _rules = new();
+    private SlaPolicyRuleUpsertDto _ruleEdit = NewRule();
+    private string _rulePriority = "";
+    private string _ruleCustomerType = "";
+    private string _ruleWarranty = "";
+
+    private sealed class TargetRow
+    {
+        public int Priority { get; set; }
+        public int FrMinutes { get; set; }
+        public int ResMinutes { get; set; }
+        public int WarnPct { get; set; } = 80;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _canManage = await Perms.HasAsync("service.manage");
+        var (users, _, _) = await Api.GetUsersAsync();
+        _users = users ?? new();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            int? et = int.TryParse(_filterEntityType, out var v) ? v : null;
+            var (dash, _, _) = await Api.GetSlaDashboardAsync(et);
+            _dash = dash;
+            if (_canManage)
+            {
+                var (pols, err, _) = await Api.GetSlaPoliciesAsync(et);
+                if (err is not null) _error = err;
+                _policies = pols ?? new();
+                var (cal, _, _) = await Api.GetSlaCalendarAsync();
+                if (cal is not null)
+                    _cal = new BusinessCalendarUpsertDto { TimeZoneId = cal.TimeZoneId, WorkIntervalsJson = cal.WorkIntervalsJson, HolidaysJson = cal.HolidaysJson };
+                if (_rulesPolicy is not null)
+                {
+                    _rulesPolicy = _policies.FirstOrDefault(p => p.Id == _rulesPolicy.Id);
+                    if (_rulesPolicy is not null) await LoadRulesAsync();
+                }
+                else if (_policies.FirstOrDefault(p => p.IsDefault && p.AppliesToEntityType == 0) is { } def)
+                    EditPolicy(def);
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private void EditPolicy(SlaPolicyDto p)
+    {
+        _edit = new SlaPolicyUpsertDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            IsDefault = p.IsDefault,
+            IsActive = p.IsActive,
+            CalendarMode = p.CalendarMode,
+            ApplyToWarrantyOnly = p.ApplyToWarrantyOnly,
+            EscalateToUserId = p.EscalateToUserId,
+            AppliesToEntityType = p.AppliesToEntityType
+        };
+        _escalateUserId = p.EscalateToUserId ?? 0;
+        _targetRows = Enumerable.Range(0, 4).Select(prio =>
+        {
+            var fr = p.Targets.FirstOrDefault(t => t.Priority == prio && t.Metric == 0);
+            var res = p.Targets.FirstOrDefault(t => t.Priority == prio && t.Metric == 1);
+            return new TargetRow
+            {
+                Priority = prio,
+                FrMinutes = fr?.TargetMinutes ?? 60,
+                ResMinutes = res?.TargetMinutes ?? 480,
+                WarnPct = fr?.WarnAtPercent ?? res?.WarnAtPercent ?? 80
+            };
+        }).ToList();
+    }
+
+    private async Task SelectRulesPolicy(SlaPolicyDto p)
+    {
+        _rulesPolicy = p;
+        EditPolicy(p);
+        await LoadRulesAsync();
+    }
+
+    private async Task LoadRulesAsync()
+    {
+        if (_rulesPolicy is null) return;
+        var (rules, _, _) = await Api.GetSlaPolicyRulesAsync(_rulesPolicy.Id);
+        _rules = rules ?? new();
+    }
+
+    private void EditRule(SlaPolicyRuleDto r)
+    {
+        _ruleEdit = new SlaPolicyRuleUpsertDto
+        {
+            Id = r.Id,
+            Priority = r.Priority,
+            CustomerType = r.CustomerType,
+            CustomerId = r.CustomerId,
+            IsWarrantyClaim = r.IsWarrantyClaim,
+            SortOrder = r.SortOrder,
+            IsActive = r.IsActive
+        };
+        _rulePriority = r.Priority?.ToString() ?? "";
+        _ruleCustomerType = r.CustomerType?.ToString() ?? "";
+        _ruleWarranty = r.IsWarrantyClaim is null ? "" : (r.IsWarrantyClaim.Value ? "true" : "false");
+    }
+
+    private async Task SaveRuleAsync()
+    {
+        if (_rulesPolicy is null) { Toast.ShowError("Select a ticket policy first"); return; }
+        _ruleEdit.Priority = int.TryParse(_rulePriority, out var rp) ? rp : null;
+        _ruleEdit.CustomerType = int.TryParse(_ruleCustomerType, out var rct) ? rct : null;
+        _ruleEdit.IsWarrantyClaim = _ruleWarranty switch
+        {
+            "true" => true,
+            "false" => false,
+            _ => null
+        };
+        var (_, err, _) = await Api.UpsertSlaPolicyRuleAsync(_rulesPolicy.Id, _ruleEdit);
+        if (err is not null) Toast.ShowError(err);
+        else
+        {
+            Toast.ShowSuccess("Rule saved");
+            _ruleEdit = NewRule();
+            _rulePriority = "";
+            _ruleCustomerType = "";
+            _ruleWarranty = "";
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteRuleAsync(int ruleId)
+    {
+        if (_rulesPolicy is null) return;
+        var (ok, err, _) = await Api.DeleteSlaPolicyRuleAsync(_rulesPolicy.Id, ruleId);
+        if (!ok) Toast.ShowError(err ?? "Delete failed");
+        else { Toast.ShowSuccess("Rule deleted"); await LoadAsync(); }
+    }
+
+    private async Task SavePolicyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_edit.Name)) { Toast.ShowError("Name required"); return; }
+        _edit.EscalateToUserId = _escalateUserId > 0 ? _escalateUserId : null;
+        _edit.Targets = _targetRows.SelectMany(r => new[]
+        {
+            new SlaTargetUpsertDto { Metric = 0, Priority = r.Priority, TargetMinutes = r.FrMinutes, WarnAtPercent = r.WarnPct },
+            new SlaTargetUpsertDto { Metric = 1, Priority = r.Priority, TargetMinutes = r.ResMinutes, WarnAtPercent = r.WarnPct }
+        }).ToList();
+        var (_, err, _) = await Api.UpsertSlaPolicyAsync(_edit);
+        if (err is not null) Toast.ShowError(err);
+        else { Toast.ShowSuccess("Policy saved"); _edit = NewEdit(); _escalateUserId = 0; _targetRows = DefaultRows(); await LoadAsync(); }
+    }
+
+    private async Task SetDefaultAsync(int id)
+    {
+        var (_, err, _) = await Api.SetDefaultSlaPolicyAsync(id);
+        if (err is not null) Toast.ShowError(err); else { Toast.ShowSuccess("Default updated"); await LoadAsync(); }
+    }
+
+    private async Task SaveCalendarAsync()
+    {
+        var (_, err, _) = await Api.UpsertSlaCalendarAsync(_cal);
+        if (err is not null) Toast.ShowError(err); else Toast.ShowSuccess("Calendar saved");
+    }
+
+    private static SlaPolicyUpsertDto NewEdit() => new() { Name = "", IsActive = true, IsDefault = false, AppliesToEntityType = 0 };
+    private static SlaPolicyRuleUpsertDto NewRule() => new() { SortOrder = 10, IsActive = true };
+    private static List<TargetRow> DefaultRows() => new()
+    {
+        new() { Priority = 3, FrMinutes = 30, ResMinutes = 240, WarnPct = 80 },
+        new() { Priority = 2, FrMinutes = 120, ResMinutes = 480, WarnPct = 80 },
+        new() { Priority = 1, FrMinutes = 240, ResMinutes = 1440, WarnPct = 80 },
+        new() { Priority = 0, FrMinutes = 480, ResMinutes = 2400, WarnPct = 80 },
+    };
+    private static string PriorityLabel(int p) => p switch { 0 => "Low", 1 => "Normal", 2 => "High", 3 => "Urgent", _ => p.ToString() };
+    private static string EntityLabel(int et) => et switch
+    {
+        0 => "Ticket", 1 => "SO", 2 => "Invoice", 3 => "GRN", 4 => "AP", 5 => "Low stock", _ => et.ToString()
+    };
+}

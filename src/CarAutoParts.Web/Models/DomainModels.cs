@@ -174,7 +174,8 @@ public sealed class StockMovementDto
     public string ProductName { get; set; } = string.Empty;
     public int WarehouseId { get; set; }
     public string WarehouseName { get; set; } = string.Empty;
-    public string MovementType { get; set; } = string.Empty;
+    /// <summary>API serializes <c>StockMovementType</c> as a number (0=Purchase … 4=Transfer).</summary>
+    public int MovementType { get; set; }
     public decimal Quantity { get; set; }
     public decimal UnitCost { get; set; }
     public string? ReferenceType { get; set; }
@@ -464,6 +465,10 @@ public sealed class ServiceTicketDto
     public int Priority { get; set; }
     public bool IsWarrantyClaim { get; set; }
     public string? WarrantyReference { get; set; }
+    public int WarrantyClaimStatus { get; set; }
+    public string? WarrantyDecisionNotes { get; set; }
+    public DateTime? WarrantyDecidedAt { get; set; }
+    public string? WarrantyDecidedBy { get; set; }
     public string? AmcReference { get; set; }
     public int? ProductId { get; set; }
     public string? ProductName { get; set; }
@@ -475,6 +480,13 @@ public sealed class ServiceTicketDto
     public string? Notes { get; set; }
     public string? ResolutionNotes { get; set; }
     public DateTime CreatedAt { get; set; }
+    public int? AmcContractId { get; set; }
+    public string? AmcContractNumber { get; set; }
+    public int? WarrantySalesInvoiceId { get; set; }
+    public int? ReplacementProductId { get; set; }
+    public string? ReplacementProductName { get; set; }
+    public decimal ReplacementQuantity { get; set; }
+    public string? WarrantyEvidenceNotes { get; set; }
 }
 
 public sealed class ServiceTicketCreateDto
@@ -490,6 +502,10 @@ public sealed class ServiceTicketCreateDto
     public int? AssignedToUserId { get; set; }
     public DateTime? DueAt { get; set; }
     public string? Notes { get; set; }
+    public int? AmcContractId { get; set; }
+    public int? WarrantySalesInvoiceId { get; set; }
+    public string? WarrantyEvidenceNotes { get; set; }
+    public int? SlaPolicyId { get; set; }
 }
 
 public sealed class ServiceTicketUpdateDto
@@ -504,12 +520,296 @@ public sealed class ServiceTicketUpdateDto
     public int? AssignedToUserId { get; set; }
     public DateTime? DueAt { get; set; }
     public string? Notes { get; set; }
+    public int? AmcContractId { get; set; }
+    public int? WarrantySalesInvoiceId { get; set; }
+    public string? WarrantyEvidenceNotes { get; set; }
 }
 
 public sealed class ServiceTicketStatusChangeDto
 {
     public int Status { get; set; }
     public string? ResolutionNotes { get; set; }
+}
+
+public sealed class WarrantyClaimDecisionDto
+{
+    public int Decision { get; set; }
+    public string? Notes { get; set; }
+    public int? ReplacementProductId { get; set; }
+    public decimal ReplacementQuantity { get; set; }
+}
+
+public sealed class AmcContractDto
+{
+    public int Id { get; set; }
+    public string ContractNumber { get; set; } = "";
+    public int CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public int Status { get; set; }
+    public string? CoverageNotes { get; set; }
+    public decimal? AnnualAmount { get; set; }
+    public int? ProductId { get; set; }
+    public string? ProductName { get; set; }
+}
+
+public sealed class AmcContractUpsertDto
+{
+    public int? Id { get; set; }
+    public string ContractNumber { get; set; } = "";
+    public int CustomerId { get; set; }
+    public DateTime StartDate { get; set; } = DateTime.Today;
+    public DateTime EndDate { get; set; } = DateTime.Today.AddYears(1);
+    public int Status { get; set; } = 1;
+    public string? CoverageNotes { get; set; }
+    public decimal? AnnualAmount { get; set; }
+    public int? ProductId { get; set; }
+}
+
+public sealed class ServiceVisitDto
+{
+    public int Id { get; set; }
+    public int ServiceTicketId { get; set; }
+    public string? TicketSubject { get; set; }
+    public int AssignedToUserId { get; set; }
+    public string? AssignedToUserName { get; set; }
+    public DateTime ScheduledAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int Status { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class ServiceVisitCreateDto
+{
+    public int ServiceTicketId { get; set; }
+    public int AssignedToUserId { get; set; }
+    public DateTime ScheduledAt { get; set; } = DateTime.Now.AddHours(1);
+    public string? Notes { get; set; }
+}
+
+public sealed class ServiceVisitStatusDto
+{
+    public int Status { get; set; }
+    public string? Notes { get; set; }
+}
+
+public sealed class ServiceTicketPartDto
+{
+    public int Id { get; set; }
+    public int ServiceTicketId { get; set; }
+    public int ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public int WarehouseId { get; set; }
+    public string? WarehouseName { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal? UnitCost { get; set; }
+    public DateTime ConsumedAt { get; set; }
+}
+
+public sealed class ServiceTicketPartCreateDto
+{
+    public int ServiceTicketId { get; set; }
+    public int ProductId { get; set; }
+    public int WarehouseId { get; set; }
+    public decimal Quantity { get; set; } = 1;
+}
+
+
+// Program C2 — SLA
+public sealed class SlaTargetDto
+{
+    public int Id { get; set; }
+    public int Metric { get; set; }
+    public int Priority { get; set; }
+    public int TargetMinutes { get; set; }
+    public int WarnAtPercent { get; set; } = 80;
+}
+
+public sealed class SlaPolicyDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int CalendarMode { get; set; }
+    public bool ApplyToWarrantyOnly { get; set; }
+    public int? EscalateToUserId { get; set; }
+    public int AppliesToEntityType { get; set; }
+    public List<SlaTargetDto> Targets { get; set; } = [];
+    public List<SlaPolicyRuleDto> Rules { get; set; } = [];
+}
+
+public sealed class SlaPolicyRuleDto
+{
+    public int Id { get; set; }
+    public int SlaPolicyId { get; set; }
+    public int? Priority { get; set; }
+    public int? CustomerType { get; set; }
+    public int? CustomerId { get; set; }
+    public bool? IsWarrantyClaim { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class SlaPolicyRuleUpsertDto
+{
+    public int? Id { get; set; }
+    public int? Priority { get; set; }
+    public int? CustomerType { get; set; }
+    public int? CustomerId { get; set; }
+    public bool? IsWarrantyClaim { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class SlaTargetUpsertDto
+{
+    public int Metric { get; set; }
+    public int Priority { get; set; }
+    public int TargetMinutes { get; set; }
+    public int WarnAtPercent { get; set; } = 80;
+}
+
+public sealed class SlaPolicyUpsertDto
+{
+    public int? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int CalendarMode { get; set; }
+    public bool ApplyToWarrantyOnly { get; set; }
+    public int? EscalateToUserId { get; set; }
+    public int AppliesToEntityType { get; set; }
+    public List<SlaTargetUpsertDto> Targets { get; set; } = [];
+}
+
+public sealed class KbArticleDto
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Category { get; set; }
+    public string Body { get; set; } = string.Empty;
+    public string? Tags { get; set; }
+    public bool IsPublished { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public sealed class KbArticleUpsertDto
+{
+    public int? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Category { get; set; }
+    public string Body { get; set; } = string.Empty;
+    public string? Tags { get; set; }
+    public bool IsPublished { get; set; } = true;
+}
+
+public sealed class SlaTimerSummaryDto
+{
+    public int Id { get; set; }
+    public int Metric { get; set; }
+    public int Status { get; set; }
+    public int ElapsedSeconds { get; set; }
+    public int TargetSeconds { get; set; }
+    public int WarnSeconds { get; set; }
+    public int RemainingSeconds { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? WarnedAt { get; set; }
+    public DateTime? BreachedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int? PauseReason { get; set; }
+}
+
+public sealed class SlaEventDto
+{
+    public DateTime At { get; set; }
+    public int Kind { get; set; }
+    public string? Note { get; set; }
+}
+
+public sealed class SlaTicketSummaryDto
+{
+    public int ServiceTicketId { get; set; }
+    public int? SlaPolicyId { get; set; }
+    public string? PolicyName { get; set; }
+    public int CalendarMode { get; set; }
+    public List<SlaTimerSummaryDto> Timers { get; set; } = [];
+    public List<SlaEventDto> RecentEvents { get; set; } = [];
+}
+
+public sealed class SlaPauseDto
+{
+    public int Reason { get; set; }
+    public string? Note { get; set; }
+}
+
+public sealed class SlaDashboardDto
+{
+    public int OpenBreachCount { get; set; }
+    public int OpenWarnCount { get; set; }
+    public int FirstResponseMetCount { get; set; }
+    public int FirstResponseTotalCount { get; set; }
+    public int ResolutionMetCount { get; set; }
+    public int ResolutionTotalCount { get; set; }
+    public double FirstResponseMetPercent { get; set; }
+    public double ResolutionMetPercent { get; set; }
+    public List<SlaPolicyComplianceDto> ByPolicy { get; set; } = [];
+}
+
+public sealed class SlaPolicyComplianceDto
+{
+    public int SlaPolicyId { get; set; }
+    public string PolicyName { get; set; } = string.Empty;
+    public int AppliesToEntityType { get; set; }
+    public double FirstResponseMetPercent { get; set; }
+    public double ResolutionMetPercent { get; set; }
+    public int FirstResponseTotalCount { get; set; }
+    public int ResolutionTotalCount { get; set; }
+}
+
+public sealed class BusinessCalendarDto
+{
+    public int Id { get; set; }
+    public string TimeZoneId { get; set; } = "Asia/Karachi";
+    public string WorkIntervalsJson { get; set; } = "[]";
+    public string HolidaysJson { get; set; } = "[]";
+}
+
+public sealed class BusinessCalendarUpsertDto
+{
+    public string TimeZoneId { get; set; } = "Asia/Karachi";
+    public string WorkIntervalsJson { get; set; } = "[]";
+    public string HolidaysJson { get; set; } = "[]";
+}
+
+public sealed class SlaBreachQueueItemDto
+{
+    public int? TicketId { get; set; }
+    public string Subject { get; set; } = string.Empty;
+    public int? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public int? TicketStatus { get; set; }
+    public int? Priority { get; set; }
+    public int Metric { get; set; }
+    public DateTime BreachedAt { get; set; }
+    public int ElapsedSeconds { get; set; }
+    public int TargetSeconds { get; set; }
+    public int? AssignedToUserId { get; set; }
+    public int EntityType { get; set; }
+    public int EntityId { get; set; }
+    public int SlaPolicyId { get; set; }
+    public string? PolicyName { get; set; }
+    public string? DeepLink { get; set; }
+}
+
+public sealed class SlaEntityAlertDto
+{
+    public int EntityType { get; set; }
+    public int EntityId { get; set; }
+    public bool IsBreached { get; set; }
+    public bool IsWarned { get; set; }
 }
 
 public sealed class LedgerEntryDto
@@ -1353,6 +1653,8 @@ public sealed class NotificationDto
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public bool IsRead { get; set; }
+    public string? RelatedEntityType { get; set; }
+    public int? RelatedEntityId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

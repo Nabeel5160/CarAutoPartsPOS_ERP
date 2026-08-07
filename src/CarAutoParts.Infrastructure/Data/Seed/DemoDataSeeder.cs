@@ -23,8 +23,10 @@ public class DemoDataSeeder
     {
         if (await _db.Products.AnyAsync(ct))
         {
-            _logger.LogInformation("Demo data already present; skipping.");
+            _logger.LogInformation("Demo catalog already present; ensuring users + CRM/service/RFQ dummy packs.");
+            await SeedDemoUsersAsync(ct);
             await AssignDefaultBranchAclAsync(ct);
+            await SeedExtendedDemoAsync(ct);
             return;
         }
 
@@ -35,8 +37,10 @@ public class DemoDataSeeder
 
         if (!string.Equals(vertical, "auto-parts", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogInformation("Skipping auto-parts demo products for vertical {Vertical}.", vertical);
+            _logger.LogInformation("Skipping auto-parts demo products for vertical {Vertical}; seeding extended packs only.", vertical);
+            await SeedDemoUsersAsync(ct);
             await AssignDefaultBranchAclAsync(ct);
+            await SeedExtendedDemoAsync(ct);
             return;
         }
 
@@ -57,9 +61,419 @@ public class DemoDataSeeder
         await SeedSerialNumbersAsync(products, mainWarehouse, ct);
         await SeedNotificationsAsync(products, ct);
         await SeedDemoUsersAsync(ct);
+        await AssignDefaultBranchAclAsync(ct);
+        await SeedExtendedDemoAsync(ct);
 
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Demo data seeding completed.");
+    }
+
+    /// <summary>
+    /// Idempotent CRM / Service / RFQ / sales-target sample rows for demos (safe when catalog already exists).
+    /// </summary>
+    private async Task SeedExtendedDemoAsync(CancellationToken ct)
+    {
+        if (await _db.Leads.IgnoreQueryFilters().AnyAsync(l => l.CreatedBy == SeedUser && l.Name.StartsWith("DEMO "), ct))
+        {
+            _logger.LogInformation("Extended demo packs (CRM+) already present; skipping.");
+            var existingCompanyId = await _db.Companies.AsNoTracking()
+                .Where(c => c.IsActive).Select(c => c.Id).FirstOrDefaultAsync(ct);
+            if (existingCompanyId > 0)
+            {
+                await EnsureSlaDemoPoliciesAsync(existingCompanyId, ct);
+                await EnsureKbDemoArticlesAsync(existingCompanyId, ct);
+            }
+            return;
+        }
+
+        var companyId = await _db.Companies.AsNoTracking()
+            .Where(c => c.IsActive)
+            .Select(c => c.Id)
+            .FirstOrDefaultAsync(ct);
+        if (companyId <= 0)
+        {
+            _logger.LogWarning("No company for extended demo seed.");
+            return;
+        }
+
+        var customers = await _db.Customers.AsNoTracking().Where(c => !c.IsDeleted).OrderBy(c => c.Id).Take(5).ToListAsync(ct);
+        if (customers.Count == 0)
+        {
+            customers = await SeedCustomersAsync(ct);
+        }
+
+        var products = await _db.Products.AsNoTracking().Where(p => !p.IsDeleted).OrderBy(p => p.Id).Take(5).ToListAsync(ct);
+        var suppliers = await _db.Suppliers.AsNoTracking().Where(s => !s.IsDeleted).OrderBy(s => s.Id).Take(3).ToListAsync(ct);
+        var salesUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == "sales", ct)
+            ?? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == "admin", ct);
+        var managerUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == "manager", ct) ?? salesUser;
+
+        // --- CRM leads ---
+        var leadNew = new Lead
+        {
+            CompanyId = companyId,
+            Name = "DEMO Ali Brake Inquiry",
+            Phone = "+92-301-5550001",
+            Email = "ali.brakes@demo.local",
+            Source = "Walk-in",
+            Status = LeadStatus.New,
+            Notes = "Needs ceramic pads for Corolla 2018",
+            OwnerUserId = salesUser?.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            CreatedBy = SeedUser
+        };
+        var leadQualified = new Lead
+        {
+            CompanyId = companyId,
+            Name = "DEMO City Fleet Quote",
+            Phone = "+92-301-5550002",
+            Email = "fleet@citydemo.local",
+            Source = "WhatsApp",
+            Status = LeadStatus.Qualified,
+            Notes = "Bulk oil filters for 12 vehicles",
+            OwnerUserId = salesUser?.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-5),
+            CreatedBy = SeedUser
+        };
+        var leadConverted = new Lead
+        {
+            CompanyId = companyId,
+            Name = "DEMO Converted Workshop",
+            Phone = customers[0].Phone ?? "+92-301-5550003",
+            Email = customers[0].Email,
+            Source = "Referral",
+            Status = LeadStatus.Converted,
+            ConvertedCustomerId = customers[0].Id,
+            Notes = "Converted to existing customer",
+            OwnerUserId = managerUser?.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-10),
+            CreatedBy = SeedUser
+        };
+        var leadLost = new Lead
+        {
+            CompanyId = companyId,
+            Name = "DEMO Lost Price Shopper",
+            Phone = "+92-301-5550004",
+            Source = "Phone",
+            Status = LeadStatus.Lost,
+            LostReason = "Bought elsewhere on price",
+            OwnerUserId = salesUser?.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-7),
+            CreatedBy = SeedUser
+        };
+        _db.Leads.AddRange(leadNew, leadQualified, leadConverted, leadLost);
+        await _db.SaveChangesAsync(ct);
+
+        // --- Opportunities ---
+        var oppQuoted = new Opportunity
+        {
+            CompanyId = companyId,
+            Name = "DEMO Fleet filters deal",
+            LeadId = leadQualified.Id,
+            CustomerId = customers.Count > 1 ? customers[1].Id : customers[0].Id,
+            Stage = OpportunityStage.Quoted,
+            Value = 185000m,
+            Probability = 40,
+            ExpectedCloseDate = DateTime.UtcNow.Date.AddDays(14),
+            StageChangedAt = DateTime.UtcNow.AddDays(-1),
+            CreatedAt = DateTime.UtcNow.AddDays(-4),
+            CreatedBy = SeedUser
+        };
+        var oppNeg = new Opportunity
+        {
+            CompanyId = companyId,
+            Name = "DEMO Workshop brake kit",
+            LeadId = leadConverted.Id,
+            CustomerId = customers[0].Id,
+            Stage = OpportunityStage.Negotiation,
+            Value = 42000m,
+            Probability = 60,
+            ExpectedCloseDate = DateTime.UtcNow.Date.AddDays(7),
+            StageChangedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow.AddDays(-3),
+            CreatedBy = SeedUser
+        };
+        _db.Opportunities.AddRange(oppQuoted, oppNeg);
+        await _db.SaveChangesAsync(ct);
+
+        _db.OpportunityStageHistories.AddRange(
+            new OpportunityStageHistory
+            {
+                CompanyId = companyId,
+                OpportunityId = oppQuoted.Id,
+                FromStage = OpportunityStage.Prospect,
+                ToStage = OpportunityStage.Quoted,
+                ChangedBy = SeedUser,
+                ChangedAt = DateTime.UtcNow.AddDays(-1),
+                Note = "Demo quote sent",
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                CreatedBy = SeedUser
+            },
+            new OpportunityStageHistory
+            {
+                CompanyId = companyId,
+                OpportunityId = oppNeg.Id,
+                FromStage = OpportunityStage.Quoted,
+                ToStage = OpportunityStage.Negotiation,
+                ChangedBy = SeedUser,
+                ChangedAt = DateTime.UtcNow,
+                Note = "Demo price discussion",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            });
+
+        // --- Activities ---
+        _db.CrmActivities.AddRange(
+            new CrmActivity
+            {
+                CompanyId = companyId,
+                Type = CrmActivityType.Call,
+                Subject = "DEMO Call back — brake inquiry",
+                DueAt = DateTime.UtcNow.Date.AddHours(11),
+                LeadId = leadNew.Id,
+                AssignedToUserId = salesUser?.Id,
+                Notes = "Confirm pad grade",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            },
+            new CrmActivity
+            {
+                CompanyId = companyId,
+                Type = CrmActivityType.Task,
+                Subject = "DEMO Follow up fleet quote",
+                DueAt = DateTime.UtcNow.Date.AddDays(-1).AddHours(16),
+                LeadId = leadQualified.Id,
+                CustomerId = customers.Count > 1 ? customers[1].Id : null,
+                AssignedToUserId = salesUser?.Id,
+                Notes = "Overdue demo task",
+                CreatedAt = DateTime.UtcNow.AddDays(-2),
+                CreatedBy = SeedUser
+            },
+            new CrmActivity
+            {
+                CompanyId = companyId,
+                Type = CrmActivityType.WhatsApp,
+                Subject = "DEMO WhatsApp — delivery ETA",
+                DueAt = DateTime.UtcNow.AddDays(1),
+                CustomerId = customers[0].Id,
+                AssignedToUserId = managerUser?.Id,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            },
+            new CrmActivity
+            {
+                CompanyId = companyId,
+                Type = CrmActivityType.Meeting,
+                Subject = "DEMO Site visit — Hassan Fleet",
+                DueAt = DateTime.UtcNow.Date.AddDays(2).AddHours(10),
+                CustomerId = customers.Count > 3 ? customers[3].Id : customers[0].Id,
+                AssignedToUserId = salesUser?.Id,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            });
+
+        _db.CrmAssignmentRules.Add(new CrmAssignmentRule
+        {
+            CompanyId = companyId,
+            Source = "Walk-in",
+            OwnerUserId = salesUser?.Id,
+            IsDefault = true,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = SeedUser
+        });
+
+        _db.CrmEmailTemplates.Add(new CrmEmailTemplate
+        {
+            CompanyId = companyId,
+            Name = "DEMO Quote follow-up",
+            Subject = "Your parts quotation from CAP Demo Motors",
+            Body = "Assalam o Alaikum,\n\nPlease find our quotation attached. Reply on WhatsApp for any change.\n\nRegards,\nSales Team",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = SeedUser
+        });
+
+        // --- Service tickets ---
+        _db.ServiceTickets.AddRange(
+            new ServiceTicket
+            {
+                CompanyId = companyId,
+                CustomerId = customers[0].Id,
+                Subject = "DEMO Warranty — noisy brake pads",
+                Description = "Customer reports squeal after 2 weeks. Check fitment.",
+                Status = ServiceTicketStatus.Open,
+                Priority = ServiceTicketPriority.High,
+                IsWarrantyClaim = true,
+                WarrantyClaimStatus = WarrantyClaimStatus.Submitted,
+                WarrantyReference = "WR-DEMO-1001",
+                ProductId = products.FirstOrDefault()?.Id,
+                AssignedToUserId = salesUser?.Id,
+                OpenedAt = DateTime.UtcNow.AddDays(-1),
+                DueAt = DateTime.UtcNow.AddDays(2),
+                Notes = "Demo open ticket",
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                CreatedBy = SeedUser
+            },
+            new ServiceTicket
+            {
+                CompanyId = companyId,
+                CustomerId = customers.Count > 1 ? customers[1].Id : customers[0].Id,
+                Subject = "DEMO AMC oil service reminder",
+                Description = "Quarterly AMC visit due.",
+                Status = ServiceTicketStatus.InProgress,
+                Priority = ServiceTicketPriority.Normal,
+                AmcReference = "AMC-DEMO-220",
+                AssignedToUserId = managerUser?.Id,
+                OpenedAt = DateTime.UtcNow.AddDays(-3),
+                DueAt = DateTime.UtcNow.AddDays(1),
+                CreatedAt = DateTime.UtcNow.AddDays(-3),
+                CreatedBy = SeedUser
+            },
+            new ServiceTicket
+            {
+                CompanyId = companyId,
+                CustomerId = customers.Count > 2 ? customers[2].Id : customers[0].Id,
+                Subject = "DEMO Resolved — wrong filter supplied",
+                Description = "Exchanged OF filter under goodwill.",
+                Status = ServiceTicketStatus.Resolved,
+                Priority = ServiceTicketPriority.Low,
+                ProductId = products.Skip(1).FirstOrDefault()?.Id,
+                OpenedAt = DateTime.UtcNow.AddDays(-8),
+                ResolvedAt = DateTime.UtcNow.AddDays(-6),
+                ResolutionNotes = "Exchanged and closed demo case",
+                CreatedAt = DateTime.UtcNow.AddDays(-8),
+                CreatedBy = SeedUser
+            });
+
+        await EnsureSlaDemoPoliciesAsync(companyId, ct);
+        await EnsureKbDemoArticlesAsync(companyId, ct);
+
+        // --- Sales targets ---
+        if (salesUser is not null)
+        {
+            var now = DateTime.UtcNow;
+            if (!await _db.SalesTargets.IgnoreQueryFilters().AnyAsync(
+                    t => t.UserId == salesUser.Id && t.PeriodYear == now.Year && t.PeriodMonth == now.Month, ct))
+            {
+                _db.SalesTargets.Add(new SalesTarget
+                {
+                    CompanyId = companyId,
+                    UserId = salesUser.Id,
+                    PeriodYear = now.Year,
+                    PeriodMonth = now.Month,
+                    TargetAmount = 500000m,
+                    Notes = "DEMO monthly target",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                });
+            }
+        }
+
+        // --- Thin RFQ with two vendor quotes ---
+        if (products.Count > 0 && suppliers.Count >= 2
+            && !await _db.PurchaseRfqs.IgnoreQueryFilters().AnyAsync(r => r.CreatedBy == SeedUser, ct))
+        {
+            var rfq = new PurchaseRfq
+            {
+                CompanyId = companyId,
+                RfqNumber = $"RFQ-DEMO-{DateTime.UtcNow:yyyyMMdd}",
+                Status = PurchaseRfqStatus.QuotesReceived,
+                RfqDate = DateTime.UtcNow.AddDays(-3),
+                ResponseDeadline = DateTime.UtcNow.AddDays(4),
+                Notes = "DEMO RFQ for oil filters compare",
+                CreatedAt = DateTime.UtcNow.AddDays(-3),
+                CreatedBy = SeedUser
+            };
+            _db.PurchaseRfqs.Add(rfq);
+            await _db.SaveChangesAsync(ct);
+
+            var line = new PurchaseRfqLine
+            {
+                CompanyId = companyId,
+                PurchaseRfqId = rfq.Id,
+                ProductId = products[0].Id,
+                Quantity = 50,
+                Notes = "Demo qty",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            _db.PurchaseRfqLines.Add(line);
+            await _db.SaveChangesAsync(ct);
+
+            var q1 = new VendorQuote
+            {
+                CompanyId = companyId,
+                PurchaseRfqId = rfq.Id,
+                SupplierId = suppliers[0].Id,
+                Status = VendorQuoteStatus.Received,
+                QuoteDate = DateTime.UtcNow.AddDays(-1),
+                ValidUntil = DateTime.UtcNow.AddDays(10),
+                Notes = "DEMO quote A",
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                CreatedBy = SeedUser
+            };
+            var q2 = new VendorQuote
+            {
+                CompanyId = companyId,
+                PurchaseRfqId = rfq.Id,
+                SupplierId = suppliers[1].Id,
+                Status = VendorQuoteStatus.Received,
+                QuoteDate = DateTime.UtcNow.AddDays(-1),
+                ValidUntil = DateTime.UtcNow.AddDays(10),
+                Notes = "DEMO quote B",
+                CreatedAt = DateTime.UtcNow.AddDays(-1),
+                CreatedBy = SeedUser
+            };
+            _db.VendorQuotes.AddRange(q1, q2);
+            await _db.SaveChangesAsync(ct);
+
+            _db.VendorQuoteLines.AddRange(
+                new VendorQuoteLine
+                {
+                    CompanyId = companyId,
+                    VendorQuoteId = q1.Id,
+                    ProductId = products[0].Id,
+                    Quantity = 50,
+                    UnitPrice = 420m,
+                    LeadTimeDays = 3,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                },
+                new VendorQuoteLine
+                {
+                    CompanyId = companyId,
+                    VendorQuoteId = q2.Id,
+                    ProductId = products[0].Id,
+                    Quantity = 50,
+                    UnitPrice = 395m,
+                    LeadTimeDays = 5,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                });
+        }
+
+        // Commission % on first regular customer
+        var commissionCustomer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == customers[0].Id, ct);
+        if (commissionCustomer is not null && commissionCustomer.CommissionPercent <= 0)
+        {
+            commissionCustomer.CommissionPercent = 2.5m;
+            commissionCustomer.UpdatedAt = DateTime.UtcNow;
+            commissionCustomer.UpdatedBy = SeedUser;
+        }
+
+        _db.Notifications.Add(new AppNotification
+        {
+            Type = NotificationType.Success,
+            Title = "Dummy CRM / Service data loaded",
+            Message = "Sample leads, pipeline deals, tasks, service tickets, RFQ, and sales target are ready.",
+            IsRead = false,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = SeedUser
+        });
+
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("Extended demo packs seeded (CRM, Service, RFQ, targets).");
     }
 
     private async Task<Warehouse> SeedBranchWarehouseAsync(CancellationToken ct)
@@ -630,6 +1044,198 @@ public class DemoDataSeeder
                 Title = "Demo data loaded",
                 Message = "Sample products, orders, and sales history are ready for testing.",
                 IsRead = false,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            });
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureSlaDemoPoliciesAsync(int companyId, CancellationToken ct)
+    {
+        var managerUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == "manager", ct)
+            ?? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == "admin", ct);
+
+        if (!await _db.SlaPolicies.IgnoreQueryFilters().AnyAsync(p => p.CompanyId == companyId && !p.IsDeleted, ct))
+        {
+            var def = new SlaPolicy
+            {
+                CompanyId = companyId,
+                Name = "Default Service SLA",
+                IsDefault = true,
+                IsActive = true,
+                CalendarMode = SlaCalendarMode.AlwaysOn,
+                EscalateToUserId = managerUser?.Id,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            void AddTarget(SlaPolicy pol, SlaMetric metric, ServiceTicketPriority priority, int minutes) =>
+                pol.Targets.Add(new SlaTarget
+                {
+                    CompanyId = companyId,
+                    Metric = metric,
+                    Priority = priority,
+                    TargetMinutes = minutes,
+                    WarnAtPercent = 80,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                });
+            foreach (ServiceTicketPriority prio in Enum.GetValues<ServiceTicketPriority>())
+            {
+                var fr = prio switch
+                {
+                    ServiceTicketPriority.Urgent => 30,
+                    ServiceTicketPriority.High => 120,
+                    ServiceTicketPriority.Normal => 240,
+                    _ => 480
+                };
+                var res = prio switch
+                {
+                    ServiceTicketPriority.Urgent => 240,
+                    ServiceTicketPriority.High => 480,
+                    ServiceTicketPriority.Normal => 1440,
+                    _ => 2400
+                };
+                AddTarget(def, SlaMetric.FirstResponse, prio, fr);
+                AddTarget(def, SlaMetric.Resolution, prio, res);
+            }
+            _db.SlaPolicies.Add(def);
+
+            var warranty = new SlaPolicy
+            {
+                CompanyId = companyId,
+                Name = "DEMO Warranty SLA",
+                IsDefault = false,
+                IsActive = true,
+                CalendarMode = SlaCalendarMode.AlwaysOn,
+                ApplyToWarrantyOnly = true,
+                EscalateToUserId = managerUser?.Id,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            foreach (ServiceTicketPriority prio in Enum.GetValues<ServiceTicketPriority>())
+            {
+                var fr = prio switch
+                {
+                    ServiceTicketPriority.Urgent => 10,
+                    ServiceTicketPriority.High => 15,
+                    ServiceTicketPriority.Normal => 30,
+                    _ => 60
+                };
+                var res = prio switch
+                {
+                    ServiceTicketPriority.Urgent => 30,
+                    ServiceTicketPriority.High => 60,
+                    ServiceTicketPriority.Normal => 120,
+                    _ => 240
+                };
+                AddTarget(warranty, SlaMetric.FirstResponse, prio, fr);
+                AddTarget(warranty, SlaMetric.Resolution, prio, res);
+            }
+            _db.SlaPolicies.Add(warranty);
+        }
+        else if (managerUser is not null)
+        {
+            var policies = await _db.SlaPolicies.IgnoreQueryFilters()
+                .Where(p => p.CompanyId == companyId && !p.IsDeleted && p.EscalateToUserId == null)
+                .ToListAsync(ct);
+            foreach (var p in policies)
+                p.EscalateToUserId = managerUser.Id;
+        }
+
+        if (!await _db.SlaPolicies.IgnoreQueryFilters().AnyAsync(
+                p => p.CompanyId == companyId && !p.IsDeleted && p.ApplyToWarrantyOnly, ct))
+        {
+            // Warranty policy may be missing if only EnsureDefaultPolicyAsync ran earlier
+            var w = new SlaPolicy
+            {
+                CompanyId = companyId,
+                Name = "DEMO Warranty SLA",
+                IsDefault = false,
+                IsActive = true,
+                ApplyToWarrantyOnly = true,
+                EscalateToUserId = managerUser?.Id,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            };
+            foreach (ServiceTicketPriority prio in Enum.GetValues<ServiceTicketPriority>())
+            {
+                w.Targets.Add(new SlaTarget
+                {
+                    CompanyId = companyId,
+                    Metric = SlaMetric.FirstResponse,
+                    Priority = prio,
+                    TargetMinutes = 15,
+                    WarnAtPercent = 80,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                });
+                w.Targets.Add(new SlaTarget
+                {
+                    CompanyId = companyId,
+                    Metric = SlaMetric.Resolution,
+                    Priority = prio,
+                    TargetMinutes = 60,
+                    WarnAtPercent = 80,
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = SeedUser
+                });
+            }
+            _db.SlaPolicies.Add(w);
+        }
+
+        if (!await _db.BusinessCalendars.IgnoreQueryFilters().AnyAsync(c => c.CompanyId == companyId && !c.IsDeleted, ct))
+        {
+            _db.BusinessCalendars.Add(new BusinessCalendar
+            {
+                CompanyId = companyId,
+                TimeZoneId = "Asia/Karachi",
+                WorkIntervalsJson = """[{"dow":1,"start":"09:00","end":"18:00"},{"dow":2,"start":"09:00","end":"18:00"},{"dow":3,"start":"09:00","end":"18:00"},{"dow":4,"start":"09:00","end":"18:00"},{"dow":5,"start":"09:00","end":"18:00"},{"dow":6,"start":"09:00","end":"18:00"}]""",
+                HolidaysJson = "[]",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureKbDemoArticlesAsync(int companyId, CancellationToken ct)
+    {
+        if (await _db.KbArticles.IgnoreQueryFilters().AnyAsync(a => a.CompanyId == companyId && !a.IsDeleted, ct))
+            return;
+
+        _db.KbArticles.AddRange(
+            new KbArticle
+            {
+                CompanyId = companyId,
+                Title = "DEMO — Battery no-start checklist",
+                Category = "Electrical",
+                Tags = "battery,start,warranty",
+                Body = "1. Confirm battery voltage ≥ 12.4V.\n2. Check terminal corrosion.\n3. Load-test before warranty swap.\n4. Log serial on ticket notes.",
+                IsPublished = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            },
+            new KbArticle
+            {
+                CompanyId = companyId,
+                Title = "DEMO — Oil filter warranty exchange",
+                Category = "Warranty",
+                Tags = "filter,warranty,oil",
+                Body = "Accept OEM or branded filters with receipt within 30 days.\nInspect for cross-thread damage before approving exchange.\nUpdate WarrantyReference on the ticket.",
+                IsPublished = true,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = SeedUser
+            },
+            new KbArticle
+            {
+                CompanyId = companyId,
+                Title = "DEMO — Brake pad noise triage (draft)",
+                Category = "Brakes",
+                Tags = "brakes,noise",
+                Body = "Ask for rotor score depth and pad remaining mm. Draft — not for customer share.",
+                IsPublished = false,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = SeedUser
             });

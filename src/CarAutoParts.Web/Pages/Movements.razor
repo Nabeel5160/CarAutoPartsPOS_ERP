@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inject CapApiService Api
 
-<PageHeader Title="Stock Movements" Subtitle="GET /api/inventory/movements" />
+<PageHeader Title="Stock Movements" Subtitle="Purchase, sale, return, adjustment, and transfer history" />
 <LoadingState Busy="@_busy" Error="@_error" />
 
 @if (_items is not null)
@@ -15,9 +15,12 @@
             {
                 <tr>
                     <td>@m.MovementDate.ToLocalTime().ToString("g")</td>
-                    <td>@m.ProductName</td><td>@m.WarehouseName</td><td>@m.MovementType</td>
-                    <td>@m.Quantity</td><td>@m.UnitCost.ToString("N2")</td>
-                    <td>@m.ReferenceType #@m.ReferenceId</td>
+                    <td>@m.ProductName</td>
+                    <td>@m.WarehouseName</td>
+                    <td><span class="badge badge-soft">@TypeLabel(m.MovementType)</span></td>
+                    <td>@m.Quantity.ToString("N2")</td>
+                    <td>@m.UnitCost.ToString("N2")</td>
+                    <td>@(string.IsNullOrEmpty(m.ReferenceType) ? "—" : $"{m.ReferenceType} #{m.ReferenceId}")</td>
                 </tr>
             }
             </tbody>
@@ -39,10 +42,31 @@
     private async Task LoadAsync()
     {
         _busy = true;
-        var (data, error, _) = await Api.GetMovementsAsync(_page, _pageSize);
-        _items = data; _error = error; _busy = false;
+        _error = null;
+        try
+        {
+            var (data, error, _) = await Api.GetMovementsAsync(_page, _pageSize);
+            _items = data;
+            _error = error;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items = null;
+        }
+        finally { _busy = false; }
     }
 
     private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
     private async Task OnPageSizeChanged(int size) { _pageSize = size; _page = 1; await LoadAsync(); }
+
+    private static string TypeLabel(int type) => type switch
+    {
+        0 => "Purchase",
+        1 => "Sale",
+        2 => "Return",
+        3 => "Adjustment",
+        4 => "Transfer",
+        _ => type.ToString()
+    };
 }

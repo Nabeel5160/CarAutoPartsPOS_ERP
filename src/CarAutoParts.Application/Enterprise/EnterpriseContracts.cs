@@ -64,6 +64,11 @@ public interface IEnterpriseDb
     DbSet<VendorQuote> VendorQuotes { get; }
     DbSet<VendorQuoteLine> VendorQuoteLines { get; }
     DbSet<SalesTarget> SalesTargets { get; }
+    DbSet<Budget> Budgets { get; }
+    DbSet<BudgetLine> BudgetLines { get; }
+    DbSet<SalesCommission> SalesCommissions { get; }
+    DbSet<FiscalYear> FiscalYears { get; }
+    DbSet<CostCenter> CostCenters { get; }
     DbSet<AppUser> Users { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
@@ -288,7 +293,15 @@ public record DeliveryNoteDto(
     IReadOnlyList<DeliveryNoteLineDto> Lines,
     int? InvoiceId,
     string? InvoiceNumber,
-    bool AllLinesPicked = false);
+    bool AllLinesPicked = false,
+    string? Carrier = null,
+    string? TrackingNumber = null,
+    DateTime? EtaUtc = null);
+
+public record UpdateDeliveryTrackingRequest(
+    string? Carrier,
+    string? TrackingNumber,
+    DateTime? EtaUtc);
 
 public record ConfirmDeliveryPickRequest(IReadOnlyList<ConfirmDeliveryPickLineRequest>? Lines = null);
 
@@ -582,6 +595,7 @@ public interface IEnterpriseSalesService
     Task<Result<DeliveryNoteDto>> CreateDeliveryFromSalesOrderAsync(int salesOrderId, CreateDeliveryFromSalesOrderRequest request, CancellationToken ct = default);
     Task<Result<DeliveryNoteDto>> ConfirmDeliveryPickAsync(int deliveryNoteId, ConfirmDeliveryPickRequest? request = null, CancellationToken ct = default);
     Task<Result<DeliveryNoteDto>> ShipDeliveryAsync(int deliveryNoteId, CancellationToken ct = default);
+    Task<Result<DeliveryNoteDto>> UpdateDeliveryTrackingAsync(int deliveryNoteId, UpdateDeliveryTrackingRequest request, CancellationToken ct = default);
     Task<Result<WholesaleInvoiceResultDto>> CreateInvoiceFromSalesOrderAsync(int salesOrderId, int? warehouseId = null, CancellationToken ct = default);
     Task<Result<WholesaleInvoiceResultDto>> CreateInvoiceFromDeliveryAsync(int deliveryNoteId, CancellationToken ct = default);
     Task<Result<PriceListDto>> CreatePriceListAsync(CreatePriceListRequest request, CancellationToken ct = default);

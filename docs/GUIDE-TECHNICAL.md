@@ -85,7 +85,7 @@
 | POS checkout / holds / shifts | `PosController`, `/pos` |
 | Quote → SO → delivery → invoice | `EnterpriseController` sales routes |
 | Returns / credit notes | `ReturnsController` |
-| FBR submissions | FBR + outbox |
+| FBR submissions | FBR + outbox — full flow: [FBR-INTEGRATION.md](FBR-INTEGRATION.md) |
 | Sales targets | `SalesTargetService`, `/sales-targets` |
 | Customer commission % | `Customer.CommissionPercent` |
 

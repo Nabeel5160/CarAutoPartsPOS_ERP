@@ -26,9 +26,34 @@
             <div class="col-md-2"><input type="number" class="form-control" placeholder="Amount" @bind="_lineAmt" /></div>
             <div class="col-md-2"><input class="form-control" placeholder="Ref" @bind="_lineRef" /></div>
             <div class="col-md-3"><input class="form-control" placeholder="Description" @bind="_lineDesc" /></div>
-            <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-light" @onclick="AddLine">Add</button></div>
-            <div class="col-md-1 d-flex align-items-end"><button class="btn btn-outline-info" @onclick="LoadReport">Report</button></div>
+            <div class="col-md-2 d-flex align-items-end gap-1">
+                <button class="btn btn-outline-light" @onclick="AddLine">Add</button>
+                <button class="btn btn-outline-info" @onclick="LoadReport">Report</button>
+            </div>
         </div>
+        <div class="mt-2 d-flex gap-2">
+            <button class="btn btn-sm btn-outline-warning" @onclick="SuggestAsync">Suggest matches</button>
+            <button class="btn btn-sm btn-cap" @onclick="AutoMatchAsync">Auto-match (score ≥ 50)</button>
+        </div>
+        @if (_suggestions is { Count: > 0 })
+        {
+            <table class="table table-cap mt-2 mb-0">
+                <thead><tr><th>Stmt line</th><th>JL</th><th>Amt</th><th>Score</th><th>Reason</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var s in _suggestions)
+                {
+                    <tr>
+                        <td>@s.StatementLineId</td>
+                        <td>@s.JournalNumber (@s.JournalLineId)</td>
+                        <td>@s.StatementAmount.ToString("N2") ↔ @s.GlNetAmount.ToString("N2")</td>
+                        <td>@s.Score</td>
+                        <td>@s.Reason</td>
+                        <td><button class="btn btn-sm btn-outline-success" @onclick="() => MatchSuggestionAsync(s)">Confirm</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
         <table class="table table-cap mt-3 mb-0">
             <thead><tr><th>Date</th><th>Amount</th><th>Ref</th><th>Cleared</th><th>Match JL#</th><th></th></tr></thead>
             <tbody>
@@ -53,7 +78,12 @@
                         }
                         else { @l.MatchedJournalLineId }
                     </td>
-                    <td></td>
+                    <td>
+                        @if (l.IsCleared)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => UnclearAsync(l.Id)">Unclear</button>
+                        }
+                    </td>
                 </tr>
             }
             </tbody>
@@ -109,6 +139,7 @@
     private BankStatementDto? _selected;
     private BankReconReportDto? _report;
     private List<UnclearedBankGlLineDto>? _uncleared;
+    private List<BankMatchSuggestionDto>? _suggestions;
     private DateTime _start = DateTime.Today.AddDays(-30), _end = DateTime.Today, _lineDate = DateTime.Today;
     private decimal _openBal, _closeBal, _lineAmt;
     private string? _lineRef, _lineDesc;
@@ -136,7 +167,7 @@
         else { Toast.ShowSuccess(data.StatementNumber); await ReloadAsync(); Select(data); }
     }
 
-    private void Select(BankStatementDto s) { _selected = s; _report = null; }
+    private void Select(BankStatementDto s) { _selected = s; _report = null; _suggestions = null; }
 
     private async Task AddLine()
     {
@@ -158,6 +189,54 @@
             Toast.ShowSuccess("Matched");
             await ReloadAsync();
             _selected = _statements?.FirstOrDefault(s => s.Id == _selected!.Id);
+            _suggestions = null;
+        }
+    }
+
+    private async Task UnclearAsync(int lineId)
+    {
+        var (ok, error, _) = await Api.UnclearBankLineAsync(lineId);
+        if (!ok) Toast.ShowError(error ?? "Unclear failed");
+        else
+        {
+            Toast.ShowSuccess("Uncleared");
+            await ReloadAsync();
+            _selected = _statements?.FirstOrDefault(s => s.Id == _selected!.Id);
+        }
+    }
+
+    private async Task SuggestAsync()
+    {
+        if (_selected is null) return;
+        var (data, error, _) = await Api.SuggestBankMatchesAsync(_selected.Id);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { _suggestions = data; Toast.ShowSuccess($"{data.Count} suggestion(s)"); }
+    }
+
+    private async Task AutoMatchAsync()
+    {
+        if (_selected is null) return;
+        var (data, error, _) = await Api.AutoMatchBankAsync(_selected.Id);
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else
+        {
+            Toast.ShowSuccess($"Matched {data.MatchedCount}, skipped {data.SkippedCount}");
+            await ReloadAsync();
+            _selected = _statements?.FirstOrDefault(s => s.Id == _selected!.Id);
+            _suggestions = null;
+        }
+    }
+
+    private async Task MatchSuggestionAsync(BankMatchSuggestionDto s)
+    {
+        var (ok, error, _) = await Api.MatchBankLineAsync(s.StatementLineId, s.JournalLineId);
+        if (!ok) Toast.ShowError(error ?? "Match failed");
+        else
+        {
+            Toast.ShowSuccess("Matched");
+            await ReloadAsync();
+            _selected = _statements?.FirstOrDefault(x => x.Id == _selected!.Id);
+            await SuggestAsync();
         }
     }
 

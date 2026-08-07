@@ -17,6 +17,12 @@
 | [PAGINATION-PLAN.md](PAGINATION-PLAN.md) | Grid inventory, paging classification, W0–W5 implementation waves |
 | [COUNTER-UX-POLISH-LOOP.md](COUNTER-UX-POLISH-LOOP.md) | Counter UX polish waves W0–W5 (login→sell friction, POS feel) |
 | [CRM-LOOP.md](CRM-LOOP.md) | Light CRM waves W0–W5 (leads → activities → pipeline → 360) |
+| [SLA-FLOWS.md](SLA-FLOWS.md) | **Complete SLA flows** — tickets, multi-pipeline, ops clocks, UI/API |
+| [SLA-LOOP.md](SLA-LOOP.md) | Service SLA W0–W5 implementation loop |
+| [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md) | SLA productization waves |
+| [SLA-EXPANSION.md](SLA-EXPANSION.md) | Multi-pipeline + thin ops clocks checklist |
+| [FBR-INTEGRATION.md](FBR-INTEGRATION.md) | FBR Digital Invoicing — full flow & what is implemented |
+| [FBR-PRODUCTION.md](FBR-PRODUCTION.md) | FBR sandbox → production cutover playbook |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Install, LAN, FBR, production runbook |
 | [COSTING.md](COSTING.md) | Average / FIFO valuation notes |
 | [COA-SEED.md](COA-SEED.md) | Chart of accounts seed |

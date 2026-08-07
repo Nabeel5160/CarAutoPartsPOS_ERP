@@ -115,6 +115,24 @@ public class FinanceController : ApiControllerBase
     public async Task<IActionResult> UnclearBankLine(int lineId, CancellationToken ct) =>
         FromResult(await _phase4.UnclearBankLineAsync(lineId, ct));
 
+    [HttpGet("bank-statements/{id:int}/suggest-matches")]
+    [Authorize(Policy = Permissions.FinanceView)]
+    public async Task<IActionResult> SuggestBankMatches(
+        int id,
+        [FromQuery] decimal amountTolerance = 0.01m,
+        [FromQuery] int dateWindowDays = 3,
+        CancellationToken ct = default) =>
+        Ok(await _phase4.SuggestBankMatchesAsync(id, amountTolerance, dateWindowDays, ct));
+
+    [HttpPost("bank-statements/{id:int}/auto-match")]
+    [Authorize(Policy = Permissions.FinancePost)]
+    public async Task<IActionResult> AutoMatchBank(
+        int id,
+        [FromQuery] decimal amountTolerance = 0.01m,
+        [FromQuery] int dateWindowDays = 3,
+        CancellationToken ct = default) =>
+        FromResult(await _phase4.AutoMatchBankAsync(id, amountTolerance, dateWindowDays, ct));
+
     [HttpGet("bank-statements/uncleared-gl")]
     [Authorize(Policy = Permissions.FinanceView)]
     public async Task<IActionResult> UnclearedGl([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct) =>

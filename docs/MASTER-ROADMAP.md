@@ -2,7 +2,7 @@
 
 **Lane:** Pakistan / South Asia auto-parts, bike-parts, and general retail ERP + POS (FBR where required).
 
-**Purpose:** Map the aspirational growth roadmap against what is **already implemented** in this codebase vs what **still needs to be built**. Use this as the gap backlog. Niche climb path remains [ROADMAP-TO-TOP-TIER.md](ROADMAP-TO-TOP-TIER.md); CRM waves: [CRM-LOOP.md](CRM-LOOP.md).
+**Purpose:** Map the aspirational growth roadmap against what is **already implemented** in this codebase vs what **still needs to be built**. Use this as the gap backlog. Niche climb path remains [ROADMAP-TO-TOP-TIER.md](ROADMAP-TO-TOP-TIER.md); CRM waves: [CRM-LOOP.md](CRM-LOOP.md); Service SLA waves: [SLA-LOOP.md](SLA-LOOP.md); SLA productization: [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md).
 
 **Status legend**
 
@@ -99,7 +99,7 @@
 #### W4 — Customer 360 — **DONE** (tickets deferred)
 
 - [x] Timeline + embeds + AR + profitability + communication log
-- [x] Full tickets / SLA — **PARTIAL/DONE**: `ServiceTicket` list embedded on Customer 360 (`/crm/customers/{id}`) via `GET /api/service/customers/{id}/tickets` — see Program C1 Service Light below; SLA timers / knowledge base still not implemented
+- [x] Full tickets / SLA — **DONE** (tickets C1 + SLA C2): Customer 360 tickets + [SLA-LOOP.md](SLA-LOOP.md) W0–W5; knowledge base still not implemented
 
 #### W5 — Automation — **DONE** (light; not Salesforce builder)
 
@@ -173,15 +173,15 @@
 | Opening balances | DONE | Opening balances |
 | Account mappings | DONE | Document → GL maps |
 | Audit trail (money + audit logs) | DONE | Audit + money audit |
-| Thin bank reconciliation | PARTIAL | Bank statements + recon report — not full match engine |
+| Thin bank reconciliation | PARTIAL/DONE | Bank statements + recon report + suggest/auto-match (Program C2); no rules CRUD entity |
 | Tax on sales/POS | PARTIAL | Tax rate / GST reports — not full tax engine |
 | Multi-branch P&L / TB | DONE | Phase 9 |
 
 ### Still to implement (backlog)
 
-- [ ] Full bank reconciliation (auto-match, uncleared, rules) — **PARTIAL**: match UX now uses an uncleared-lines `<select>` picker instead of raw JL# (Program B); still no auto-match rules
+- [x] Full bank reconciliation (auto-match, uncleared, rules) — **PARTIAL/DONE** (2026-08-07 Program C2): suggest + auto-match by amount/date/ref; Unclear in UI; still no match-rules entity
 - [x] Cash flow statement — **PARTIAL/DONE**: `/cash-flow` page + `GET /api/v1/enterprise/reports/cash-flow` (indirect method, journals-based operating/investing/financing split) (Program B)
-- [ ] Budgets + budget vs actual
+- [x] Budgets + budget vs actual — **DONE** (2026-08-07 Program C2): `Budget`/`BudgetLine`, `/budgets`, vs posted journals
 - [ ] Full tax engine (returns, input/output, schedules)
 - [x] Withholding tax (WHT) — PK-critical for B2B — **PARTIAL/DONE**: `WithholdingTaxRate`/`WithholdingTaxAmount` on supplier payments, posted to "Withholding Tax Payable" (2210) GL account, exposed on Receipts UI (Program B); not yet on purchase invoice path or WHT returns/challans
 - [ ] Multi-currency GL / FX revaluation
@@ -239,9 +239,9 @@
 ### Still to implement (backlog)
 
 - [ ] Sales document approval matrix (quote/SO specific policies polish)
-- [ ] Delivery tracking (carrier / status / ETA)
-- [x] Commission engine — **PARTIAL/DONE**: `CommissionPercent` field on `Customer`, editable on `Customers.razor` (Program B); no automatic commission calc/report yet
-- [x] Sales targets / quotas — **PARTIAL/DONE**: `SalesTarget` entity (user/period/amount) + CRUD API + `/sales-targets` page (Program B)
+- [x] Delivery tracking (carrier / status / ETA) — **PARTIAL/DONE** (2026-08-07 Program C2): `Carrier`, `TrackingNumber`, `EtaUtc` on `DeliveryNote` + Deliveries UI; no carrier API
+- [x] Commission engine — **PARTIAL/DONE**: `CommissionPercent` + `SalesCommission` on invoice/POS post + list API (Program C2); no GL accrual journal yet
+- [x] Sales targets / quotas — **PARTIAL/DONE**: CRUD + attainment % from commission attribution (Program C2)
 - [ ] Advanced discount rules (beyond price list / override)
 - [ ] Customer portal (B2B self-service)
 - [ ] B2B quote PDF packaging (deferred in niche roadmap)
@@ -303,28 +303,37 @@
 
 # Phase 8 — Service Management
 
-**Current: ~2 (Service Light thin slice) → Target: 9**
+**Current: ~2 (Service Light thin slice) → Target: 9** · SLA: [SLA-LOOP.md](SLA-LOOP.md) · Complete: [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md)
+
+> **SLA wave numbering:** Core timers: [SLA-LOOP.md](SLA-LOOP.md) W0–W5 (**Done**). Productization: [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md) W0–W5 (**Done** — 360/dashboard/CRM DueAt warn/Web-only claim).
 
 ### Already implemented
 
 | Item | Status | Evidence |
 |------|--------|----------|
 | Service tickets (CRUD, status workflow, priority) | PARTIAL/DONE | `ServiceTicket` entity, `ServiceController`, `/service/tickets` (Program C1) |
-| Warranty / AMC reference on ticket | PARTIAL | `IsWarrantyClaim`, `WarrantyReference`, `AmcReference` fields on ticket — no dedicated claim workflow or contract entity |
+| Warranty / AMC reference on ticket | PARTIAL/DONE | Free-text refs kept; `AmcContract` + `AmcContractId`; warranty queue + evidence/replacement fields (no portal) |
 | Ticket ↔ Customer 360 link | PARTIAL/DONE | Tickets card on `/crm/customers/{id}` (Program C1) |
 | Mobile ticket list / resolve | PARTIAL/DONE | `/m/service` — list + status/notes update (Program C1) |
+| Technician assignment (filter + notify) | DONE | Ticket assignee filter (Mine/Unassigned/user); notify on create/reassign |
+| Warranty claim approve/reject + queue | PARTIAL/DONE | Queue + decide API; evidence notes, invoice link, replacement product/qty on approve; reject requires notes — no auto SO/credit |
+| Knowledge base (internal articles stub) | PARTIAL/DONE | `KbArticle`, `/service/kb`, ticket detail related links — not customer portal |
+| SLA timers / breach alerts | DONE | [SLA-LOOP.md](SLA-LOOP.md) W0–W5 — policies, clocks, monitor, pause, UI (Program C2) |
+| SLA multi-pipeline + thin ops clocks | DONE | [SLA-EXPANSION.md](SLA-EXPANSION.md) — rules routing; SO/invoice/GRN/AP/low-stock clocks |
+| SLA scope freeze (Web admin; no WPF; no POS-line/journal) | DONE | [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md) Light SLA scope freeze matrix |
+| CRM activity DueAt warn (thin) | DONE | One-shot notify — **not** Service SLA / `SlaPolicy` ([SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md) W3) |
 
 ### Still to implement (backlog)
 
-- [ ] SLA timers / breach alerts
-- [ ] Knowledge base
+- [x] SLA timers / breach alerts — **Done** (2026-08-07): [SLA-LOOP.md](SLA-LOOP.md) W0–W5 — policies, clocks, monitor, pause/resume, UI, business calendar, dashboard
+- [x] Knowledge base — **PARTIAL** (2026-08-07): internal `KbArticle` CRUD + ticket related links; **not** customer portal
 - [ ] Customer portal (service)
-- [ ] Technician assignment / scheduling
-- [ ] Field service (visits, parts consumption on ticket)
-- [ ] Dedicated warranty claim workflow (approve/reject, replacement linkage)
-- [ ] AMC contract entity (recurring coverage, renewal, billing) — today it's a free-text reference only
+- [x] Technician assignment / scheduling — **PARTIAL/DONE** (2026-08-07 Phase 8 depth): assign + `ServiceVisit` schedule/complete + mobile my-visits; no capacity calendar
+- [x] Field service (visits, parts consumption on ticket) — **PARTIAL/DONE** (2026-08-07): visits + `ServiceTicketPart` consume via inventory deduct
+- [x] Dedicated warranty claim workflow — **PARTIAL/DONE** (2026-08-07): approve/reject + evidence/invoice/replacement fields; no auto SO/credit
+- [x] AMC contract entity (recurring coverage, renewal, billing) — **DONE** (2026-08-07): `AmcContract` + ticket `AmcContractId`; billing/renewal automation still thin (manual status/dates)
 
-> Parts shops often need **warranty + simple tickets** before full field service. **Program C1** shipped a thin, real ticket workflow (create/list/assign/status/resolve, customer-linked, mobile-capable) — this is *not* a full service/field-service suite. See `docs/PRODUCT-POSITIONING.md` for exact claim boundaries.
+> Parts shops often need **warranty + simple tickets** before full field service. **Program C1** shipped tickets; **Program C2** light SLA ([SLA-LOOP.md](SLA-LOOP.md)) + complete loop ([SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md)). See `docs/PRODUCT-POSITIONING.md`.
 
 ---
 
@@ -464,7 +473,7 @@ _None._
 ### Still to implement (backlog)
 
 - [x] Remove / consolidate Application-layer backup **placeholder** class (dead code risk) — **DONE** (Program B)
-- [ ] Automated backup scheduling ops playbook + restore drills
+- [x] Automated backup scheduling ops playbook + restore drills — **DONE** (2026-08-07): Settings `AutoBackup*` UI + DEPLOYMENT/PILOT restore-drill playbook (D+7); hosted service already existed
 - [ ] Monitoring / APM / alerting
 - [ ] Performance dashboard in ops
 - [ ] Distributed cache strategy
@@ -489,16 +498,17 @@ _None._
 | POS keyboard shortcuts | DONE | F2 / Enter / F9 |
 | Design tokens / empty states | PARTIAL | Phase 18 pragmatic |
 | WPF global search | DONE | Presentation shell only |
+| Web global search | PARTIAL/DONE | Topbar MVP (2026-08-07); command palette deferred |
 | Shell sidebar / fullscreen | DONE | MainLayout |
 
 ### Still to implement (backlog)
 
-- [ ] Web global search
+- [x] Web global search — **DONE** (2026-08-07): topbar MVP (products/customers/suppliers/POs/invoices); command palette still open
 - [ ] Command palette
 - [ ] Quick actions / favorites / pinned / recent records
 - [ ] Customizable dashboard widgets
 - [ ] Advanced search everywhere
-- [ ] Replace raw numeric ID forms with searchable pickers — **PARTIAL**: `Transfers.razor`, `Requisitions.razor`, `Quotations.razor`, `BankReconciliation.razor` now use `<select>` pickers (Program B); many other pages still use raw IDs
+- [x] Replace raw numeric ID forms with searchable pickers — **PARTIAL/DONE** (2026-08-07 Ops/UX): Returns, GRN, Inventory, Purchases, AP, Deliveries, POS warehouse/customer, Opening balances, Receipts (+ prior Program B pages); CycleCounts/Serials/etc. still raw
 - [ ] Guided tour
 - [ ] Accessibility pass (WCAG)
 - [ ] Counter UX already looped — keep polishing CRM/admin UX similarly
@@ -567,7 +577,7 @@ Do **not** start Phases 6–8, 10, or 16 expansion until the niche core is airti
 
 ```text
 1. CRM W1 → W5          DONE (Program A — light CRM)
-2. Ops polish            DONE/PARTIAL (pickers, backup dead-code removed)
+2. Ops polish            DONE/PARTIAL (pickers wave, backup Settings+playbook, web global search MVP; command palette open)
 3. Accounting gaps       DONE/PARTIAL (WHT, cash flow, bank recon match UX)
 4. Purchasing gaps       DONE/PARTIAL (RFQ → compare → PO)
 5. Sales gaps            DONE/PARTIAL (commission %, sales targets; portals later)
@@ -584,7 +594,7 @@ Do **not** start Phases 6–8, 10, or 16 expansion until the niche core is airti
 | Quarter | MASTER phases | Focus | Status |
 |---------|---------------|--------|--------|
 | **C1** Service Light + Mobile | 8 thin, 11 | Tickets / warranty-AMC reference / mobile ticket view / camera scan | **PARTIAL/DONE** — see Phase 8 & 11 above; extended (multi-day) offline **not attempted** |
-| **C2** Finance / Sales depth | 3–5 remainders | Budgets, multi-currency, portals, discount rules, delivery tracking | TODO |
+| **C2** Finance / Sales depth | 3–5 remainders | Budgets, bank auto-match, commission/targets, delivery tracking | **PARTIAL/DONE** (2026-08-07) — budgets + bank suggest/auto-match + commission/attainment + delivery tracking; multi-currency / portals / discount rules still TODO |
 | **C3** Inventory depth | 2 remainders | FEFO, WH dashboard, demand forecast | TODO |
 | **C4** Platform | 12 | Webhooks, API keys, EAV custom fields (if still desired) | TODO |
 | **C5** AI + BI | 9–10 | Forecasts, assistant, Power BI connector | TODO |
@@ -616,6 +626,9 @@ This architecture can grow into those areas. Closing the **Still to implement** 
 | Doc | Role |
 |-----|------|
 | [CRM-LOOP.md](CRM-LOOP.md) | CRM W0–W5 execution loop |
+| [SLA-LOOP.md](SLA-LOOP.md) | Service SLA W0–W5 (Phase 8 timers / breach) |
+| [SLA-COMPLETE-LOOP.md](SLA-COMPLETE-LOOP.md) | SLA productization (360, dashboard, CRM warn, Web-only) |
+| [SLA-EXPANSION.md](SLA-EXPANSION.md) | Multi-pipeline + thin ops clocks (1A + 2C) |
 | [ROADMAP-TO-TOP-TIER.md](ROADMAP-TO-TOP-TIER.md) | Niche top-20 climb (Stages 0–5) |
 | [PRODUCT-POSITIONING.md](PRODUCT-POSITIONING.md) | What we claim / do not claim |
 | [PHASE-COMPLETION-PLAN.md](PHASE-COMPLETION-PLAN.md) | Finish parallel enterprise phases |
@@ -624,4 +637,4 @@ This architecture can grow into those areas. Closing the **Still to implement** 
 
 ---
 
-*Last audited: 2026-08-03 — Program A (CRM W1–W5) + Program B P0 + Program C1 (Service Light + mobile ticket view + camera barcode scan) landed; Program C2–C7 quarters outlined only.*
+*Last audited: 2026-08-07 — Program A (CRM) + B P0 + C1 (Service Light) + light SLA + Program C2 finance/sales depth (budgets, bank auto-match, commission/targets, delivery tracking); multi-currency / portals / discount rules remain TODO.*

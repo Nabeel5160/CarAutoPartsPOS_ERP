@@ -226,7 +226,7 @@ public class ProgramBOpsGapsTests
             .ReturnsAsync(Result<GlJournalDraftDto>.Success(new GlJournalDraftDto(1, "JV-0001", JournalStatus.Posted, 0, 0)));
 
         var enterprise = new EnterpriseDbAdapter(db);
-        return (new PaymentPostingService(enterprise, company, gl.Object), gl, db);
+        return (new PaymentPostingService(enterprise, company, gl.Object, OpsSlaTestDoubles.NoOp), gl, db);
     }
 
     [Fact]

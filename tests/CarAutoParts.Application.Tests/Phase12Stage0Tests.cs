@@ -144,7 +144,9 @@ public class Phase12Stage0Tests
             new EnterpriseDbAdapter(db),
             company,
             Mock.Of<IGlPostingService>(),
-            Mock.Of<ICurrentUserService>());
+            Mock.Of<ICurrentUserService>(),
+            Mock.Of<ISalesCommissionService>(),
+            OpsSlaTestDoubles.NoOp);
         var m = await sales.GetFbrMetricsAsync();
         m.SuccessCount.Should().Be(1);
         m.StubCount.Should().Be(1);
@@ -235,6 +237,6 @@ public class Phase12Stage0Tests
             new CurrentUserService(),
             salesEnt.Object,
             new AtpService(new EnterpriseDbAdapter(db)),
-            PosCheckoutServiceTests.CreateFeatureGate());
+            PosCheckoutServiceTests.CreateFeatureGate(), Mock.Of<ISalesCommissionService>());
     }
 }

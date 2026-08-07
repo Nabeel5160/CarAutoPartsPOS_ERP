@@ -47,8 +47,27 @@
                     @if (_edit.IsWarrantyClaim)
                     {
                         <div class="col-md-3"><label class="form-label">Warranty ref.</label><input class="form-control" @bind="_edit.WarrantyReference" disabled="@_isClosed" /></div>
+                        <div class="col-md-3">
+                            <label class="form-label">Claim status</label>
+                            <input class="form-control" value="@WarrantyClaimLabel(_ticket.WarrantyClaimStatus)" disabled />
+                        </div>
                     }
                     <div class="col-md-3"><label class="form-label">AMC reference</label><input class="form-control" @bind="_edit.AmcReference" disabled="@_isClosed" /></div>
+                    <div class="col-md-3">
+                        <label class="form-label">AMC contract</label>
+                        <select class="form-select" @bind="_editAmcContractId" disabled="@_isClosed">
+                            <option value="0">None</option>
+                            @foreach (var a in _amcForCustomer)
+                            {
+                                <option value="@a.Id">@a.ContractNumber</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_edit.IsWarrantyClaim)
+                    {
+                        <div class="col-md-3"><label class="form-label">Warranty invoice Id</label><input type="number" class="form-control" @bind="_edit.WarrantySalesInvoiceId" disabled="@_isClosed" /></div>
+                        <div class="col-md-6"><label class="form-label">Evidence notes</label><input class="form-control" @bind="_edit.WarrantyEvidenceNotes" disabled="@_isClosed" /></div>
+                    }
                     <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" rows="2" @bind="_edit.Description" disabled="@_isClosed"></textarea></div>
                     <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" rows="2" @bind="_edit.Notes" disabled="@_isClosed"></textarea></div>
                 </div>
@@ -104,6 +123,170 @@
                     <p class="mb-0">@_ticket.ResolutionNotes</p>
                 }
             </div>
+
+            @if (_ticket.IsWarrantyClaim)
+            {
+                <div class="cap-card mt-3">
+                    <h6>Warranty claim</h6>
+                    <p class="mb-1"><span class="badge badge-soft">@WarrantyClaimLabel(_ticket.WarrantyClaimStatus)</span>
+                        @if (!string.IsNullOrWhiteSpace(_ticket.WarrantyReference))
+                        {
+                            <span class="small text-secondary ms-1">Ref @_ticket.WarrantyReference</span>
+                        }
+                    </p>
+                    @if (_ticket.WarrantyDecidedAt is DateTime decided)
+                    {
+                        <p class="small text-secondary">Decided @decided.ToLocalTime().ToString("g") by @(_ticket.WarrantyDecidedBy ?? "—")</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_ticket.WarrantyDecisionNotes))
+                    {
+                        <p class="small">@_ticket.WarrantyDecisionNotes</p>
+                    }
+                    @if (_canManage && !_isClosed && _ticket.WarrantyClaimStatus is 0 or 1)
+                    {
+                        <div class="mb-2">
+                            <label class="form-label">Decision notes (required to reject)</label>
+                            <textarea class="form-control" rows="2" @bind="_warrantyNotes"></textarea>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6"><label class="form-label small">Replacement product Id</label><input type="number" class="form-control form-control-sm" @bind="_repProductId" /></div>
+                            <div class="col-6"><label class="form-label small">Replacement qty</label><input type="number" step="0.001" class="form-control form-control-sm" @bind="_repQty" /></div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-success" @onclick="() => DecideWarrantyAsync(2)">Approve</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DecideWarrantyAsync(3)">Reject</button>
+                        </div>
+                    }
+                    @if (_ticket.ReplacementProductId is int)
+                    {
+                        <p class="small mt-2 mb-0">Replacement: @(_ticket.ReplacementProductName ?? _ticket.ReplacementProductId.ToString()) × @_ticket.ReplacementQuantity.ToString("N3")</p>
+                    }
+                    <p class="small mt-2 mb-0"><a href="/service/warranty">Open warranty queue →</a></p>
+                </div>
+            }
+
+            <div class="cap-card mt-3">
+                <h6>Visits</h6>
+                @if (_visits is { Count: > 0 })
+                {
+                    <ul class="list-unstyled small mb-2">
+                        @foreach (var v in _visits)
+                        {
+                            <li class="mb-1">
+                                @v.ScheduledAt.ToLocalTime().ToString("g") · @(v.AssignedToUserName ?? v.AssignedToUserId.ToString()) · @VisitStatus(v.Status)
+                                @if (_canManage && v.Status is 0 or 1)
+                                {
+                                    <button class="btn btn-sm btn-outline-success ms-1" @onclick="() => VisitStatusAsync(v.Id, 2)">Complete</button>
+                                    <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => VisitStatusAsync(v.Id, 3)">Cancel</button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                else { <p class="small text-secondary">No visits scheduled.</p> }
+                @if (_canManage && !_isClosed)
+                {
+                    <div class="row g-1 align-items-end">
+                        <div class="col-5">
+                            <select class="form-select form-select-sm" @bind="_visitUserId">
+                                <option value="0">Tech…</option>
+                                @foreach (var u in _users) { <option value="@u.Id">@(u.DisplayName ?? u.Username)</option> }
+                            </select>
+                        </div>
+                        <div class="col-5"><input type="datetime-local" class="form-control form-control-sm" @bind="_visitAt" /></div>
+                        <div class="col-2"><button class="btn btn-sm btn-cap w-100" @onclick="ScheduleVisitAsync">Add</button></div>
+                    </div>
+                }
+            </div>
+
+            <div class="cap-card mt-3">
+                <h6>Parts consumed</h6>
+                @if (_parts is { Count: > 0 })
+                {
+                    <ul class="list-unstyled small mb-2">
+                        @foreach (var p in _parts)
+                        {
+                            <li>@(p.ProductName ?? p.ProductId.ToString()) × @p.Quantity.ToString("N3") · WH @p.WarehouseId</li>
+                        }
+                    </ul>
+                }
+                else { <p class="small text-secondary">No parts consumed.</p> }
+                @if (_canManage && !_isClosed)
+                {
+                    <div class="row g-1 align-items-end">
+                        <div class="col-3"><input type="number" class="form-control form-control-sm" placeholder="ProductId" @bind="_partProductId" /></div>
+                        <div class="col-3">
+                            <select class="form-select form-select-sm" @bind="_partWhId">
+                                <option value="0">WH…</option>
+                                @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                            </select>
+                        </div>
+                        <div class="col-3"><input type="number" step="0.001" class="form-control form-control-sm" @bind="_partQty" /></div>
+                        <div class="col-3"><button class="btn btn-sm btn-cap w-100" @onclick="ConsumePartAsync">Consume</button></div>
+                    </div>
+                }
+            </div>
+
+            @if (_sla is not null)
+            {
+                <div class="cap-card mt-3">
+                    <h6>SLA @(_sla.PolicyName is string pn ? $"· {pn}" : "")</h6>
+                    @foreach (var t in _sla.Timers)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>@(t.Metric == 0 ? "First response" : "Resolution")</span>
+                            <span>
+                                <span class="badge badge-soft">@SlaStatusLabel(t)</span>
+                                @if (t.Status is 0 or 1)
+                                {
+                                    <span class="small text-secondary ms-1">@FormatRemaining(t.RemainingSeconds)</span>
+                                }
+                            </span>
+                        </div>
+                    }
+                    @if (_canManage && !_isClosed)
+                    {
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                            <button class="btn btn-sm btn-outline-light" @onclick="PauseSlaAsync">Pause</button>
+                            <button class="btn btn-sm btn-outline-light" @onclick="ResumeSlaAsync">Resume</button>
+                        </div>
+                    }
+                    @if (_sla.RecentEvents.Count > 0)
+                    {
+                        <hr />
+                        <div class="small text-secondary">
+                            @foreach (var e in _sla.RecentEvents.Take(5))
+                            {
+                                <div>@e.At.ToLocalTime().ToString("g") · @SlaEventLabel(e.Kind) @(e.Note)</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="cap-card mt-3">
+                <h6>Knowledge base</h6>
+                <p class="small text-secondary mb-2">Internal articles related to this ticket · <a href="/service/kb">Browse all</a></p>
+                @if (_kbRelated is null || _kbRelated.Count == 0)
+                {
+                    <p class="small mb-0 text-secondary">No matching articles. <a href="/service/kb">Add one</a>.</p>
+                }
+                else
+                {
+                    <ul class="mb-0 ps-3">
+                        @foreach (var a in _kbRelated)
+                        {
+                            <li>
+                                <a href="/service/kb">@a.Title</a>
+                                @if (!string.IsNullOrWhiteSpace(a.Category))
+                                {
+                                    <span class="small text-secondary"> · @a.Category</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
         </div>
     </div>
 }
@@ -120,6 +303,21 @@
     private int _newStatus;
     private string? _resolutionNotes;
     private List<UserDto> _users = new();
+    private SlaTicketSummaryDto? _sla;
+    private List<KbArticleDto> _kbRelated = new();
+    private string? _warrantyNotes;
+    private int _editAmcContractId;
+    private List<AmcContractDto> _amcForCustomer = [];
+    private List<ServiceVisitDto> _visits = [];
+    private List<ServiceTicketPartDto> _parts = [];
+    private List<WarehouseDto> _warehouses = [];
+    private int _visitUserId;
+    private DateTime _visitAt = DateTime.Now.AddHours(1);
+    private int _partProductId;
+    private int _partWhId;
+    private decimal _partQty = 1;
+    private int? _repProductId;
+    private decimal _repQty;
 
     private bool _isClosed => _ticket?.Status == 3;
 
@@ -128,6 +326,8 @@
         _canManage = await Perms.HasAsync("service.manage");
         var (users, _, _) = await Api.GetUsersAsync();
         _users = users ?? new();
+        var (wh, _, _) = await Api.GetWarehousesAsync();
+        _warehouses = wh ?? [];
         await LoadAsync();
     }
 
@@ -150,10 +350,28 @@
                 AmcReference = data.AmcReference,
                 ProductId = data.ProductId,
                 DueAt = data.DueAt,
-                Notes = data.Notes
+                Notes = data.Notes,
+                AmcContractId = data.AmcContractId,
+                WarrantySalesInvoiceId = data.WarrantySalesInvoiceId,
+                WarrantyEvidenceNotes = data.WarrantyEvidenceNotes
             };
+            _editAmcContractId = data.AmcContractId ?? 0;
             _assigneeId = data.AssignedToUserId ?? 0;
             _newStatus = data.Status;
+            var (amc, _, _) = await Api.GetAmcContractsAsync(data.CustomerId);
+            _amcForCustomer = amc ?? [];
+            var (visits, _, _) = await Api.GetTicketVisitsAsync(Id);
+            _visits = visits ?? [];
+            var (parts, _, _) = await Api.GetTicketPartsAsync(Id);
+            _parts = parts ?? [];
+            var (sla, _, _) = await Api.GetTicketSlaAsync(Id);
+            _sla = sla;
+
+            var q = data.IsWarrantyClaim ? "warranty" : data.Subject;
+            var (kb, _, _) = await Api.GetKbArticlesAsync(q, publishedOnly: true);
+            if (kb is null || kb.Count == 0)
+                (kb, _, _) = await Api.GetKbArticlesAsync(null, publishedOnly: true);
+            _kbRelated = (kb ?? new()).Take(5).ToList();
         }
         finally { _busy = false; }
     }
@@ -161,6 +379,7 @@
     private async Task SaveAsync()
     {
         _edit.AssignedToUserId = _assigneeId > 0 ? _assigneeId : null;
+        _edit.AmcContractId = _editAmcContractId > 0 ? _editAmcContractId : null;
         var (data, error, _) = await Api.UpdateServiceTicketAsync(Id, _edit);
         if (error is not null || data is null) { Toast.ShowError(error ?? "Save failed"); return; }
         Toast.ShowSuccess("Ticket updated");
@@ -177,8 +396,93 @@
         await LoadAsync();
     }
 
+    private async Task PauseSlaAsync()
+    {
+        var (_, err, _) = await Api.PauseTicketSlaAsync(Id, new SlaPauseDto { Reason = 1, Note = "Paused from ticket" });
+        if (err is not null) Toast.ShowError(err); else { Toast.ShowSuccess("SLA paused"); await LoadAsync(); }
+    }
+
+    private async Task ResumeSlaAsync()
+    {
+        var (_, err, _) = await Api.ResumeTicketSlaAsync(Id);
+        if (err is not null) Toast.ShowError(err); else { Toast.ShowSuccess("SLA resumed"); await LoadAsync(); }
+    }
+
+    private async Task DecideWarrantyAsync(int decision)
+    {
+        var (data, error, _) = await Api.DecideWarrantyClaimAsync(Id, new WarrantyClaimDecisionDto
+        {
+            Decision = decision,
+            Notes = _warrantyNotes,
+            ReplacementProductId = _repProductId is > 0 ? _repProductId : null,
+            ReplacementQuantity = _repQty
+        });
+        if (error is not null || data is null) { Toast.ShowError(error ?? "Decision failed"); return; }
+        Toast.ShowSuccess(decision == 2 ? "Warranty approved" : "Warranty rejected");
+        _warrantyNotes = null;
+        await LoadAsync();
+    }
+
+    private async Task ScheduleVisitAsync()
+    {
+        if (_visitUserId <= 0) { Toast.ShowError("Select technician"); return; }
+        var (data, error, _) = await Api.ScheduleServiceVisitAsync(new ServiceVisitCreateDto
+        {
+            ServiceTicketId = Id, AssignedToUserId = _visitUserId, ScheduledAt = _visitAt.ToUniversalTime()
+        });
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Visit scheduled"); await LoadAsync(); }
+    }
+
+    private async Task VisitStatusAsync(int visitId, int status)
+    {
+        var (data, error, _) = await Api.ChangeServiceVisitStatusAsync(visitId, new ServiceVisitStatusDto { Status = status });
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Visit updated"); await LoadAsync(); }
+    }
+
+    private async Task ConsumePartAsync()
+    {
+        if (_partProductId <= 0 || _partWhId <= 0) { Toast.ShowError("Product and warehouse required"); return; }
+        var (data, error, _) = await Api.ConsumeTicketPartAsync(new ServiceTicketPartCreateDto
+        {
+            ServiceTicketId = Id, ProductId = _partProductId, WarehouseId = _partWhId, Quantity = _partQty
+        });
+        if (data is null) Toast.ShowError(error ?? "Failed");
+        else { Toast.ShowSuccess("Part consumed"); await LoadAsync(); }
+    }
+
+    private static string VisitStatus(int s) => s switch
+    {
+        0 => "Scheduled", 1 => "In progress", 2 => "Done", 3 => "Cancelled", _ => s.ToString()
+    };
+
+    private static string WarrantyClaimLabel(int s) => s switch
+    {
+        1 => "Submitted", 2 => "Approved", 3 => "Rejected", 0 => "None", _ => s.ToString()
+    };
+
     private static string StatusLabel(int status) => status switch
     {
         0 => "Open", 1 => "In progress", 2 => "Resolved", 3 => "Closed", _ => status.ToString()
     };
+
+    private static string SlaStatusLabel(SlaTimerSummaryDto t)
+    {
+        if (t.Status == 3 || t.BreachedAt is not null) return "Breached";
+        if (t.WarnedAt is not null && t.Status == 0) return "Warning";
+        return t.Status switch { 0 => "Running", 1 => "Paused", 2 => "Met", 4 => "Cancelled", _ => t.Status.ToString() };
+    }
+
+    private static string SlaEventLabel(int kind) => kind switch
+    {
+        0 => "Started", 1 => "Paused", 2 => "Resumed", 3 => "Warned", 4 => "Breached", 5 => "Met", 6 => "Cancelled", _ => kind.ToString()
+    };
+
+    private static string FormatRemaining(int seconds)
+    {
+        if (seconds <= 0) return "overdue";
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}h {ts.Minutes}m left" : $"{ts.Minutes}m left";
+    }
 }

@@ -68,6 +68,11 @@ public sealed class EnterpriseDbAdapter : IEnterpriseDb
     public DbSet<VendorQuote> VendorQuotes => _db.VendorQuotes;
     public DbSet<VendorQuoteLine> VendorQuoteLines => _db.VendorQuoteLines;
     public DbSet<SalesTarget> SalesTargets => _db.SalesTargets;
+    public DbSet<Budget> Budgets => _db.Budgets;
+    public DbSet<BudgetLine> BudgetLines => _db.BudgetLines;
+    public DbSet<SalesCommission> SalesCommissions => _db.SalesCommissions;
+    public DbSet<FiscalYear> FiscalYears => _db.FiscalYears;
+    public DbSet<CostCenter> CostCenters => _db.CostCenters;
     public DbSet<AppUser> Users => _db.Users;
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);

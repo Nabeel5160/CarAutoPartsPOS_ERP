@@ -83,6 +83,11 @@ public static class NavDefinition
         new("service", "Service", "🛠",
         [
             new("Tickets", "service/tickets", "🛠", "service.view", ModuleKeys.ServiceTickets),
+            new("AMC Contracts", "service/amc", "📋", "service.view", ModuleKeys.ServiceTickets),
+            new("Warranty claims", "service/warranty", "✅", "service.view", ModuleKeys.ServiceTickets),
+            new("Knowledge Base", "service/kb", "📘", "service.view", ModuleKeys.ServiceTickets),
+            new("SLA Policies", "service/sla", "⏱", "service.manage", ModuleKeys.ServiceTickets),
+            new("SLA Breaches", "service/sla/breaches", "⚠", "service.view", ModuleKeys.ServiceTickets),
         ]),
         new("finance", "Finance", "📒",
         [
@@ -92,6 +97,7 @@ public static class NavDefinition
             new("Periods", "periods", "📅", "finance.post", ModuleKeys.FinancePeriods),
             new("Opening Balances", "opening-balances", "🏁", "finance.manage", ModuleKeys.FinanceOpening),
             new("Bank Recon", "bank-reconciliation", "🏦", "finance.view", ModuleKeys.FinanceBank),
+            new("Budgets", "budgets", "📊", "finance.view", ModuleKeys.FinanceReports),
             new("Fin Reports", "financial-reports", "Σ", "finance.view", ModuleKeys.FinanceReports),
             new("Cash Flow", "cash-flow", "💵", "finance.view", ModuleKeys.FinanceReports),
             new("Mappings", "account-mappings", "🔗", "finance.view", ModuleKeys.FinanceMaps),

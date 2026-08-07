@@ -520,15 +520,21 @@ public sealed class CapApiService
     public Task<(CrmEmailTemplateDto? Data, string? Error, int Status)> UpsertCrmEmailTemplateAsync(CrmEmailTemplateDto dto) =>
         _api.PostAsync<CrmEmailTemplateDto>("/api/crm/email-templates", dto);
 
-    // Service Light (Program C1)
+    // Service Light (Program C1) + SLA (Program C2)
     public Task<(PagedResult<ServiceTicketDto>? Data, string? Error, int Status)> GetServiceTicketsAsync(
-        QuerySpec? q = null, string? status = null, string? priority = null, int? customerId = null, int? assignedToUserId = null)
+        QuerySpec? q = null, string? status = null, string? priority = null, int? customerId = null,
+        int? assignedToUserId = null, string? slaStatus = null, bool? unassigned = null,
+        bool? warrantyOnly = null, string? warrantyClaimStatus = null)
     {
         var qs = ApiClient.ToQuery(q ?? new QuerySpec());
         if (!string.IsNullOrWhiteSpace(status)) qs += $"&status={Uri.EscapeDataString(status)}";
         if (!string.IsNullOrWhiteSpace(priority)) qs += $"&priority={Uri.EscapeDataString(priority)}";
         if (customerId is int cid) qs += $"&customerId={cid}";
         if (assignedToUserId is int aid) qs += $"&assignedToUserId={aid}";
+        if (unassigned is true) qs += "&unassigned=true";
+        if (!string.IsNullOrWhiteSpace(slaStatus)) qs += $"&slaStatus={Uri.EscapeDataString(slaStatus)}";
+        if (warrantyOnly is true) qs += "&warrantyOnly=true";
+        if (!string.IsNullOrWhiteSpace(warrantyClaimStatus)) qs += $"&warrantyClaimStatus={Uri.EscapeDataString(warrantyClaimStatus)}";
         return _api.GetAsync<PagedResult<ServiceTicketDto>>($"/api/service/tickets{qs}");
     }
 
@@ -544,8 +550,124 @@ public sealed class CapApiService
     public Task<(ServiceTicketDto? Data, string? Error, int Status)> ChangeServiceTicketStatusAsync(int id, ServiceTicketStatusChangeDto dto) =>
         _api.PostAsync<ServiceTicketDto>($"/api/service/tickets/{id}/status", dto);
 
+    public Task<(ServiceTicketDto? Data, string? Error, int Status)> DecideWarrantyClaimAsync(int id, WarrantyClaimDecisionDto dto) =>
+        _api.PostAsync<ServiceTicketDto>($"/api/service/tickets/{id}/warranty-decision", dto);
+
     public Task<(List<ServiceTicketDto>? Data, string? Error, int Status)> GetCustomerServiceTicketsAsync(int customerId) =>
         _api.GetAsync<List<ServiceTicketDto>>($"/api/service/customers/{customerId}/tickets");
+
+    // AMC + field service (Phase 8 depth)
+    public Task<(List<AmcContractDto>? Data, string? Error, int Status)> GetAmcContractsAsync(int? customerId = null, int? status = null)
+    {
+        var qs = new List<string>();
+        if (customerId is int c) qs.Add($"customerId={c}");
+        if (status is int s) qs.Add($"status={s}");
+        var q = qs.Count == 0 ? "" : "?" + string.Join("&", qs);
+        return _api.GetAsync<List<AmcContractDto>>($"/api/service/amc{q}");
+    }
+
+    public Task<(AmcContractDto? Data, string? Error, int Status)> UpsertAmcContractAsync(AmcContractUpsertDto dto) =>
+        _api.PostAsync<AmcContractDto>("/api/service/amc", dto);
+
+    public Task<(AmcContractDto? Data, string? Error, int Status)> UpdateAmcContractAsync(int id, AmcContractUpsertDto dto) =>
+        _api.PutAsync<AmcContractDto>($"/api/service/amc/{id}", dto);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteAmcContractAsync(int id) =>
+        _api.DeleteAsync($"/api/service/amc/{id}");
+
+    public Task<(List<ServiceVisitDto>? Data, string? Error, int Status)> GetTicketVisitsAsync(int ticketId) =>
+        _api.GetAsync<List<ServiceVisitDto>>($"/api/service/tickets/{ticketId}/visits");
+
+    public Task<(List<ServiceVisitDto>? Data, string? Error, int Status)> GetMyServiceVisitsAsync(DateTime? day = null)
+    {
+        var q = day is DateTime d ? $"?day={d:yyyy-MM-dd}" : "";
+        return _api.GetAsync<List<ServiceVisitDto>>($"/api/service/visits/mine{q}");
+    }
+
+    public Task<(ServiceVisitDto? Data, string? Error, int Status)> ScheduleServiceVisitAsync(ServiceVisitCreateDto dto) =>
+        _api.PostAsync<ServiceVisitDto>("/api/service/visits", dto);
+
+    public Task<(ServiceVisitDto? Data, string? Error, int Status)> ChangeServiceVisitStatusAsync(int id, ServiceVisitStatusDto dto) =>
+        _api.PostAsync<ServiceVisitDto>($"/api/service/visits/{id}/status", dto);
+
+    public Task<(List<ServiceTicketPartDto>? Data, string? Error, int Status)> GetTicketPartsAsync(int ticketId) =>
+        _api.GetAsync<List<ServiceTicketPartDto>>($"/api/service/tickets/{ticketId}/parts");
+
+    public Task<(ServiceTicketPartDto? Data, string? Error, int Status)> ConsumeTicketPartAsync(ServiceTicketPartCreateDto dto) =>
+        _api.PostAsync<ServiceTicketPartDto>("/api/service/parts", dto);
+
+    public Task<(SlaTicketSummaryDto? Data, string? Error, int Status)> GetTicketSlaAsync(int ticketId) =>
+        _api.GetAsync<SlaTicketSummaryDto>($"/api/service/tickets/{ticketId}/sla");
+
+    public Task<(object? Data, string? Error, int Status)> PauseTicketSlaAsync(int ticketId, SlaPauseDto dto) =>
+        _api.PostAsync<object>($"/api/service/tickets/{ticketId}/sla/pause", dto);
+
+    public Task<(object? Data, string? Error, int Status)> ResumeTicketSlaAsync(int ticketId) =>
+        _api.PostAsync<object>($"/api/service/tickets/{ticketId}/sla/resume", new { });
+
+    public Task<(List<SlaPolicyDto>? Data, string? Error, int Status)> GetSlaPoliciesAsync(int? entityType = null)
+    {
+        var q = entityType is int et ? $"?entityType={et}" : "";
+        return _api.GetAsync<List<SlaPolicyDto>>($"/api/service/sla/policies{q}");
+    }
+
+    public Task<(SlaPolicyDto? Data, string? Error, int Status)> UpsertSlaPolicyAsync(SlaPolicyUpsertDto dto) =>
+        dto.Id is int id
+            ? _api.PutAsync<SlaPolicyDto>($"/api/service/sla/policies/{id}", dto)
+            : _api.PostAsync<SlaPolicyDto>("/api/service/sla/policies", dto);
+
+    public Task<(object? Data, string? Error, int Status)> SetDefaultSlaPolicyAsync(int id) =>
+        _api.PostAsync<object>($"/api/service/sla/policies/{id}/default", new { });
+
+    public Task<(List<SlaPolicyRuleDto>? Data, string? Error, int Status)> GetSlaPolicyRulesAsync(int policyId) =>
+        _api.GetAsync<List<SlaPolicyRuleDto>>($"/api/service/sla/policies/{policyId}/rules");
+
+    public Task<(SlaPolicyRuleDto? Data, string? Error, int Status)> UpsertSlaPolicyRuleAsync(int policyId, SlaPolicyRuleUpsertDto dto) =>
+        dto.Id is int rid
+            ? _api.PutAsync<SlaPolicyRuleDto>($"/api/service/sla/policies/{policyId}/rules/{rid}", dto)
+            : _api.PostAsync<SlaPolicyRuleDto>($"/api/service/sla/policies/{policyId}/rules", dto);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteSlaPolicyRuleAsync(int policyId, int ruleId) =>
+        _api.DeleteAsync($"/api/service/sla/policies/{policyId}/rules/{ruleId}");
+
+    public Task<(SlaDashboardDto? Data, string? Error, int Status)> GetSlaDashboardAsync(int? entityType = null)
+    {
+        var q = entityType is int et ? $"?entityType={et}" : "";
+        return _api.GetAsync<SlaDashboardDto>($"/api/service/sla/dashboard{q}");
+    }
+
+    public Task<(List<SlaBreachQueueItemDto>? Data, string? Error, int Status)> GetSlaBreachesAsync(int? entityType = null, int? policyId = null)
+    {
+        var parts = new List<string>();
+        if (entityType is int et) parts.Add($"entityType={et}");
+        if (policyId is int pid) parts.Add($"policyId={pid}");
+        var q = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+        return _api.GetAsync<List<SlaBreachQueueItemDto>>($"/api/service/sla/breaches{q}");
+    }
+
+    public Task<(List<SlaEntityAlertDto>? Data, string? Error, int Status)> GetSlaAlertsAsync(int entityType) =>
+        _api.GetAsync<List<SlaEntityAlertDto>>($"/api/service/sla/alerts?entityType={entityType}");
+
+    public Task<(BusinessCalendarDto? Data, string? Error, int Status)> GetSlaCalendarAsync() =>
+        _api.GetAsync<BusinessCalendarDto>("/api/service/sla/calendar");
+
+    public Task<(BusinessCalendarDto? Data, string? Error, int Status)> UpsertSlaCalendarAsync(BusinessCalendarUpsertDto dto) =>
+        _api.PutAsync<BusinessCalendarDto>("/api/service/sla/calendar", dto);
+
+    public Task<(List<KbArticleDto>? Data, string? Error, int Status)> GetKbArticlesAsync(string? q = null, bool publishedOnly = false) =>
+        _api.GetAsync<List<KbArticleDto>>(
+            $"/api/service/kb?q={Uri.EscapeDataString(q ?? "")}&publishedOnly={publishedOnly}");
+
+    public Task<(KbArticleDto? Data, string? Error, int Status)> GetKbArticleAsync(int id) =>
+        _api.GetAsync<KbArticleDto>($"/api/service/kb/{id}");
+
+    public Task<(KbArticleDto? Data, string? Error, int Status)> UpsertKbArticleAsync(KbArticleUpsertDto dto) =>
+        dto.Id is > 0
+            ? _api.PutAsync<KbArticleDto>($"/api/service/kb/{dto.Id}", dto)
+            : _api.PostAsync<KbArticleDto>("/api/service/kb", dto);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteKbArticleAsync(int id) =>
+        _api.DeleteAsync($"/api/service/kb/{id}");
 
     public Task<(List<ApprovalPolicyWebDto>? Data, string? Error, int Status)> GetApprovalPoliciesAsync() =>
         _api.GetAsync<List<ApprovalPolicyWebDto>>("/api/approvals/policies");
@@ -648,11 +770,58 @@ public sealed class CapApiService
     public Task<(bool Ok, string? Error, int Status)> MatchBankLineAsync(int lineId, int journalLineId) =>
         _api.PostAsync($"/api/v1/finance/bank-statements/lines/{lineId}/match?journalLineId={journalLineId}", null);
 
+    public Task<(bool Ok, string? Error, int Status)> UnclearBankLineAsync(int lineId) =>
+        _api.PostAsync($"/api/v1/finance/bank-statements/lines/{lineId}/unclear", null);
+
+    public Task<(List<BankMatchSuggestionDto>? Data, string? Error, int Status)> SuggestBankMatchesAsync(int statementId) =>
+        _api.GetAsync<List<BankMatchSuggestionDto>>($"/api/v1/finance/bank-statements/{statementId}/suggest-matches");
+
+    public Task<(BankAutoMatchResultDto? Data, string? Error, int Status)> AutoMatchBankAsync(int statementId) =>
+        _api.PostAsync<BankAutoMatchResultDto>($"/api/v1/finance/bank-statements/{statementId}/auto-match", null);
+
     public Task<(BankReconReportDto? Data, string? Error, int Status)> GetBankReconReportAsync(int id) =>
         _api.GetAsync<BankReconReportDto>($"/api/v1/finance/bank-statements/{id}/report");
 
     public Task<(List<UnclearedBankGlLineDto>? Data, string? Error, int Status)> GetUnclearedBankGlAsync() =>
         _api.GetAsync<List<UnclearedBankGlLineDto>>("/api/v1/finance/bank-statements/uncleared-gl");
+
+    // Budgets (Program C2)
+    private const string BudgetsBase = "/api/v1/budgets";
+
+    public Task<(List<BudgetDto>? Data, string? Error, int Status)> GetBudgetsAsync() =>
+        _api.GetAsync<List<BudgetDto>>(BudgetsBase);
+
+    public Task<(BudgetDto? Data, string? Error, int Status)> GetBudgetAsync(int id) =>
+        _api.GetAsync<BudgetDto>($"{BudgetsBase}/{id}");
+
+    public Task<(BudgetDto? Data, string? Error, int Status)> CreateBudgetAsync(BudgetCreateRequest body) =>
+        _api.PostAsync<BudgetDto>(BudgetsBase, body);
+
+    public Task<(BudgetDto? Data, string? Error, int Status)> UpdateBudgetAsync(int id, BudgetUpdateRequest body) =>
+        _api.PutAsync<BudgetDto>($"{BudgetsBase}/{id}", body);
+
+    public Task<(BudgetDto? Data, string? Error, int Status)> AddBudgetLineAsync(int id, BudgetLineUpsertRequest body) =>
+        _api.PostAsync<BudgetDto>($"{BudgetsBase}/{id}/lines", body);
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteBudgetLineAsync(int id, int lineId) =>
+        _api.DeleteAsync($"{BudgetsBase}/{id}/lines/{lineId}");
+
+    public Task<(bool Ok, string? Error, int Status)> DeleteBudgetAsync(int id) =>
+        _api.DeleteAsync($"{BudgetsBase}/{id}");
+
+    public Task<(List<SalesCommissionDto>? Data, string? Error, int Status)> GetSalesCommissionsAsync(
+        DateTime? from = null, DateTime? to = null, int? userId = null)
+    {
+        var qs = new List<string>();
+        if (from is DateTime f) qs.Add($"from={f:yyyy-MM-dd}");
+        if (to is DateTime t) qs.Add($"to={t:yyyy-MM-dd}");
+        if (userId is int u) qs.Add($"userId={u}");
+        var q = qs.Count == 0 ? "" : "?" + string.Join("&", qs);
+        return _api.GetAsync<List<SalesCommissionDto>>($"/api/v1/sales-commissions{q}");
+    }
+
+    public Task<(DeliveryNoteDto? Data, string? Error, int Status)> UpdateDeliveryTrackingAsync(int id, UpdateDeliveryTrackingRequest body) =>
+        _api.PutAsync<DeliveryNoteDto>($"{Ent}/deliveries/{id}/tracking", body);
 
     public Task<(bool Ok, string? Error, int Status)> ApplySalesCreditAsync(int returnId, object body) =>
         _api.PostAsync($"/api/returns/sales/{returnId}/apply", body);

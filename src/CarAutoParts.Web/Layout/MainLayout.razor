@@ -13,6 +13,7 @@
 @inject JwtAuthStateProvider AuthState
 @inject ILocalStorageService Storage
 @inject IJSRuntime Js
+@inject WebGlobalSearchService GlobalSearch
 @implements IAsyncDisposable
 
 <div class="cap-scene">
@@ -82,9 +83,40 @@
                 </button>
                 <div class="cap-main">
                     <header class="cap-topbar">
-                        <div class="d-flex align-items-center gap-2 min-w-0">
+                        <div class="d-flex align-items-center gap-2 min-w-0 flex-grow-1">
                             <button type="button" class="btn btn-sm btn-cap-ghost d-lg-none cap-touch-btn" @onclick="() => _sidebarOpen = !_sidebarOpen">Menu</button>
                             <span class="badge badge-soft text-truncate">@_displayName</span>
+                            <div class="cap-global-search d-none d-md-block">
+                                <input class="form-control form-control-sm"
+                                       placeholder="Search products, customers…"
+                                       value="@_globalQuery"
+                                       @oninput="OnGlobalSearchInput"
+                                       @onkeydown="OnGlobalSearchKey"
+                                       autocomplete="off" />
+                                @if (_globalOpen && (_globalHits.Count > 0 || _globalBusy || !string.IsNullOrWhiteSpace(_globalQuery)))
+                                {
+                                    <div class="cap-global-search-dropdown">
+                                        @if (_globalBusy)
+                                        {
+                                            <div class="cap-global-search-empty">Searching…</div>
+                                        }
+                                        else if (_globalHits.Count == 0)
+                                        {
+                                            <div class="cap-global-search-empty">No matches</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var hit in _globalHits)
+                                            {
+                                                <button type="button" class="cap-global-search-item" @onclick="() => NavigateGlobalHit(hit)">
+                                                    <strong>@hit.Title</strong>
+                                                    <span>@hit.Subtitle</span>
+                                                </button>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
                             @if (OfflineQueue.PendingCount > 0)
                             {
                                 <a class="badge text-bg-warning text-decoration-none" href="pos" title="Offline checkout queue">
@@ -154,6 +186,11 @@
     private List<NavGroup> _groups = [];
     private readonly HashSet<string> _expanded = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _navBuildLock = new(1, 1);
+    private string _globalQuery = "";
+    private bool _globalOpen;
+    private bool _globalBusy;
+    private List<WebGlobalSearchHit> _globalHits = [];
+    private CancellationTokenSource? _globalSearchCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -461,6 +498,67 @@
         await BuildNavAsync();
     }
 
+    private void OnGlobalSearchInput(ChangeEventArgs e)
+    {
+        _globalQuery = e.Value?.ToString() ?? "";
+        _ = DebouncedGlobalSearchAsync();
+    }
+
+    private async Task DebouncedGlobalSearchAsync()
+    {
+        _globalSearchCts?.Cancel();
+        _globalSearchCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _globalSearchCts = cts;
+        var term = _globalQuery.Trim();
+        if (term.Length < 2)
+        {
+            _globalHits = [];
+            _globalOpen = false;
+            _globalBusy = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _globalOpen = true;
+        _globalBusy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await Task.Delay(200, cts.Token);
+            var hits = await GlobalSearch.SearchAsync(term, cts.Token);
+            if (cts.IsCancellationRequested) return;
+            _globalHits = hits.ToList();
+            _globalBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { /* superseded */ }
+        catch
+        {
+            _globalBusy = false;
+            _globalHits = [];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnGlobalSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _globalOpen = false;
+            _globalQuery = "";
+            _globalHits = [];
+        }
+    }
+
+    private void NavigateGlobalHit(WebGlobalSearchHit hit)
+    {
+        _globalOpen = false;
+        _globalQuery = "";
+        _globalHits = [];
+        Nav.NavigateTo(hit.Href);
+    }
+
     private async Task LogoutAsync()
     {
         await AuthApi.LogoutAsync();
@@ -472,6 +570,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _globalSearchCts?.Cancel();
+        _globalSearchCts?.Dispose();
         ApiReachability.Changed -= OnApiReachabilityChanged;
         OfflineQueue.Changed -= OnOfflineQueueChanged;
         Theme.Changed -= OnThemeChanged;

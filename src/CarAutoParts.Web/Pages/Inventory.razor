@@ -31,8 +31,18 @@
         <div class="cap-card">
             <h5>Adjust stock</h5>
             <div class="row g-2">
-                <div class="col-4"><input type="number" class="form-control" placeholder="ProductId" @bind="_adjust.ProductId" /></div>
-                <div class="col-4"><input type="number" class="form-control" placeholder="WarehouseId" @bind="_adjust.WarehouseId" /></div>
+                <div class="col-4">
+                    <select class="form-select" @bind="_adjust.ProductId">
+                        <option value="0">Product…</option>
+                        @foreach (var p in _products) { <option value="@p.Id">@p.Name (@p.Sku)</option> }
+                    </select>
+                </div>
+                <div class="col-4">
+                    <select class="form-select" @bind="_adjust.WarehouseId">
+                        <option value="0">Warehouse…</option>
+                        @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                    </select>
+                </div>
                 <div class="col-4"><input type="number" class="form-control" placeholder="Delta" @bind="_adjust.QuantityDelta" /></div>
                 <div class="col-8"><input class="form-control" placeholder="Reason" @bind="_adjust.Reason" /></div>
                 <div class="col-4"><button class="btn btn-cap w-100" @onclick="AdjustAsync">Adjust</button></div>
@@ -43,8 +53,18 @@
         <div class="cap-card">
             <h5>Receive stock</h5>
             <div class="row g-2">
-                <div class="col-3"><input type="number" class="form-control" placeholder="ProductId" @bind="_receive.ProductId" /></div>
-                <div class="col-3"><input type="number" class="form-control" placeholder="Wh" @bind="_receive.WarehouseId" /></div>
+                <div class="col-3">
+                    <select class="form-select" @bind="_receive.ProductId">
+                        <option value="0">Product…</option>
+                        @foreach (var p in _products) { <option value="@p.Id">@p.Name (@p.Sku)</option> }
+                    </select>
+                </div>
+                <div class="col-3">
+                    <select class="form-select" @bind="_receive.WarehouseId">
+                        <option value="0">Wh…</option>
+                        @foreach (var w in _warehouses) { <option value="@w.Id">@w.Name</option> }
+                    </select>
+                </div>
                 <div class="col-3"><input type="number" class="form-control" placeholder="Qty" @bind="_receive.Quantity" /></div>
                 <div class="col-3"><input type="number" class="form-control" placeholder="Cost" @bind="_receive.UnitCost" /></div>
                 <div class="col-8"><input class="form-control" placeholder="Batch" @bind="_receive.BatchNumber" /></div>
@@ -135,9 +155,15 @@
     private int _pageSize = 10;
     private StockAdjustmentDto _adjust = new();
     private ReceiveStockRequest _receive = new();
+    private List<WarehouseDto> _warehouses = [];
+    private List<ProductListDto> _products = [];
 
     protected override async Task OnInitializedAsync()
     {
+        var (wh, _, _) = await Api.GetWarehousesAsync();
+        _warehouses = wh ?? [];
+        var (prod, _, _) = await Api.GetProductsAsync(new QuerySpec { Page = 1, PageSize = 200 });
+        _products = prod?.Items ?? [];
         await LoadCoreAsync();
         _busy = false;
     }
